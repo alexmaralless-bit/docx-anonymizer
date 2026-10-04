@@ -1,0 +1,47 @@
+:root {
+  color-scheme: light dark;
+  --gap: 8px;
+}
+body {
+  margin: 0;
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+  min-width: 300px;
+}
+.popup {
+  padding: 12px 16px;
+  display: grid;
+  gap: var(--gap);
+}
+h1 {
+  font-size: 16px;
+  margin: 0;
+}
+h2 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+}
+.row {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+}
+.links {
+  display: flex;
+  gap: 12px;
+}
+.dev {
+  border-top: 1px solid #8884;
+  padding-top: 8px;
+}
+dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin: 4px 0;
+}
+dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

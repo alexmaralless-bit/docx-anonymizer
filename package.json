@@ -1,0 +1,33 @@
+{
+  "name": "docx-anonymizer",
+  "version": "0.1.0",
+  "description": "Браузерное расширение: локальная анонимизация .docx перед загрузкой в LLM-сервисы",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:dev": "node scripts/build.mjs --dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "node scripts/build.mjs && playwright test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "sample": "node scripts/make-sample.mjs"
+  },
+  "dependencies": {
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
+    "vitest": "5.0.3"
+  }
+}

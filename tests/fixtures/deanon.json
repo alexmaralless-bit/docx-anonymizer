@@ -1,0 +1,333 @@
+{
+  "mapping": {
+    "schemaVersion": 1,
+    "createdAt": "2026-10-04T00:00:00Z",
+    "tool": {
+      "name": "DOCX Anonymizer",
+      "version": "0.1.0"
+    },
+    "mode": "placeholder",
+    "language": "ru",
+    "documents": [
+      {
+        "name": "dogovor.docx"
+      }
+    ],
+    "entries": [
+      {
+        "token": "[ФИО_1]",
+        "placeholder": "[ФИО_1]",
+        "category": "PERSON",
+        "original": "Иванов Пётр Сергеевич",
+        "value": "Иванов Пётр Сергеевич",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[ФИО_2]",
+        "placeholder": "[ФИО_2]",
+        "category": "PERSON",
+        "original": "Петрова Анна Ивановна",
+        "value": "Петрова Анна Ивановна",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[КОМПАНИЯ_1]",
+        "placeholder": "ООО «[КОМПАНИЯ_1]»",
+        "category": "COMPANY",
+        "original": "ООО «Ромашка-Трейд»",
+        "value": "Ромашка-Трейд",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[ИНН_1]",
+        "placeholder": "[ИНН_1]",
+        "category": "INN",
+        "original": "7736050003",
+        "value": "7736050003",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[EMAIL_1]",
+        "placeholder": "[EMAIL_1]",
+        "category": "EMAIL",
+        "original": "ivan.petrov@romashka-trade.example",
+        "value": "ivan.petrov@romashka-trade.example",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[ДАТА_РОЖД_1]",
+        "placeholder": "[ДАТА_РОЖД_1]",
+        "category": "BIRTHDATE",
+        "original": "12.03.1985",
+        "value": "12.03.1985",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[СЧЕТ_1]",
+        "placeholder": "[СЧЕТ_1]",
+        "category": "ACCOUNT",
+        "original": "40702810900000000001",
+        "value": "40702810900000000001",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[ПРОЕКТ_1]",
+        "placeholder": "[ПРОЕКТ_1]",
+        "category": "custom:project",
+        "original": "Проект Орион",
+        "value": "Проект Орион",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[PERSON_1]",
+        "placeholder": "[PERSON_1]",
+        "category": "PERSON",
+        "original": "John Smith",
+        "value": "John Smith",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[COMPANY_1]",
+        "placeholder": "[COMPANY_1]",
+        "category": "COMPANY",
+        "original": "Acme Ltd",
+        "value": "Acme Ltd",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "[TEL_1]",
+        "placeholder": "[TEL_1]",
+        "category": "PHONE",
+        "original": "$& +7 495 000-00-00",
+        "value": "$& +7 495 000-00-00",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      },
+      {
+        "token": "XXXXXXXX",
+        "placeholder": "XXXXXXXX",
+        "category": "PERSON",
+        "original": "Сидоров Сидор",
+        "value": "Сидоров Сидор",
+        "variants": [],
+        "occurrences": 1,
+        "source": "rule",
+        "parts": []
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "точная форма",
+      "input": "Договор с [ФИО_1].",
+      "expected": "Договор с Иванов Пётр Сергеевич.",
+      "unresolved": []
+    },
+    {
+      "name": "без скобок",
+      "input": "ФИО_1 подписал акт",
+      "expected": "Иванов Пётр Сергеевич подписал акт",
+      "unresolved": []
+    },
+    {
+      "name": "пробел вместо подчёркивания",
+      "input": "Подписал ФИО 1 лично",
+      "expected": "Подписал Иванов Пётр Сергеевич лично",
+      "unresolved": []
+    },
+    {
+      "name": "дефис вместо подчёркивания",
+      "input": "Подписал ФИО-1 лично",
+      "expected": "Подписал Иванов Пётр Сергеевич лично",
+      "unresolved": []
+    },
+    {
+      "name": "нижний регистр",
+      "input": "Директор [фио_1] согласен",
+      "expected": "Директор Иванов Пётр Сергеевич согласен",
+      "unresolved": []
+    },
+    {
+      "name": "жирный Markdown",
+      "input": "Ответственный: **[ФИО_1]**",
+      "expected": "Ответственный: **Иванов Пётр Сергеевич**",
+      "unresolved": []
+    },
+    {
+      "name": "моноширинный Markdown",
+      "input": "Поле `[ФИО_1]` заполнено",
+      "expected": "Поле `Иванов Пётр Сергеевич` заполнено",
+      "unresolved": []
+    },
+    {
+      "name": "курсив Markdown",
+      "input": "Автор _[ФИО_1]_ указан",
+      "expected": "Автор _Иванов Пётр Сергеевич_ указан",
+      "unresolved": []
+    },
+    {
+      "name": "два разных значения",
+      "input": "[ФИО_1] и [ФИО_2] подписали",
+      "expected": "Иванов Пётр Сергеевич и Петрова Анна Ивановна подписали",
+      "unresolved": []
+    },
+    {
+      "name": "повтор одного значения",
+      "input": "[ФИО_1], затем снова [ФИО_1]",
+      "expected": "Иванов Пётр Сергеевич, затем снова Иванов Пётр Сергеевич",
+      "unresolved": []
+    },
+    {
+      "name": "компания с ОПФ в тексте",
+      "input": "Поставщик — ООО «[КОМПАНИЯ_1]».",
+      "expected": "Поставщик — ООО «Ромашка-Трейд».",
+      "unresolved": []
+    },
+    {
+      "name": "компания без ОПФ",
+      "input": "[КОМПАНИЯ_1] поставляет товар",
+      "expected": "Ромашка-Трейд поставляет товар",
+      "unresolved": []
+    },
+    {
+      "name": "ИНН",
+      "input": "ИНН [ИНН_1], КПП не указан",
+      "expected": "ИНН 7736050003, КПП не указан",
+      "unresolved": []
+    },
+    {
+      "name": "почта в конце предложения",
+      "input": "Пишите на [EMAIL_1].",
+      "expected": "Пишите на ivan.petrov@romashka-trade.example.",
+      "unresolved": []
+    },
+    {
+      "name": "префикс с подчёркиванием",
+      "input": "Родился [ДАТА_РОЖД_1]",
+      "expected": "Родился 12.03.1985",
+      "unresolved": []
+    },
+    {
+      "name": "префикс с подчёркиванием без скобок",
+      "input": "Родился ДАТА_РОЖД_1",
+      "expected": "Родился 12.03.1985",
+      "unresolved": []
+    },
+    {
+      "name": "номер вне карты",
+      "input": "Подпись [ФИО_9]",
+      "expected": "Подпись [ФИО_9]",
+      "unresolved": ["[ФИО_9]"]
+    },
+    {
+      "name": "неизвестная категория",
+      "input": "Секрет: [СЕКРЕТ_1]",
+      "expected": "Секрет: [СЕКРЕТ_1]",
+      "unresolved": ["[СЕКРЕТ_1]"]
+    },
+    {
+      "name": "распознанное и нераспознанное",
+      "input": "[ФИО_1] передал [ФИО_7]",
+      "expected": "Иванов Пётр Сергеевич передал [ФИО_7]",
+      "unresolved": ["[ФИО_7]"]
+    },
+    {
+      "name": "английский префикс",
+      "input": "[PERSON_1] signed the contract",
+      "expected": "John Smith signed the contract",
+      "unresolved": []
+    },
+    {
+      "name": "английский без скобок в нижнем регистре",
+      "input": "person_1 signed",
+      "expected": "John Smith signed",
+      "unresolved": []
+    },
+    {
+      "name": "номер длиннее известного",
+      "input": "ФИО_10 не трогаем",
+      "expected": "ФИО_10 не трогаем",
+      "unresolved": []
+    },
+    {
+      "name": "префикс внутри слова",
+      "input": "ПОФИО_1 остаётся",
+      "expected": "ПОФИО_1 остаётся",
+      "unresolved": []
+    },
+    {
+      "name": "текст без плейсхолдеров",
+      "input": "Обычный текст без меток.",
+      "expected": "Обычный текст без меток.",
+      "unresolved": []
+    },
+    {
+      "name": "пустая строка",
+      "input": "",
+      "expected": "",
+      "unresolved": []
+    },
+    {
+      "name": "пробелы внутри скобок",
+      "input": "Договор с [ ФИО_1 ].",
+      "expected": "Договор с Иванов Пётр Сергеевич.",
+      "unresolved": []
+    },
+    {
+      "name": "таблица Markdown",
+      "input": "| [ФИО_1] | [ИНН_1] |",
+      "expected": "| Иванов Пётр Сергеевич | 7736050003 |",
+      "unresolved": []
+    },
+    {
+      "name": "специальные символы в значении",
+      "input": "Тел. [TEL_1]",
+      "expected": "Тел. $& +7 495 000-00-00",
+      "unresolved": []
+    },
+    {
+      "name": "многострочный список",
+      "input": "1. [ФИО_1]\n2. [ФИО_2]\n3. [КОМПАНИЯ_1]",
+      "expected": "1. Иванов Пётр Сергеевич\n2. Петрова Анна Ивановна\n3. Ромашка-Трейд",
+      "unresolved": []
+    },
+    {
+      "name": "пользовательская категория",
+      "input": "Проект: [ПРОЕКТ_1]",
+      "expected": "Проект: Проект Орион",
+      "unresolved": []
+    }
+  ]
+}

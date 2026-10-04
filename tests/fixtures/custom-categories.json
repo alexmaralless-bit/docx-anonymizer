@@ -1,0 +1,323 @@
+{
+  "description": "Свои категории (FR-44): по 3 каждого типа; positive — находит ровно matches, negative — не находит ничего",
+  "categories": [
+    {
+      "category": {
+        "id": "custom:project",
+        "label": {
+          "ru": "Проект",
+          "en": "Проект"
+        },
+        "placeholderPrefix": {
+          "ru": "ПРОЕКТ",
+          "en": "ПРОЕКТ"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "dictionary",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "dictionary": {
+          "values": ["Проект Орион", "Орион"],
+          "caseSensitive": false,
+          "wholeWord": true
+        }
+      },
+      "positive": [
+        {
+          "text": "Проект Орион стартует в мае; кодовое имя Орион сохраняется.",
+          "matches": ["Проект Орион", "Орион"]
+        }
+      ],
+      "negative": ["Орионовский проект не наш.", "Орионы летят."]
+    },
+    {
+      "category": {
+        "id": "custom:client",
+        "label": {
+          "ru": "Клиент",
+          "en": "Клиент"
+        },
+        "placeholderPrefix": {
+          "ru": "КЛИЕНТ",
+          "en": "КЛИЕНТ"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "dictionary",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "dictionary": {
+          "values": ["Gamma"],
+          "caseSensitive": true,
+          "wholeWord": true
+        }
+      },
+      "positive": [
+        {
+          "text": "Client Gamma signed the NDA.",
+          "matches": ["Gamma"]
+        }
+      ],
+      "negative": ["client gamma signed", "Gammaray is a different word"]
+    },
+    {
+      "category": {
+        "id": "custom:codename",
+        "label": {
+          "ru": "Кодовое имя",
+          "en": "Кодовое имя"
+        },
+        "placeholderPrefix": {
+          "ru": "КОД",
+          "en": "КОД"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "dictionary",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "dictionary": {
+          "values": ["Зелёный Дракон"],
+          "caseSensitive": false,
+          "wholeWord": true
+        }
+      },
+      "positive": [
+        {
+          "text": "Сделка «зелёный  дракон» закрыта, ЗЕЛЕНЫЙ ДРАКОН подтверждён.",
+          "matches": ["зелёный  дракон", "ЗЕЛЕНЫЙ ДРАКОН"]
+        }
+      ],
+      "negative": ["зелёныйдракон", "Зелёный и Дракон по отдельности"]
+    },
+    {
+      "category": {
+        "id": "custom:tabno",
+        "label": {
+          "ru": "Табельный номер",
+          "en": "Табельный номер"
+        },
+        "placeholderPrefix": {
+          "ru": "ТАБ",
+          "en": "ТАБ"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "labeled",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "labeled": {
+          "labels": {
+            "ru": ["табельный номер"],
+            "en": []
+          },
+          "shape": "digits",
+          "minLen": 6,
+          "maxLen": 6,
+          "validator": "none"
+        }
+      },
+      "positive": [
+        {
+          "text": "Табельный номер: 123456, отдел 7.",
+          "matches": ["123456"]
+        }
+      ],
+      "negative": ["Табельный номер: 12345", "Табельный номер: 1234567", "Номер: 123456"]
+    },
+    {
+      "category": {
+        "id": "custom:empid",
+        "label": {
+          "ru": "Employee ID",
+          "en": "Employee ID"
+        },
+        "placeholderPrefix": {
+          "ru": "EMP",
+          "en": "EMP"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "labeled",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "labeled": {
+          "labels": {
+            "ru": [],
+            "en": ["employee id"]
+          },
+          "shape": "alnum",
+          "minLen": 3,
+          "maxLen": 8,
+          "validator": "none"
+        }
+      },
+      "positive": [
+        {
+          "text": "Employee ID AB1234 and employee id: Z99",
+          "matches": ["AB1234", "Z99"]
+        }
+      ],
+      "negative": ["Employee ID: -", "Employee ID: AB"]
+    },
+    {
+      "category": {
+        "id": "custom:loyalty",
+        "label": {
+          "ru": "Карта лояльности",
+          "en": "Карта лояльности"
+        },
+        "placeholderPrefix": {
+          "ru": "ЛОЯЛЬНОСТЬ",
+          "en": "ЛОЯЛЬНОСТЬ"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "labeled",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "labeled": {
+          "labels": {
+            "ru": ["карта лояльности"],
+            "en": []
+          },
+          "shape": "digits",
+          "minLen": 16,
+          "maxLen": 16,
+          "validator": "luhn"
+        }
+      },
+      "positive": [
+        {
+          "text": "Карта лояльности: 4111111111111111.",
+          "matches": ["4111111111111111"]
+        }
+      ],
+      "negative": ["Карта лояльности: 4111111111111112"]
+    },
+    {
+      "category": {
+        "id": "custom:order",
+        "label": {
+          "ru": "Заказ",
+          "en": "Заказ"
+        },
+        "placeholderPrefix": {
+          "ru": "ЗАКАЗ",
+          "en": "ЗАКАЗ"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "pattern",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "pattern": {
+          "regex": "ЗК-\\d{4}/\\d{2}",
+          "flags": "u",
+          "validator": "none"
+        }
+      },
+      "positive": [
+        {
+          "text": "Заказ ЗК-2024/01 и ЗК-2025/12.",
+          "matches": ["ЗК-2024/01", "ЗК-2025/12"],
+          "levels": ["weak", "weak"]
+        }
+      ],
+      "negative": ["ЗК-24/01", "зк-2024/01"]
+    },
+    {
+      "category": {
+        "id": "custom:ticket",
+        "label": {
+          "ru": "Тикет",
+          "en": "Тикет"
+        },
+        "placeholderPrefix": {
+          "ru": "ТИКЕТ",
+          "en": "ТИКЕТ"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "pattern",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "pattern": {
+          "regex": "[a-z]{2}-\\d{3}",
+          "flags": "iu",
+          "validator": "none"
+        }
+      },
+      "positive": [
+        {
+          "text": "See ab-123 and AB-456.",
+          "matches": ["ab-123", "AB-456"]
+        }
+      ],
+      "negative": ["a-123", "ab-12"]
+    },
+    {
+      "category": {
+        "id": "custom:pass",
+        "label": {
+          "ru": "Пропуск",
+          "en": "Пропуск"
+        },
+        "placeholderPrefix": {
+          "ru": "ПРОПУСК",
+          "en": "ПРОПУСК"
+        },
+        "color": "#8e44ad",
+        "enabled": true,
+        "priority": "belowBuiltin",
+        "kind": "pattern",
+        "createdAt": "2026-10-02T10:00:00Z",
+        "pattern": {
+          "regex": "\\d{8}",
+          "flags": "u",
+          "validator": "none",
+          "labels": {
+            "ru": ["пропуск"],
+            "en": []
+          }
+        }
+      },
+      "positive": [
+        {
+          "text": "Пропуск № 12345678. Прочие сведения договора в целях проверки не приводятся и остаются нерелевантными. Код 87654321.",
+          "matches": ["12345678", "87654321"],
+          "levels": ["labeled", "weak"]
+        }
+      ],
+      "negative": ["Номер 1234567"]
+    }
+  ],
+  "aboveBuiltin": {
+    "category": {
+      "id": "custom:orion-top",
+      "label": {
+        "ru": "Орион",
+        "en": "Орион"
+      },
+      "placeholderPrefix": {
+        "ru": "ОРИОН",
+        "en": "ОРИОН"
+      },
+      "color": "#8e44ad",
+      "enabled": true,
+      "priority": "aboveBuiltin",
+      "kind": "dictionary",
+      "createdAt": "2026-10-02T10:00:00Z",
+      "dictionary": {
+        "values": ["Проект Орион"],
+        "caseSensitive": false,
+        "wholeWord": true
+      }
+    },
+    "text": "Проект Орион утверждён.",
+    "personStubRegex": "Проект Орион",
+    "expectAbove": "custom:orion-top",
+    "expectBelow": "PERSON"
+  }
+}

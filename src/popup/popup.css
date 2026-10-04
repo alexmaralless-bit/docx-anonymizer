@@ -1,39 +1,218 @@
 :root {
   color-scheme: light dark;
-  --gap: 8px;
+  --bg: #ffffff;
+  --surface: #f5f6f8;
+  --text: #16181d;
+  --muted: #667085;
+  --border: #e2e5ea;
+  --accent: #2b59e0;
+  --on-accent: #fff;
+  --ok: #12703f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1d23;
+    --surface: #23262e;
+    --text: #eceef2;
+    --muted: #9aa2b1;
+    --border: #343845;
+    --accent: #7c9cff;
+    --on-accent: #0f1630;
+    --ok: #5fd08f;
+  }
+}
+* {
+  box-sizing: border-box;
 }
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
   font:
-    14px/1.4 system-ui,
+    14px/1.45 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
     sans-serif;
-  min-width: 300px;
+  width: 340px;
 }
 .popup {
-  padding: 12px 16px;
+  padding: 14px 16px 12px;
   display: grid;
-  gap: var(--gap);
+  gap: 12px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
 }
 h1 {
   font-size: 16px;
+  font-weight: 650;
   margin: 0;
 }
 h2 {
-  font-size: 13px;
-  margin: 8px 0 4px;
+  font-size: 12px;
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.row {
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.switch-row {
   display: flex;
-  gap: var(--gap);
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.switch-text {
+  display: grid;
+  gap: 2px;
+}
+.switch-text small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.switch-row input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.switch {
+  flex: none;
+  width: 40px;
+  height: 23px;
+  border-radius: 99px;
+  background: #98a2b3;
+  position: relative;
+  transition: background 0.15s;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+input:checked + .switch {
+  background: var(--ok);
+}
+input:checked + .switch::after {
+  transform: translateX(17px);
+}
+input:focus-visible + .switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.site {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.site[data-state='on'] {
+  color: var(--ok);
+  font-weight: 600;
+}
+.site-actions {
+  margin-top: 6px;
+}
+.site-actions:empty {
+  display: none;
+}
+.btn-sm {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.btn-sm:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.item-main {
+  min-width: 0;
+  display: grid;
+}
+.item-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.item small {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 .links {
   display: flex;
-  gap: 12px;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
 }
 .dev {
-  border-top: 1px solid #8884;
+  border-top: 1px dashed var(--border);
   padding-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dev summary {
+  cursor: pointer;
 }
 dl {
   display: grid;

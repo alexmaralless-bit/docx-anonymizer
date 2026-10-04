@@ -1,6 +1,6 @@
 // WP3: перехват на сайте, панель и popup. Страница — локальная (tests/e2e/pages/intercept-basic.html),
 // отдаётся через page.route под origin http://intercept.test, внешней сети нет.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test, expect } from './fixtures.js';
 import { makeDocx, para, run, unzipText } from '../helpers/docx.js';
@@ -272,11 +272,10 @@ test('бейдж ON на разрешённом сайте и тултип (FR-4
 
 test('скриншоты панели для портфолио (E2E_SHOTS=каталог)', async ({ context, extensionId }) => {
   test.skip(!process.env.E2E_SHOTS, 'только по запросу');
-  const emails = Array.from({ length: 9 }, (_, i) => `contact${i + 1}@client-${i + 1}.example.com`);
-  const buf = Buffer.from(makeDocx(para(run(`Договор поставки. Контакты сторон: ${emails.join('; ')}. Срок поставки — 10 дней.`))));
+  const buf = readFileSync(resolve('tests/fixtures/sample-contract.docx'));
   const page = await setup(context, extensionId);
   await page.setViewportSize({ width: 1100, height: 780 });
-  await page.setInputFiles('#single', { name: 'Договор поставки №14.docx', mimeType: DOCX_MIME, buffer: buf });
+  await page.setInputFiles('#single', { name: 'Договор поставки.docx', mimeType: DOCX_MIME, buffer: buf });
   await expect(page.getByTestId('btn-anonymize')).toBeEnabled({ timeout: 30000 });
   await page.screenshot({ path: `${process.env.E2E_SHOTS}/panel-entities.png` });
   await page.getByTestId('pv-tab-text').click();
@@ -289,9 +288,19 @@ test('скриншоты панели для портфолио (E2E_SHOTS=ка�
   await page.getByTestId('btn-anonymize').click();
   await expect(page.getByTestId('done-title')).toBeVisible({ timeout: 30000 });
   await page.screenshot({ path: `${process.env.E2E_SHOTS}/panel-done.png` });
+  const got = await dump(page);
+  writeFileSync(`${process.env.E2E_SHOTS}/sample.docx`, buf);
+  writeFileSync(`${process.env.E2E_SHOTS}/sample.anon.docx`, Buffer.from(got[0].b64, 'base64'));
   const pop = await context.newPage();
   await pop.setViewportSize({ width: 340, height: 420 });
   await pop.goto(`chrome-extension://${extensionId}/popup/popup.html`);
   await pop.waitForTimeout(500);
   await pop.screenshot({ path: `${process.env.E2E_SHOTS}/popup.png` });
+  const opt = await context.newPage();
+  await opt.setViewportSize({ width: 1100, height: 900 });
+  await opt.goto(`chrome-extension://${extensionId}/options/options.html`);
+  await opt.evaluate(() => chrome.storage.local.set({ settings: { interceptEnabled: true, allowlist: ['https://chatgpt.com', 'https://claude.ai'], uiLanguage: 'ru' } }));
+  await opt.reload();
+  await opt.waitForTimeout(600);
+  await opt.screenshot({ path: `${process.env.E2E_SHOTS}/options.png`, fullPage: true });
 });

@@ -713,6 +713,9 @@ describe('validators', () => {
       'https://mail.google.com',
       'https://docs.python.org/3',
       'moscow.ru',
+      // Со схемой или «www.» зона не сверяется со списком: лучше заменить лишнее, чем пропустить ссылку.
+      'https://example.zzzzzz',
+      'https://www.northwind.example/terms',
     ];
     const invalid = [
       'п. 1.2.3',
@@ -728,7 +731,7 @@ describe('validators', () => {
       'https://nodot',
       'photo.jpg',
       'v1.2',
-      'https://example.zzzzzz',
+      'example.zzzzzz',
       'a..ru',
       'x.sh',
       'http://999.1.1.1',

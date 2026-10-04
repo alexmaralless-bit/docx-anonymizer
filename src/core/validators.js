@@ -328,7 +328,11 @@ export function url(value, ctx = {}) {
   if (labels.length < 2) return false;
   if (!labels.every((l) => /^[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?$/u.test(l))) return false;
   const tld = labels[labels.length - 1].toLowerCase();
-  const strict = ctx.strict ?? !(hasScheme || /^www\./i.test(s));
+  const explicit = hasScheme || /^www\./i.test(s);
+  const strict = ctx.strict ?? !explicit;
+  // Со схемой или «www.» это заведомо адрес: для анонимизатора лучше заменить лишнее,
+  // чем пропустить ссылку с редкой или новой зоной (.example, .tech и т.п.).
+  if (explicit && ctx.strict === undefined && /^\p{L}{2,24}$/u.test(tld)) return true;
   return tldOk(tld, strict);
 }
 

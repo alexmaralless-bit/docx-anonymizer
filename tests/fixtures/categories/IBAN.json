@@ -1,0 +1,155 @@
+{
+  "category": "IBAN",
+  "description": "FR-18: позитивные и негативные примеры; expect — все сущности этой категории по порядку (после FR-20)",
+  "positive": [
+    {
+      "text": "IBAN GB82 WEST 1234 5698 7654 32",
+      "expect": [
+        {
+          "text": "GB82 WEST 1234 5698 7654 32",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "GB82 WEST 1234 5698 7654 32",
+      "expect": [
+        {
+          "text": "GB82 WEST 1234 5698 7654 32",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "DE89 3704 0044 0532 0130 00",
+      "expect": [
+        {
+          "text": "DE89 3704 0044 0532 0130 00",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "IBAN DE89370400440532013000",
+      "expect": [
+        {
+          "text": "DE89370400440532013000",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "FR76 3000 6000 0112 3456 7890 189",
+      "expect": [
+        {
+          "text": "FR76 3000 6000 0112 3456 7890 189",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "IBAN: ES91 2100 0418 4502 0005 1332",
+      "expect": [
+        {
+          "text": "ES91 2100 0418 4502 0005 1332",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "NL91 ABNA 0417 1643 00",
+      "expect": [
+        {
+          "text": "NL91 ABNA 0417 1643 00",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "IT60 X054 2811 1010 0000 0123 456",
+      "expect": [
+        {
+          "text": "IT60 X054 2811 1010 0000 0123 456",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "IBAN GB82 WEST 1234 5698 7654 33",
+      "expect": [
+        {
+          "text": "GB82 WEST 1234 5698 7654 33",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "CH93 0076 2011 6238 5295 7",
+      "expect": [
+        {
+          "text": "CH93 0076 2011 6238 5295 7",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "PL61 1090 1014 0000 0712 1981 2874",
+      "expect": [
+        {
+          "text": "PL61 1090 1014 0000 0712 1981 2874",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "IBAN GB82 WEST 1234 5698 7654 32 BIC DEUTDEFF",
+      "expect": [
+        {
+          "text": "GB82 WEST 1234 5698 7654 32",
+          "level": "validated"
+        }
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "text": "GB82 WEST 1234 5698 7654 33"
+    },
+    {
+      "text": "GB82 WEST 1234 5698 7654"
+    },
+    {
+      "text": "XX82 WEST 1234 5698 7654 32"
+    },
+    {
+      "text": "ABCD 1234"
+    },
+    {
+      "text": "IBAN"
+    },
+    {
+      "text": "GB82WEST1234569876543"
+    },
+    {
+      "text": "ES91 2100 0418 4502 0005 133"
+    },
+    {
+      "text": "AB12"
+    },
+    {
+      "text": "OKPO 12345678"
+    },
+    {
+      "text": "IBAN XX00 0000"
+    },
+    {
+      "text": "DE00 3704 0044 0532 0130 00"
+    },
+    {
+      "text": "de89 3704 0044 0532 0130 00"
+    },
+    {
+      "text": "GB82 WEST 1234 5698 7654 3"
+    }
+  ]
+}

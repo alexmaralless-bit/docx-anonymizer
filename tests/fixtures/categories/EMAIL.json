@@ -1,0 +1,181 @@
+{
+  "category": "EMAIL",
+  "description": "FR-18: позитивные и негативные примеры; expect — все сущности этой категории по порядку (после FR-20)",
+  "positive": [
+    {
+      "text": "ivan.petrov@firm.ru",
+      "expect": [
+        {
+          "text": "ivan.petrov@firm.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "info@компания.рф",
+      "expect": [
+        {
+          "text": "info@компания.рф",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "p.ivanov@romashka.ru",
+      "expect": [
+        {
+          "text": "p.ivanov@romashka.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "mailto:p.ivanov@romashka.ru",
+      "expect": [
+        {
+          "text": "p.ivanov@romashka.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "(info@romashka.ru)",
+      "expect": [
+        {
+          "text": "info@romashka.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "Email: user+tag@example.com",
+      "expect": [
+        {
+          "text": "user+tag@example.com",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "Иван.Петров@почта.рф",
+      "expect": [
+        {
+          "text": "Иван.Петров@почта.рф",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "a.b@c.de, x@y.io",
+      "expect": [
+        {
+          "text": "a.b@c.de",
+          "level": "validated"
+        },
+        {
+          "text": "x@y.io",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "<info@firm.ru>",
+      "expect": [
+        {
+          "text": "info@firm.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "Пишите на info@firm.ru.",
+      "expect": [
+        {
+          "text": "info@firm.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "ООО info@vector-m.ru;",
+      "expect": [
+        {
+          "text": "info@vector-m.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "o'brien@mail.ie",
+      "expect": [
+        {
+          "text": "o'brien@mail.ie",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "'info@firm.ru'",
+      "expect": [
+        {
+          "text": "info@firm.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "info@firm.ru info@firm.ru",
+      "expect": [
+        {
+          "text": "info@firm.ru",
+          "level": "validated"
+        },
+        {
+          "text": "info@firm.ru",
+          "level": "validated"
+        }
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "text": "@username"
+    },
+    {
+      "text": "a@b"
+    },
+    {
+      "text": "user@localhost"
+    },
+    {
+      "text": "a@b.c"
+    },
+    {
+      "text": "icon@2x.png"
+    },
+    {
+      "text": "text @ text.ru"
+    },
+    {
+      "text": "email: нет"
+    },
+    {
+      "text": "ivan@"
+    },
+    {
+      "text": "@firm.ru"
+    },
+    {
+      "text": "a@@b.ru"
+    },
+    {
+      "text": "mail me at user at firm dot ru"
+    },
+    {
+      "text": "a@-b.ru"
+    },
+    {
+      "text": "user@domain"
+    }
+  ]
+}

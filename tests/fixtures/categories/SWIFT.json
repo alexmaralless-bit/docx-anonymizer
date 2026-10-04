@@ -1,0 +1,158 @@
+{
+  "category": "SWIFT",
+  "description": "FR-18: позитивные и негативные примеры; expect — все сущности этой категории по порядку (после FR-20)",
+  "positive": [
+    {
+      "text": "SWIFT DEUTDEFF",
+      "expect": [
+        {
+          "text": "DEUTDEFF",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "BIC: SABRRUMM",
+      "expect": [
+        {
+          "text": "SABRRUMM",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "SWIFT-код: SABRRUMM",
+      "expect": [
+        {
+          "text": "SABRRUMM",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "SWIFT code UBSWCHZH80A",
+      "expect": [
+        {
+          "text": "UBSWCHZH80A",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "BIC/SWIFT DEUTDEFF500",
+      "expect": [
+        {
+          "text": "DEUTDEFF500",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "SWIFT: CHASUS33",
+      "expect": [
+        {
+          "text": "CHASUS33",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "SWIFT BARCGB22",
+      "expect": [
+        {
+          "text": "BARCGB22",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "BIC TINKRUMM",
+      "expect": [
+        {
+          "text": "TINKRUMM",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "swift: INGBNL2A",
+      "expect": [
+        {
+          "text": "INGBNL2A",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "SWIFT\tVTBRRUMM",
+      "expect": [
+        {
+          "text": "VTBRRUMM",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "Beneficiary bank SWIFT BNPAFRPP",
+      "expect": [
+        {
+          "text": "BNPAFRPP",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "SWIFT ALFARUMM, IBAN GB82 WEST 1234 5698 7654 32",
+      "expect": [
+        {
+          "text": "ALFARUMM",
+          "level": "labeled"
+        }
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "text": "CONTRACT"
+    },
+    {
+      "text": "DOCUMENT1"
+    },
+    {
+      "text": "DEUTDEFF"
+    },
+    {
+      "text": "SWIFT CONTRACT"
+    },
+    {
+      "text": "BIC 044525225"
+    },
+    {
+      "text": "SWIFT: DOCUMENT1"
+    },
+    {
+      "text": "SWIFT ab"
+    },
+    {
+      "text": "SWIFT DEUT00FF"
+    },
+    {
+      "text": "SWIFT deutdeff"
+    },
+    {
+      "text": "SWIFT-код отсутствует"
+    },
+    {
+      "text": "SWIFT: 12345678"
+    },
+    {
+      "text": "BIC ABCDQQFF"
+    },
+    {
+      "text": "SWIFT"
+    },
+    {
+      "text": "SWIFT DEUTDEFF5"
+    }
+  ]
+}

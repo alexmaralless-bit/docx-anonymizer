@@ -1,0 +1,46 @@
+{
+  "category": "COMPANY",
+  "comment": "FR-18: expect — тексты вхождений COMPANY (с ОПФ и кавычками), cores — значения без обёртки (keepPrefix/keepSuffix). Данные вымышленные.",
+  "positive": [
+    { "text": "ООО «Ромашка», ИНН указан ниже", "expect": ["ООО «Ромашка»"], "cores": ["Ромашка"] },
+    { "text": "АО \"Вектор-М\"", "expect": ["АО \"Вектор-М\""], "cores": ["Вектор-М"] },
+    { "text": "Romashka LLC", "expect": ["Romashka LLC"], "cores": ["Romashka"] },
+    { "text": "Acme Trading Ltd. shall deliver", "expect": ["Acme Trading Ltd."], "cores": ["Acme Trading"] },
+    { "text": "ПАО “Северсталь-Инвест”", "expect": ["ПАО “Северсталь-Инвест”"], "cores": ["Северсталь-Инвест"] },
+    {
+      "text": "Общество с ограниченной ответственностью «Торговый дом «Ромашка»»",
+      "expect": ["Общество с ограниченной ответственностью «Торговый дом «Ромашка»»"],
+      "cores": ["Торговый дом «Ромашка»"]
+    },
+    { "text": "ИП Иванов И.И.", "expect": ["ИП Иванов И.И."], "cores": ["Иванов И.И."] },
+    {
+      "text": "Индивидуальный предприниматель Петров Пётр Петрович",
+      "expect": ["Индивидуальный предприниматель Петров Пётр Петрович"],
+      "cores": ["Петров Пётр Петрович"]
+    },
+    { "text": "Siemens AG", "expect": ["Siemens AG"], "cores": ["Siemens"] },
+    { "text": "Поставщик: «Альфа-Строй»", "expect": ["«Альфа-Строй»"], "cores": ["Альфа-Строй"] },
+    { "text": "LLC «Romashka»", "expect": ["LLC «Romashka»"], "cores": ["Romashka"] },
+    { "text": "ЗАО „Гамма-Плюс“", "expect": ["ЗАО „Гамма-Плюс“"], "cores": ["Гамма-Плюс"] },
+    { "text": "Beta Solutions GmbH", "expect": ["Beta Solutions GmbH"], "cores": ["Beta Solutions"] },
+    { "text": "ООО Ромашка-Трейд", "expect": ["ООО Ромашка-Трейд"], "cores": ["Ромашка-Трейд"] },
+    { "text": "Global Logistics Inc. and Acme Ltd", "expect": ["Global Logistics Inc.", "Acme Ltd"], "cores": ["Global Logistics", "Acme"] },
+    { "text": "акционерного общества «Восток-Сервис»", "expect": ["акционерного общества «Восток-Сервис»"], "cores": ["Восток-Сервис"] }
+  ],
+  "negative": [
+    "ООО",
+    "именуемое в дальнейшем «Поставщик»",
+    "Банк России",
+    "ПАО Сбербанк",
+    "«Покупатель»",
+    "в соответствии с ГК РФ",
+    "ООО «»",
+    "Limited liability",
+    "LLC",
+    "Федеральная налоговая служба",
+    "АО Покупатель",
+    "The Company Ltd",
+    "Inc.",
+    "ООО «Стороны»"
+  ]
+}

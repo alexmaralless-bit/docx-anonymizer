@@ -1,0 +1,172 @@
+{
+  "comment": "FR-20: пересечения кандидатов. text — один параграф; detectors — подключать ли детекторы WP2; inject — дополнительные кандидаты (match — подстрока, nth — номер вхождения); expect — все сущности после разрешения, по порядку. Данные вымышленные.",
+  "cases": [
+    {
+      "name": "ИНН внутри телефона: при равном уровне побеждает приоритет категории",
+      "text": "Тел.: 8 7736050003",
+      "inject": [
+        { "category": "PHONE", "match": "8 7736050003", "confidence": "validated" },
+        { "category": "INN", "match": "7736050003", "confidence": "validated" }
+      ],
+      "expect": [{ "category": "INN", "text": "7736050003" }]
+    },
+    {
+      "name": "ФИО внутри «ИП Иванов Иван Иванович» → COMPANY целиком",
+      "text": "ИП Иванов Иван Иванович, ИНН 500400123402",
+      "detectors": true,
+      "expect": [{ "category": "COMPANY", "text": "ИП Иванов Иван Иванович" }]
+    },
+    {
+      "name": "Адрес с «ул. Ленина» и NER-LOC внутри → адрес по лейблу",
+      "text": "Адрес: 123456, г. Москва, ул. Ленина, д. 1",
+      "detectors": true,
+      "inject": [{ "category": "ADDRESS", "match": "ул. Ленина", "confidence": "ner", "source": "ner" }],
+      "expect": [{ "category": "ADDRESS", "text": "123456, г. Москва, ул. Ленина, д. 1" }]
+    },
+    {
+      "name": "user побеждает validated",
+      "text": "ИНН 7736050003",
+      "inject": [
+        { "category": "INN", "match": "7736050003", "confidence": "validated" },
+        { "category": "COMPANY", "match": "ИНН 7736050003", "confidence": "labeled", "source": "user" }
+      ],
+      "expect": [{ "category": "COMPANY", "text": "ИНН 7736050003" }]
+    },
+    {
+      "name": "уровень важнее приоритета: PHONE validated против INN labeled",
+      "text": "+7 495 123 45 67",
+      "inject": [
+        { "category": "INN", "match": "495 123 45", "confidence": "labeled" },
+        { "category": "PHONE", "match": "+7 495 123 45 67", "confidence": "validated" }
+      ],
+      "expect": [{ "category": "PHONE", "text": "+7 495 123 45 67" }]
+    },
+    {
+      "name": "равный уровень: PERSON выше COMPANY",
+      "text": "Петров и партнёры",
+      "inject": [
+        { "category": "COMPANY", "match": "Петров и партнёры", "confidence": "labeled" },
+        { "category": "PERSON", "match": "Петров", "confidence": "labeled" }
+      ],
+      "expect": [{ "category": "PERSON", "text": "Петров" }]
+    },
+    {
+      "name": "равные уровень и приоритет: раньше начавшийся",
+      "text": "Альфа Бета Гамма",
+      "inject": [
+        { "category": "COMPANY", "match": "Бета Гамма", "confidence": "labeled" },
+        { "category": "COMPANY", "match": "Альфа Бета", "confidence": "labeled" }
+      ],
+      "expect": [{ "category": "COMPANY", "text": "Альфа Бета" }]
+    },
+    {
+      "name": "равное начало: более длинный",
+      "text": "Альфа Бета Гамма",
+      "inject": [
+        { "category": "COMPANY", "match": "Альфа", "confidence": "labeled" },
+        { "category": "COMPANY", "match": "Альфа Бета Гамма", "confidence": "labeled" }
+      ],
+      "expect": [{ "category": "COMPANY", "text": "Альфа Бета Гамма" }]
+    },
+    {
+      "name": "labeled побеждает kb",
+      "text": "Иванов Пётр",
+      "inject": [
+        { "category": "PERSON", "match": "Иванов", "confidence": "kb", "source": "kb" },
+        { "category": "COMPANY", "match": "Иванов Пётр", "confidence": "labeled" }
+      ],
+      "expect": [{ "category": "COMPANY", "text": "Иванов Пётр" }]
+    },
+    {
+      "name": "ner побеждает weak",
+      "text": "123456, г. Москва, ул. Ленина, д. 1",
+      "inject": [
+        { "category": "ADDRESS", "match": "123456, г. Москва, ул. Ленина, д. 1", "confidence": "weak" },
+        { "category": "PERSON", "match": "Ленина", "confidence": "ner", "source": "ner" }
+      ],
+      "expect": [{ "category": "PERSON", "text": "Ленина" }]
+    },
+    {
+      "name": "EMAIL validated против KB-варианта названия в домене",
+      "text": "Пишите: info@romashka.ru",
+      "inject": [
+        { "category": "EMAIL", "match": "info@romashka.ru", "confidence": "validated" },
+        { "category": "COMPANY", "match": "romashka", "confidence": "kb", "source": "kb" }
+      ],
+      "expect": [{ "category": "EMAIL", "text": "info@romashka.ru" }]
+    },
+    {
+      "name": "имя на улице — часть адреса, не лицо",
+      "text": "123456, г. Москва, ул. Ивана Петрова, д. 5",
+      "detectors": true,
+      "expect": [{ "category": "ADDRESS", "text": "123456, г. Москва, ул. Ивана Петрова, д. 5" }]
+    },
+    {
+      "name": "ФИО внутри кавычек названия → COMPANY",
+      "text": "ООО «Завод имени Петрова Ивана Сергеевича»",
+      "detectors": true,
+      "expect": [{ "category": "COMPANY", "text": "ООО «Завод имени Петрова Ивана Сергеевича»" }]
+    },
+    {
+      "name": "ФИО в названии без «имени» → COMPANY целиком",
+      "text": "ООО «Иванов и партнёры»",
+      "detectors": true,
+      "expect": [{ "category": "COMPANY", "text": "ООО «Иванов и партнёры»" }]
+    },
+    {
+      "name": "точные дубликаты схлопываются",
+      "text": "ИНН 7736050003",
+      "inject": [
+        { "category": "INN", "match": "7736050003", "confidence": "validated" },
+        { "category": "INN", "match": "7736050003", "confidence": "validated" }
+      ],
+      "expect": [{ "category": "INN", "text": "7736050003" }]
+    },
+    {
+      "name": "соседние без пересечения — обе",
+      "text": "ИНН 7736050003 КПП 773601001",
+      "inject": [
+        { "category": "INN", "match": "7736050003", "confidence": "validated" },
+        { "category": "KPP", "match": "773601001", "confidence": "labeled" }
+      ],
+      "expect": [
+        { "category": "INN", "text": "7736050003" },
+        { "category": "KPP", "text": "773601001" }
+      ]
+    },
+    {
+      "name": "правило PERSON и KB-вариант той же стороны в одном параграфе",
+      "text": "в лице Иванова Петра Сергеевича; Иванов согласен",
+      "detectors": true,
+      "expect": [
+        { "category": "PERSON", "text": "Иванова Петра Сергеевича" },
+        { "category": "PERSON", "text": "Иванов" }
+      ]
+    },
+    {
+      "name": "ACCOUNT выше CARD при равном уровне",
+      "text": "40702810400000012345",
+      "inject": [
+        { "category": "CARD", "match": "4070281040000001", "confidence": "validated" },
+        { "category": "ACCOUNT", "match": "40702810400000012345", "confidence": "validated" }
+      ],
+      "expect": [{ "category": "ACCOUNT", "text": "40702810400000012345" }]
+    },
+    {
+      "name": "COMPANY выше ADDRESS: проигравший адрес отбрасывается целиком",
+      "text": "Адрес: 123456, г. Москва, ул. Ленина, д. 1",
+      "detectors": true,
+      "inject": [{ "category": "COMPANY", "match": "Ленина", "confidence": "labeled" }],
+      "expect": [{ "category": "COMPANY", "text": "Ленина" }]
+    },
+    {
+      "name": "SNILS выше PHONE",
+      "text": "СНИЛС 112-233-445 95",
+      "inject": [
+        { "category": "PHONE", "match": "112-233-445 95", "confidence": "validated" },
+        { "category": "SNILS", "match": "112-233-445 95", "confidence": "validated" }
+      ],
+      "expect": [{ "category": "SNILS", "text": "112-233-445 95" }]
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docx-anonymizer.local/schemas/mapping.schema.json",
+  "title": "Маппинг «плейсхолдер → значение» (FR-27, FR-28)",
+  "type": "object",
+  "required": ["schemaVersion", "createdAt", "tool", "mode", "language", "documents", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "createdAt": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": { "name": { "type": "string", "minLength": 1 }, "version": { "type": "string", "minLength": 1 } }
+    },
+    "mode": { "enum": ["placeholder", "mask", "delete"] },
+    "language": { "type": "string", "minLength": 2 },
+    "documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "resultName": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["placeholder", "token", "category", "original", "value", "variants", "occurrences", "source", "parts"],
+      "additionalProperties": false,
+      "properties": {
+        "placeholder": { "type": "string", "minLength": 1, "description": "Полная форма как в документе: ООО «[КОМПАНИЯ_1]»" },
+        "token": { "type": "string", "minLength": 1, "description": "То, что реально стоит в тексте: [КОМПАНИЯ_1]" },
+        "category": { "type": "string", "pattern": "^([A-Z][A-Z0-9_]*|custom:.+)$" },
+        "original": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "variants": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "occurrences": { "type": "integer", "minimum": 1 },
+        "source": { "enum": ["rule", "label", "kb", "user", "ner"] },
+        "parts": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

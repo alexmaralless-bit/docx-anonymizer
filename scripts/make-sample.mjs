@@ -14,12 +14,12 @@ import { writeZip } from '../src/core/docx/zip.js';
 
 /* ---------- контрольные суммы (только для генерации валидных вымышленных номеров) ---------- */
 const digits = (s) => s.split('').map(Number);
-function inn10(prefix9) {
+export function inn10(prefix9) {
   const w = [2, 4, 10, 3, 5, 9, 4, 6, 8];
   const d = digits(prefix9);
   return prefix9 + ((w.reduce((s, x, i) => s + x * d[i], 0) % 11) % 10);
 }
-function inn12(prefix10) {
+export function inn12(prefix10) {
   const w1 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
   const w2 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
   let d = digits(prefix10);
@@ -28,8 +28,8 @@ function inn12(prefix10) {
   const c2 = (w2.reduce((s, x, i) => s + x * d[i], 0) % 11) % 10;
   return prefix10 + c1 + c2;
 }
-const ogrn13 = (p12) => p12 + String((BigInt(p12) % 11n) % 10n);
-function snils(p9) {
+export const ogrn13 = (p12) => p12 + String((BigInt(p12) % 11n) % 10n);
+export function snils(p9) {
   const d = digits(p9);
   let s = d.reduce((acc, x, i) => acc + x * (9 - i), 0);
   let c;
@@ -42,7 +42,7 @@ function snils(p9) {
   return `${p9.slice(0, 3)}-${p9.slice(3, 6)}-${p9.slice(6, 9)} ${String(c).padStart(2, '0')}`;
 }
 /** Счёт с контрольным ключом (9-я цифра) по БИК: р/с — 3 последние цифры БИК; к/с — '0' + 5–6 цифры БИК. */
-function account(bik, acc20, kind) {
+export function account(bik, acc20, kind) {
   const prefix = kind === 'ks' ? '0' + bik.slice(4, 6) : bik.slice(6, 9);
   const w = [7, 1, 3];
   for (let k = 0; k <= 9; k++) {
@@ -91,8 +91,8 @@ export function makeGold() {
 }
 
 /* ---------- XML ---------- */
-const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const NS =
+export const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export const NS =
   'xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" ' +
   'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
   'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
@@ -107,13 +107,13 @@ const NS =
   'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" ' +
   'mc:Ignorable="w14 w15"';
-const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
+export const DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n';
 
 /** Ран с текстом и необязательным форматированием */
-const r = (text, rPr = '') => `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
-const B = '<w:b/>';
-const I = '<w:i/>';
-const p = (inner, pPr = '') => `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${inner}</w:p>`;
+export const r = (text, rPr = '') => `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
+export const B = '<w:b/>';
+export const I = '<w:i/>';
+export const p = (inner, pPr = '') => `<w:p>${pPr ? `<w:pPr>${pPr}</w:pPr>` : ''}${inner}</w:p>`;
 const D = '2026-09-20T10:00:00Z';
 
 export function buildSampleDocx() {

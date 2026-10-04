@@ -7,18 +7,43 @@
   </head>
   <body>
     <main class="popup">
-      <h1>DOCX Anonymizer</h1>
-      <label class="row">
-        <input type="checkbox" id="intercept-toggle" />
-        <span>Перехват загрузки</span>
-      </label>
+      <header class="top">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z" />
+            <path d="M9 9.5h6M9 12.5h6M9 15.5h3.5" />
+          </svg>
+        </div>
+        <h1>DOCX Anonymizer</h1>
+      </header>
+
+      <section class="card">
+        <label class="switch-row">
+          <span class="switch-text">
+            <b id="t-intercept">Перехват загрузки</b>
+            <small id="t-hint">Файлы .docx обезличиваются до отправки на сайт</small>
+          </span>
+          <input type="checkbox" id="intercept-toggle" role="switch" />
+          <span class="switch" aria-hidden="true"></span>
+        </label>
+        <p class="site" id="site-status" data-testid="site-status"></p>
+        <div class="site-actions" id="site-actions"></div>
+      </section>
+
+      <section class="recent">
+        <h2 id="t-recent">Недавние</h2>
+        <ul id="recent-list" class="list" data-testid="recent-list"></ul>
+        <p class="empty" id="recent-empty" hidden>Пока ничего не обработано</p>
+      </section>
+
       <nav class="links">
         <a href="#" id="open-restore">Восстановить текст</a>
         <a href="#" id="open-options">Настройки</a>
       </nav>
-      <!-- ВРЕМЕННО (фундамент): проверка конвейера popup → background → offscreen → worker → обратно. WP3 уберёт. -->
-      <section class="dev" id="dev-pipeline">
-        <h2>Проверка конвейера (dev)</h2>
+
+      <!-- Блок проверки конвейера (tests/e2e/pipeline.spec.js) — id и data-testid сохранены, см. contracts §5 п.8. -->
+      <details class="dev" id="dev-pipeline">
+        <summary id="t-dev">Проверка конвейера (dev)</summary>
         <input type="file" id="dev-file" accept=".docx,.docm" />
         <p id="dev-status" data-testid="dev-status">Выберите .docx</p>
         <dl id="dev-result" hidden>
@@ -30,7 +55,7 @@
           <dd data-testid="result-size"></dd>
         </dl>
         <a id="dev-download" hidden>Скачать результат</a>
-      </section>
+      </details>
     </main>
     <script src="popup.js"></script>
   </body>

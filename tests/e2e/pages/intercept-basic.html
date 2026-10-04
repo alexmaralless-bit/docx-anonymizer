@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Тестовый чат (WP3)</title>
+    <style>
+      body {
+        font:
+          15px system-ui,
+          sans-serif;
+        margin: 24px;
+        max-width: 760px;
+        background: #f7f7f8;
+        color: #222;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      .box {
+        border: 1px dashed #aab;
+        border-radius: 10px;
+        padding: 16px;
+        margin: 12px 0;
+        background: #fff;
+      }
+      #dropzone {
+        min-height: 70px;
+      }
+      #pastezone {
+        min-height: 40px;
+        outline: 1px solid #ccd;
+        padding: 8px;
+      }
+      li {
+        margin: 2px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Тестовая страница чата</h1>
+    <div class="box">
+      <input type="file" id="single" />
+      <input type="file" id="multi" multiple />
+      <button id="add-dynamic" type="button">Добавить input динамически</button>
+      <div id="dynamic-host"></div>
+    </div>
+    <div class="box" id="shadow-host"></div>
+    <div class="box" id="dropzone">Перетащите файл сюда</div>
+    <div class="box" id="pastezone" contenteditable="true">Вставьте файл (Ctrl+V)</div>
+    <p>Получено сайтом: <span id="count">0</span>; событий change: <span id="events">0</span></p>
+    <ul id="log"></ul>
+    <script>
+      window.__received = [];
+      window.__events = 0;
+      function receive(files, via) {
+        for (const f of files) {
+          window.__received.push({ via, name: f.name, type: f.type, size: f.size, file: f });
+          const li = document.createElement('li');
+          li.textContent = via + ': ' + f.name;
+          document.getElementById('log').append(li);
+        }
+        document.getElementById('count').textContent = String(window.__received.length);
+      }
+      function watchInput(input, via) {
+        input.addEventListener('change', (e) => {
+          window.__events++;
+          document.getElementById('events').textContent = String(window.__events);
+          receive(e.target.files, via);
+        });
+      }
+      watchInput(document.getElementById('single'), 'single');
+      watchInput(document.getElementById('multi'), 'multi');
+      document.getElementById('add-dynamic').addEventListener('click', () => {
+        const i = document.createElement('input');
+        i.type = 'file';
+        i.id = 'dynamic';
+        watchInput(i, 'dynamic');
+        document.getElementById('dynamic-host').append(i);
+      });
+      const root = document.getElementById('shadow-host').attachShadow({ mode: 'open' });
+      const si = document.createElement('input');
+      si.type = 'file';
+      si.id = 'shadow-input';
+      watchInput(si, 'shadow');
+      root.append(si);
+      const dz = document.getElementById('dropzone');
+      dz.addEventListener('dragover', (e) => e.preventDefault());
+      dz.addEventListener('drop', (e) => {
+        e.preventDefault();
+        receive(e.dataTransfer.files, 'drop');
+      });
+      document.getElementById('pastezone').addEventListener('paste', (e) => {
+        if (e.clipboardData.files.length) {
+          e.preventDefault();
+          receive(e.clipboardData.files, 'paste');
+        }
+      });
+      // Хелперы для тестов
+      window.__make = (name, type, b64) => {
+        const bin = atob(b64);
+        const u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        return new File([u], name, { type });
+      };
+      window.__dump = async () => {
+        const out = [];
+        for (const r of window.__received) {
+          const buf = new Uint8Array(await r.file.arrayBuffer());
+          let s = '';
+          for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+          out.push({ via: r.via, name: r.name, type: r.type, size: r.size, b64: btoa(s) });
+        }
+        return out;
+      };
+    </script>
+  </body>
+</html>

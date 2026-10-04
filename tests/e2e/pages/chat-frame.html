@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Кадр чата</title>
+  </head>
+  <body>
+    <label>Файл в кадре: <input id="frame-input" type="file" /></label>
+    <script>
+      // Кадр читает файл и отдаёт родителю то, что реально получил от input (после возможной подмены расширением).
+      document.getElementById('frame-input').addEventListener('change', async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        parent.postMessage({ kind: 'frame-file', name: f.name, type: f.type, bytes: await f.arrayBuffer() }, location.origin);
+        e.target.value = '';
+      });
+    </script>
+  </body>
+</html>

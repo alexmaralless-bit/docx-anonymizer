@@ -16,7 +16,8 @@
     "e2e": "node scripts/build.mjs && playwright test",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "sample": "node scripts/make-sample.mjs"
+    "sample": "node scripts/make-sample.mjs",
+    "gen-fixtures": "node scripts/gen-fixtures.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3"

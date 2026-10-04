@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Тестовый чат (имитация LLM-сервиса)</title>
+    <style>
+      body {
+        font:
+          15px system-ui,
+          sans-serif;
+        margin: 24px;
+        max-width: 760px;
+      }
+      section {
+        border: 1px solid #ccd;
+        border-radius: 8px;
+        padding: 12px;
+        margin: 12px 0;
+      }
+      #drop-zone,
+      #paste-zone {
+        min-height: 48px;
+        border: 2px dashed #889;
+        padding: 8px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 0 0 8px;
+      }
+      iframe {
+        width: 100%;
+        height: 90px;
+        border: 1px solid #ccd;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Тестовый чат</h1>
+    <p>Принято файлов: <b id="count" data-testid="count">0</b></p>
+    <ul id="log" data-testid="log"></ul>
+
+    <section id="s-hidden">
+      <h2>1. Кнопка «Прикрепить» со скрытым input (как ChatGPT)</h2>
+      <button id="attach-btn" type="button">Прикрепить</button>
+      <input id="hidden-input" type="file" hidden accept=".docx,.docm,.pdf,.txt" />
+    </section>
+
+    <section id="s-multi">
+      <h2>2. Видимый input с multiple</h2>
+      <input id="multi-input" type="file" multiple />
+    </section>
+
+    <section id="s-dynamic">
+      <h2>3. Динамический input: создаётся по клику и добавляется в DOM</h2>
+      <button id="dynamic-btn" type="button">Добавить файл (динамический input)</button>
+    </section>
+
+    <section id="s-detached">
+      <h2>4. Отсоединённый input (создан, но не добавлен в DOM), click()</h2>
+      <button id="detached-btn" type="button">Добавить файл (detached input)</button>
+    </section>
+
+    <section id="s-shadow">
+      <h2>5. Input внутри open Shadow DOM</h2>
+      <chat-shadow-input id="shadow-host"></chat-shadow-input>
+    </section>
+
+    <section id="s-iframe">
+      <h2>6. iframe того же origin (поле внутри кадра)</h2>
+      <iframe id="frame" src="/chat-frame.html" title="кадр с полем загрузки"></iframe>
+    </section>
+
+    <section id="s-drop">
+      <h2>7. Drop-зона (делегирование на корне, как в React)</h2>
+      <div id="root"><div id="drop-zone" data-dropzone>Перетащите файл сюда</div></div>
+    </section>
+
+    <section id="s-paste">
+      <h2>8. Поле вставки (paste)</h2>
+      <div id="paste-zone" contenteditable="true" role="textbox" aria-label="Поле ввода сообщения"></div>
+    </section>
+
+    <script src="/chat.js"></script>
+    <script>
+      const chat = window.__chat;
+
+      // 1. скрытый input + кнопка
+      const hidden = document.getElementById('hidden-input');
+      chat.wireInput(hidden, 'hidden-input');
+      document.getElementById('attach-btn').addEventListener('click', () => hidden.click());
+
+      // 2. multiple
+      chat.wireInput(document.getElementById('multi-input'), 'multi-input');
+
+      // 3. динамический input
+      document.getElementById('dynamic-btn').addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.id = 'dynamic-input';
+        input.hidden = true;
+        document.body.appendChild(input);
+        chat.wireInput(input, 'dynamic-input');
+        input.click();
+      });
+
+      // 4. detached input
+      document.getElementById('detached-btn').addEventListener('click', () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        chat.wireInput(input, 'detached-input');
+        input.click();
+      });
+
+      // 5. open shadow root
+      customElements.define(
+        'chat-shadow-input',
+        class extends HTMLElement {
+          connectedCallback() {
+            const root = this.attachShadow({ mode: 'open' });
+            root.innerHTML = '<label>Файл: <input id="shadow-input" type="file" multiple></label>';
+            chat.wireInput(root.getElementById('shadow-input'), 'shadow-input');
+          }
+        },
+      );
+
+      // 6. iframe сообщает родителю о принятом файле (поле — внутри кадра)
+      window.addEventListener('message', (e) => {
+        if (e.origin !== location.origin || !e.data || e.data.kind !== 'frame-file') return;
+        chat.accept('iframe-input', [new File([e.data.bytes], e.data.name, { type: e.data.type })]);
+      });
+
+      // 7. drop-зона: слушатель на корне (делегирование)
+      const root = document.getElementById('root');
+      root.addEventListener('dragover', (e) => e.preventDefault());
+      root.addEventListener('drop', (e) => {
+        if (!e.target.closest('[data-dropzone]')) return;
+        e.preventDefault();
+        chat.rawEvents.drop++;
+        chat.accept('drop', e.dataTransfer.files);
+      });
+
+      // 8. paste
+      document.getElementById('paste-zone').addEventListener('paste', (e) => {
+        chat.rawEvents.paste++;
+        const files = e.clipboardData && e.clipboardData.files;
+        if (files && files.length) {
+          e.preventDefault();
+          chat.accept('paste', files);
+        }
+      });
+    </script>
+  </body>
+</html>

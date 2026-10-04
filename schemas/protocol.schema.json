@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docx-anonymizer.local/schemas/protocol.schema.json",
+  "title": "Протокол клиент ⇄ ядро (ТЗ §5.4 + расширение ACK)",
+  "description": "Каждое сообщение — объект с полем type; схема сообщения — $defs/<type>. Корневая схема принимает любое из них.",
+  "oneOf": [
+    { "$ref": "#/$defs/FILE_BEGIN" },
+    { "$ref": "#/$defs/FILE_CHUNK" },
+    { "$ref": "#/$defs/ANALYZE" },
+    { "$ref": "#/$defs/GET_TEXT" },
+    { "$ref": "#/$defs/ADD_ENTITY" },
+    { "$ref": "#/$defs/APPLY" },
+    { "$ref": "#/$defs/CANCEL" },
+    { "$ref": "#/$defs/DISCARD" },
+    { "$ref": "#/$defs/LIST_SESSIONS" },
+    { "$ref": "#/$defs/DEANON" },
+    { "$ref": "#/$defs/BATCH_BEGIN" },
+    { "$ref": "#/$defs/BATCH_END" },
+    { "$ref": "#/$defs/CATALOG_CHANGED" },
+    { "$ref": "#/$defs/PROGRESS" },
+    { "$ref": "#/$defs/ENTITIES" },
+    { "$ref": "#/$defs/TEXT" },
+    { "$ref": "#/$defs/RESULT_BEGIN" },
+    { "$ref": "#/$defs/RESULT_CHUNK" },
+    { "$ref": "#/$defs/RESULT_END" },
+    { "$ref": "#/$defs/ERROR" },
+    { "$ref": "#/$defs/SESSIONS" },
+    { "$ref": "#/$defs/DEANON_RESULT" },
+    { "$ref": "#/$defs/ACK" }
+  ],
+  "$defs": {
+    "requestId": { "type": "string", "minLength": 1 },
+    "base64": { "type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$" },
+    "stage": { "enum": ["receiving", "unzip", "parse", "detect", "ner", "kb", "apply", "zip", "sending"] },
+    "errorCode": { "enum": ["NOT_DOCX", "ENCRYPTED", "TOO_LARGE", "PARSE_FAILED", "HOST_UNAVAILABLE", "MODEL_LOAD_FAILED", "INTERNAL"] },
+
+    "FILE_BEGIN": {
+      "type": "object",
+      "required": ["type", "requestId", "size", "chunks", "name"],
+      "properties": {
+        "type": { "const": "FILE_BEGIN" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "name": { "type": "string", "minLength": 1 },
+        "size": { "type": "integer", "minimum": 0 },
+        "chunks": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "origin": { "type": ["string", "null"] }
+      }
+    },
+    "FILE_CHUNK": {
+      "type": "object",
+      "required": ["type", "requestId", "index", "data"],
+      "properties": {
+        "type": { "const": "FILE_CHUNK" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "index": { "type": "integer", "minimum": 0 },
+        "data": { "$ref": "#/$defs/base64" }
+      }
+    },
+    "ANALYZE": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": {
+        "type": { "const": "ANALYZE" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "settingsOverride": { "type": "object" },
+        "batchId": { "type": ["string", "null"] }
+      }
+    },
+    "GET_TEXT": {
+      "type": "object",
+      "required": ["type", "requestId", "docId"],
+      "properties": {
+        "type": { "const": "GET_TEXT" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string" },
+        "part": { "type": "string" },
+        "from": { "type": "integer", "minimum": 0 },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "ADD_ENTITY": {
+      "type": "object",
+      "required": ["type", "requestId", "docId", "category", "text"],
+      "properties": {
+        "type": { "const": "ADD_ENTITY" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string" },
+        "category": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "replaceAll": { "type": "boolean" },
+        "streamId": { "type": "string" },
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["entityId", "action"],
+      "properties": {
+        "entityId": { "type": "string" },
+        "action": { "enum": ["replace", "skip"] },
+        "replacement": { "type": "string" },
+        "excludedOccurrences": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "APPLY": {
+      "type": "object",
+      "required": ["type", "requestId", "docId"],
+      "properties": {
+        "type": { "const": "APPLY" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string" },
+        "mode": { "enum": ["placeholder", "mask", "delete"] },
+        "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+        "options": {
+          "type": "object",
+          "properties": { "keepMetadata": { "type": "boolean" }, "stripEmbedded": { "type": "boolean" } }
+        }
+      }
+    },
+    "CANCEL": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": { "type": { "const": "CANCEL" }, "requestId": { "$ref": "#/$defs/requestId" } }
+    },
+    "DISCARD": {
+      "type": "object",
+      "required": ["type", "requestId", "docId"],
+      "properties": { "type": { "const": "DISCARD" }, "requestId": { "$ref": "#/$defs/requestId" }, "docId": { "type": "string" } }
+    },
+    "LIST_SESSIONS": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": { "type": { "const": "LIST_SESSIONS" }, "requestId": { "$ref": "#/$defs/requestId" } }
+    },
+    "DEANON": {
+      "type": "object",
+      "required": ["type", "requestId", "mappingRef", "text"],
+      "properties": {
+        "type": { "const": "DEANON" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "mappingRef": { "oneOf": [{ "type": "string" }, { "$ref": "mapping.schema.json" }] },
+        "text": { "type": "string" }
+      }
+    },
+    "BATCH_BEGIN": {
+      "type": "object",
+      "required": ["type", "requestId", "batchId"],
+      "properties": { "type": { "const": "BATCH_BEGIN" }, "requestId": { "$ref": "#/$defs/requestId" }, "batchId": { "type": "string", "minLength": 1 } }
+    },
+    "BATCH_END": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": { "type": { "const": "BATCH_END" }, "requestId": { "$ref": "#/$defs/requestId" }, "batchId": { "type": "string" } }
+    },
+    "CATALOG_CHANGED": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": { "type": { "const": "CATALOG_CHANGED" }, "requestId": { "$ref": "#/$defs/requestId" } }
+    },
+
+    "PROGRESS": {
+      "type": "object",
+      "required": ["type", "requestId", "stage", "percent"],
+      "properties": {
+        "type": { "const": "PROGRESS" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "stage": { "$ref": "#/$defs/stage" },
+        "percent": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "occurrence": {
+      "type": "object",
+      "required": ["id", "part", "streamId", "start", "end", "text", "context"],
+      "properties": {
+        "id": { "type": "string" },
+        "part": { "type": "string" },
+        "pid": { "type": ["string", "integer", "null"] },
+        "streamId": { "type": "string" },
+        "stream": {},
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1 },
+        "context": { "type": "string" },
+        "variantOf": { "type": ["string", "null"] }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": ["id", "category", "value", "normalized", "placeholder", "level", "source", "enabled", "occurrences"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^e\\d+$" },
+        "category": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "normalized": { "type": "string" },
+        "placeholder": { "type": "string", "minLength": 1 },
+        "replacement": { "type": ["string", "null"] },
+        "level": { "enum": ["validated", "labeled", "kb", "ner", "weak"] },
+        "source": { "enum": ["rule", "label", "kb", "user", "ner"] },
+        "validated": { "type": ["string", "null"] },
+        "enabled": { "type": "boolean" },
+        "occurrences": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/occurrence" } }
+      }
+    },
+    "ENTITIES": {
+      "type": "object",
+      "required": ["type", "requestId", "docId", "name", "language", "placeholderLanguage", "entities", "warnings", "stats", "restoredDecisions"],
+      "properties": {
+        "type": { "const": "ENTITIES" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string", "pattern": "^d\\d+$" },
+        "name": { "type": "string" },
+        "language": { "enum": ["ru", "en", "both"] },
+        "placeholderLanguage": { "enum": ["ru", "en"] },
+        "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code"],
+            "properties": { "code": { "type": "string", "pattern": "^[A-Z_]+$" }, "count": { "type": "integer" }, "details": { "type": "object" } }
+          }
+        },
+        "stats": {
+          "type": "object",
+          "required": ["virtualTextLength", "entities", "occurrences"],
+          "properties": {
+            "virtualTextLength": { "type": "integer", "minimum": 0 },
+            "entities": { "type": "integer", "minimum": 0 },
+            "occurrences": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "restoredDecisions": { "type": "boolean" }
+      }
+    },
+    "TEXT": {
+      "type": "object",
+      "required": ["type", "requestId", "docId", "paragraphs", "total"],
+      "properties": {
+        "type": { "const": "TEXT" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string" },
+        "paragraphs": {
+          "type": "array",
+          "items": { "type": "object", "required": ["pid", "text", "spans"], "properties": { "text": { "type": "string" }, "spans": { "type": "array" } } }
+        },
+        "total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "RESULT_BEGIN": {
+      "type": "object",
+      "required": ["type", "requestId", "name", "size", "chunks", "docId"],
+      "properties": {
+        "type": { "const": "RESULT_BEGIN" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "name": { "type": "string", "pattern": "\\.(docx|docm)$" },
+        "size": { "type": "integer", "minimum": 1 },
+        "chunks": { "type": "integer", "minimum": 1 },
+        "docId": { "type": "string" }
+      }
+    },
+    "RESULT_CHUNK": {
+      "type": "object",
+      "required": ["type", "requestId", "index", "data"],
+      "properties": {
+        "type": { "const": "RESULT_CHUNK" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "index": { "type": "integer", "minimum": 0 },
+        "data": { "$ref": "#/$defs/base64" }
+      }
+    },
+    "RESULT_END": {
+      "type": "object",
+      "required": ["type", "requestId", "docId", "mapping", "stats"],
+      "properties": {
+        "type": { "const": "RESULT_END" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string" },
+        "mapping": { "$ref": "mapping.schema.json" },
+        "stats": {
+          "type": "object",
+          "required": ["replacements", "entities", "changedParts", "removedParts"],
+          "properties": {
+            "replacements": { "type": "integer", "minimum": 0 },
+            "entities": { "type": "integer", "minimum": 0 },
+            "changedParts": { "type": "array", "items": { "type": "string" } },
+            "removedParts": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "ERROR": {
+      "type": "object",
+      "required": ["type", "requestId", "code", "message"],
+      "properties": {
+        "type": { "const": "ERROR" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "minLength": 1 },
+        "details": {}
+      }
+    },
+    "SESSIONS": {
+      "type": "object",
+      "required": ["type", "requestId", "sessions"],
+      "properties": {
+        "type": { "const": "SESSIONS" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["docId", "name", "sha256", "createdAt", "entities"],
+            "additionalProperties": false,
+            "properties": {
+              "docId": { "type": "string" },
+              "name": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "createdAt": { "type": "integer" },
+              "origin": { "type": ["string", "null"] },
+              "entities": { "type": "integer", "minimum": 0 },
+              "replacements": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "DEANON_RESULT": {
+      "type": "object",
+      "required": ["type", "requestId", "text", "unresolved", "replaced"],
+      "properties": {
+        "type": { "const": "DEANON_RESULT" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "text": { "type": "string" },
+        "unresolved": { "type": "array", "items": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } } },
+        "replaced": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ACK": {
+      "type": "object",
+      "required": ["type", "requestId"],
+      "properties": { "type": { "const": "ACK" }, "requestId": { "$ref": "#/$defs/requestId" }, "batchId": { "type": "string" } }
+    }
+  }
+}

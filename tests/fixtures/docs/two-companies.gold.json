@@ -1,0 +1,97 @@
+[
+  {
+    "key": "a",
+    "category": "COMPANY",
+    "value": "Альфа-Трейд"
+  },
+  {
+    "key": "b",
+    "category": "COMPANY",
+    "value": "Бета Логистик"
+  },
+  {
+    "key": "c",
+    "category": "COMPANY",
+    "value": "Гамма Капитал"
+  },
+  {
+    "key": "aInn",
+    "category": "INN",
+    "value": "7810001238"
+  },
+  {
+    "key": "bInn",
+    "category": "INN",
+    "value": "5402004565"
+  },
+  {
+    "key": "cInn",
+    "category": "INN",
+    "value": "1661007896"
+  },
+  {
+    "key": "aKpp",
+    "category": "KPP",
+    "value": "781001001"
+  },
+  {
+    "key": "bKpp",
+    "category": "KPP",
+    "value": "540201001"
+  },
+  {
+    "key": "aOgrn",
+    "category": "OGRN",
+    "value": "1157810001238"
+  },
+  {
+    "key": "bOgrn",
+    "category": "OGRN",
+    "value": "1055402004569"
+  },
+  {
+    "key": "aDir",
+    "category": "PERSON",
+    "value": "Орлов Сергей Дмитриевич"
+  },
+  {
+    "key": "aDirGen",
+    "category": "PERSON",
+    "value": "Орлова Сергея Дмитриевича"
+  },
+  {
+    "key": "aDirShort",
+    "category": "PERSON",
+    "value": "Орлов С.Д."
+  },
+  {
+    "key": "bDirGen",
+    "category": "PERSON",
+    "value": "Лебедевой Ирины Павловны"
+  },
+  {
+    "key": "bDirShort",
+    "category": "PERSON",
+    "value": "Лебедева И.П."
+  },
+  {
+    "key": "aMail",
+    "category": "EMAIL",
+    "value": "sales@alfa-trade.example"
+  },
+  {
+    "key": "bMail",
+    "category": "EMAIL",
+    "value": "logistics@beta-log.example"
+  },
+  {
+    "key": "aAddr",
+    "category": "ADDRESS",
+    "value": "191036, г. Санкт-Петербург, Невский пр-т, д. 100, офис 4"
+  },
+  {
+    "key": "bAddr",
+    "category": "ADDRESS",
+    "value": "630007, г. Новосибирск, Красный пр-т, д. 25, оф. 301"
+  }
+]

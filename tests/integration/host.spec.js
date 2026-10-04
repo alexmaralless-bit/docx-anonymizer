@@ -34,13 +34,8 @@ describe('host: протокол §5.4 в воркере', () => {
     // временный детектор EMAIL (WP1 заменит) находит все адреса
     const emails = ent.entities.filter((e) => e.category === 'EMAIL');
     expect(emails.map((e) => e.value).sort()).toEqual([gold.email3, gold.email2, gold.emailOld, gold.email1].sort());
-    // авторы правок и комментариев — PERSON от ядра (FR-11)
-    expect(
-      ent.entities
-        .filter((e) => e.category === 'PERSON')
-        .map((e) => e.value)
-        .sort(),
-    ).toEqual([gold.author1, gold.author2].sort());
+    // авторы правок и комментариев — PERSON от ядра (FR-11); остальные PERSON находит WP2
+    expect(ent.entities.filter((e) => e.category === 'PERSON').map((e) => e.value)).toEqual(expect.arrayContaining([gold.author1, gold.author2]));
     expect(emails[0].occurrences[0].context).toContain('⟦');
     const skipped = emails[0];
 

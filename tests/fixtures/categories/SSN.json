@@ -1,0 +1,156 @@
+{
+  "category": "SSN",
+  "description": "FR-18: позитивные и негативные примеры; expect — все сущности этой категории по порядку (после FR-20)",
+  "positive": [
+    {
+      "text": "SSN 219-09-9999",
+      "expect": [
+        {
+          "text": "219-09-9999",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN: 123-45-6789",
+      "expect": [
+        {
+          "text": "123-45-6789",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "Social Security 078-05-1120",
+      "expect": [
+        {
+          "text": "078-05-1120",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "Social Security Number: 457-55-5462",
+      "expect": [
+        {
+          "text": "457-55-5462",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN 219099999",
+      "expect": [
+        {
+          "text": "219099999",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN 123 45 6789",
+      "expect": [
+        {
+          "text": "123 45 6789",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN 000-12-3456",
+      "expect": [
+        {
+          "text": "000-12-3456",
+          "level": "labeled"
+        }
+      ]
+    },
+    {
+      "text": "Social Security No. 001-01-0001",
+      "expect": [
+        {
+          "text": "001-01-0001",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN #212-34-5678",
+      "expect": [
+        {
+          "text": "212-34-5678",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "ssn: 345-67-8901",
+      "expect": [
+        {
+          "text": "345-67-8901",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN\t456-78-9012",
+      "expect": [
+        {
+          "text": "456-78-9012",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "SSN 219-09-9999, SSN 123-45-6789",
+      "expect": [
+        {
+          "text": "219-09-9999",
+          "level": "validated"
+        },
+        {
+          "text": "123-45-6789",
+          "level": "validated"
+        }
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "text": "219-09-9999"
+    },
+    {
+      "text": "000-12-3456"
+    },
+    {
+      "text": "555-12-3456"
+    },
+    {
+      "text": "SSN 12-345-6789"
+    },
+    {
+      "text": "SSN 123-45-678"
+    },
+    {
+      "text": "SSN"
+    },
+    {
+      "text": "123-45-6789"
+    },
+    {
+      "text": "Order 123-45-6789"
+    },
+    {
+      "text": "тел 219-09-9999"
+    },
+    {
+      "text": "SSN 1234567890"
+    },
+    {
+      "text": "ID 219-09-9999"
+    },
+    {
+      "text": "SSN 219-09-99990"
+    }
+  ]
+}

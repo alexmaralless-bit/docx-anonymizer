@@ -1,0 +1,167 @@
+{
+  "category": "URL",
+  "description": "FR-18: позитивные и негативные примеры; expect — все сущности этой категории по порядку (после FR-20)",
+  "positive": [
+    {
+      "text": "https://firm.ru/contract",
+      "expect": [
+        {
+          "text": "https://firm.ru/contract",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "www.acme.com",
+      "expect": [
+        {
+          "text": "www.acme.com",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "http://example.com",
+      "expect": [
+        {
+          "text": "http://example.com",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "firm.ru",
+      "expect": [
+        {
+          "text": "firm.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "acme.com/path/page",
+      "expect": [
+        {
+          "text": "acme.com/path/page",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "(https://romashka.ru/contract).",
+      "expect": [
+        {
+          "text": "https://romashka.ru/contract",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "см. https://site.io/a?b=c#d",
+      "expect": [
+        {
+          "text": "https://site.io/a?b=c#d",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "https://компания.рф/договор",
+      "expect": [
+        {
+          "text": "https://компания.рф/договор",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "ftp://files.example.net/x.zip",
+      "expect": [
+        {
+          "text": "ftp://files.example.net/x.zip",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "Сайт: romashka.ru, тел.",
+      "expect": [
+        {
+          "text": "romashka.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "https://sub.domain.org:8080/a",
+      "expect": [
+        {
+          "text": "https://sub.domain.org:8080/a",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "«https://firm.ru»",
+      "expect": [
+        {
+          "text": "https://firm.ru",
+          "level": "validated"
+        }
+      ]
+    },
+    {
+      "text": "http://192.168.0.1/admin",
+      "expect": [
+        {
+          "text": "http://192.168.0.1/admin",
+          "level": "validated"
+        }
+      ]
+    }
+  ],
+  "negative": [
+    {
+      "text": "п. 1.2.3"
+    },
+    {
+      "text": "example.docx"
+    },
+    {
+      "text": "file.txt"
+    },
+    {
+      "text": "script.py"
+    },
+    {
+      "text": "v1.2"
+    },
+    {
+      "text": "г.Москва"
+    },
+    {
+      "text": "т.е."
+    },
+    {
+      "text": "ООО."
+    },
+    {
+      "text": "report.pdf"
+    },
+    {
+      "text": "info@firm.ru"
+    },
+    {
+      "text": "mailto:a@b.ru"
+    },
+    {
+      "text": "3.14"
+    },
+    {
+      "text": "1.5.2024"
+    },
+    {
+      "text": "contract.docx"
+    }
+  ]
+}

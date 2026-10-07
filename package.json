@@ -11,13 +11,15 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:dev": "node scripts/build.mjs --dev",
+    "pack": "node scripts/pack.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node scripts/build.mjs && playwright test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "sample": "node scripts/make-sample.mjs",
-    "gen-fixtures": "node scripts/gen-fixtures.mjs"
+    "gen-fixtures": "node scripts/gen-fixtures.mjs",
+    "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
     "fflate": "0.8.3"

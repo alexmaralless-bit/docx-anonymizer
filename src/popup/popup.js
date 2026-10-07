@@ -34,6 +34,8 @@ function applyLanguage() {
   $('recent-empty').textContent = t('recentEmpty');
   $('open-restore').textContent = t('restore');
   $('open-options').textContent = t('options');
+  $('open-help').textContent = t('help');
+  $('made-by').firstChild.textContent = `${t('madeBy')} `;
   $('t-dev').textContent = t('devTitle');
 }
 

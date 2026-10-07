@@ -50,10 +50,16 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: var(--accent);
-  color: var(--on-accent);
-  display: grid;
-  place-items: center;
+  flex: none;
+}
+.made-by {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.made-by a {
+  font-weight: 600;
 }
 h1 {
   font-size: 16px;

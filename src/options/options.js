@@ -9,6 +9,7 @@ import { loadSettings, onSettingsChanged, saveSettingsPatch } from '../shared/se
 import { createT, resolveUiLanguage } from '../ui/i18n/index.js';
 import { OPTIONS_DICT } from '../ui/i18n/options.js';
 import { confirmDialog, downloadJson, h } from '../ui/deanon/dom.js';
+import { madeByLine, helpLink } from '../ui/brand.js';
 import { guardRegex } from './regex-guard.js';
 import { CATEGORIES_KIND, CONFIG_KIND, NOT_EXPORTED, parseCategoriesFile, parseConfigFile } from './config-io.js';
 
@@ -887,6 +888,8 @@ function renderApp() {
         { class: 'nav', 'aria-label': t('title') },
         h('div', { class: 'brand' }, 'DOCX Anonymizer'),
         nav.map(([id, key]) => h('a', { href: `#${id}` }, t(key))),
+        helpLink(lang),
+        madeByLine(lang),
       ),
       h(
         'main',

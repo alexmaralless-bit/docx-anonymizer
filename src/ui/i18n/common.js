@@ -2,6 +2,8 @@
 export const common = {
   ru: {
     appName: 'DOCX Anonymizer',
+    madeBy: 'Сделано в',
+    help: 'Справка',
     'stage.receiving': 'Чтение файла…',
     'stage.unzip': 'Распаковка…',
     'stage.parse': 'Разбор документа…',
@@ -27,6 +29,8 @@ export const common = {
   },
   en: {
     appName: 'DOCX Anonymizer',
+    madeBy: 'Made at',
+    help: 'Help',
     'stage.receiving': 'Reading file…',
     'stage.unzip': 'Unpacking…',
     'stage.parse': 'Parsing document…',

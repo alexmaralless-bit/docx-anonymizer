@@ -1,0 +1,49 @@
+@import '../options/options.css';
+
+.help {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+  display: grid;
+  gap: 20px;
+}
+.help .page-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.help .page-head img {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex: none;
+}
+.help .page-head p {
+  margin: 4px 0 0;
+}
+.help ol,
+.help ul {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 6px;
+}
+.help .card p {
+  margin: 0 0 8px;
+}
+.help .card p:last-child {
+  margin-bottom: 0;
+}
+.help .row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.help .row a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.help .row a:hover,
+.help .row a:focus-visible {
+  text-decoration: underline;
+}

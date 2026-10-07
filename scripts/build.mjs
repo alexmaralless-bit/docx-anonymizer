@@ -1,11 +1,13 @@
 // Сборка расширения в dist/ (ТЗ §10, esbuild). Сети не требует.
 import { build } from 'esbuild';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const dist = join(root, 'dist');
+// --dist=<каталог> — собрать не в dist/ (так собирает архив релиза scripts/pack.mjs)
+const distArg = process.argv.find((a) => a.startsWith('--dist='));
+const dist = distArg ? resolve(distArg.slice('--dist='.length)) : join(root, 'dist');
 const dev = process.argv.includes('--dev');
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 
@@ -16,6 +18,7 @@ const entries = {
   'offscreen/worker': 'src/offscreen/worker.js',
   'popup/popup': 'src/popup/popup.js',
   'options/options': 'src/options/options.js',
+  'help/help': 'src/help/help.js',
   'restore/restore': 'src/restore/restore.js',
   'options/regex-guard.worker': 'src/options/regex-guard.worker.js',
 };
@@ -43,6 +46,8 @@ const statics = [
   ['src/popup/popup.css', 'popup/popup.css'],
   ['src/options/options.html', 'options/options.html'],
   ['src/restore/restore.html', 'restore/restore.html'],
+  ['src/help/help.html', 'help/help.html'],
+  ['icons', 'icons'],
   ['src/offscreen/offscreen.html', 'offscreen/offscreen.html'],
   ['src/_locales', '_locales'],
 ];

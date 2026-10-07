@@ -9,6 +9,7 @@ import { createT, resolveUiLanguage } from '../ui/i18n/index.js';
 import { RESTORE_DICT } from '../ui/i18n/restore.js';
 import { countUnresolved, parseMappingFiles, toSegments } from '../ui/deanon/index.js';
 import { h } from '../ui/deanon/dom.js';
+import { madeByLine, helpLink } from '../ui/brand.js';
 
 let t = createT(RESTORE_DICT, 'ru');
 let client = null;
@@ -210,6 +211,7 @@ function render(lang) {
           unres,
           h('p', { class: 'hint' }, t('declension_hint')),
         ),
+        h('div', { class: 'row between' }, helpLink(lang), madeByLine(lang)),
       ),
     );
 }

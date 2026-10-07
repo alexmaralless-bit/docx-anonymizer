@@ -441,3 +441,31 @@ mark {
 mark.hit {
   background: color-mix(in srgb, var(--accent) 30%, transparent);
 }
+
+/* подпись студии: меню, настройки, восстановление, справка */
+.made-by {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.made-by a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.made-by a:hover,
+.made-by a:focus-visible {
+  text-decoration: underline;
+}
+.nav .made-by {
+  padding: 12px 10px 0;
+}
+.nav .made-by a {
+  padding: 0;
+  color: var(--accent);
+}
+.nav .made-by a:hover,
+.nav .made-by a:focus-visible {
+  background: none;
+  color: var(--accent);
+}

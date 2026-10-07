@@ -30,6 +30,16 @@
 
 <img src="docs/screenshots/popup.png" width="260" alt="Меню расширения">
 
+### Архив релиза
+
+`npm run pack` собирает расширение и пакует его в `release/docx-anonymizer-<версия>.zip` (`manifest.json` — в корне архива; сеть не нужна, `dist/` не затрагивается). Архив воспроизводим: один и тот же код даёт побайтно один и тот же файл. Чтобы установить из архива, распакуйте его и в `chrome://extensions` выберите «Загрузить распакованное расширение».
+
+## Справка и подпись студии
+
+В меню, настройках и на странице восстановления есть ссылка «Справка» — страница `help/help.html`: что делает расширение, как им пользоваться, что данные не покидают компьютер. Расширение сделано в [Sitimlab](https://sitimlab.ru): иконка — знак студии (`assets/sitimlab-icon.svg`, PNG 16/32/48/128 в `icons/`, пересборка — `npm run icons`), строка «Сделано в Sitimlab» со ссылкой на сайт — в меню и на страницах расширения.
+
+<img src="docs/screenshots/help.png" width="520" alt="Справка">
+
 ## Что находится
 
 21 категория, значения проверяются контрольными суммами там, где они есть:
@@ -77,10 +87,12 @@
 
 | Команда | Что делает |
 |---|---|
-| `npm test` | модульные и интеграционные тесты (Vitest, 940 тестов) |
-| `npm run e2e` | сборка + e2e в Chromium с расширением (Playwright, 41 тест) |
+| `npm test` | модульные и интеграционные тесты (Vitest, 950 тестов) |
+| `npm run e2e` | сборка + e2e в Chromium с расширением (Playwright) |
 | `npm run lint` | ESLint |
 | `npm run build` / `build:dev` | сборка в `dist/` (dev — с sourcemaps) |
+| `npm run pack` | архив релиза `release/docx-anonymizer-<версия>.zip` |
+| `npm run icons` | иконки `icons/` из знака Sitimlab |
 | `npm run sample` | образец договора `tests/fixtures/sample-contract.docx` (вымышленные стороны) |
 
 Проект делался по спецификации: рамки первой версии — [`docs/mvp-scope.md`](docs/mvp-scope.md), полное ТЗ — [`docs/spec-full.md`](docs/spec-full.md), контракты модулей — [`docs/contracts.md`](docs/contracts.md), рабочие пакеты — [`docs/tasks.md`](docs/tasks.md).

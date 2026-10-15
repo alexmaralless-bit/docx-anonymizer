@@ -15,6 +15,7 @@ const protocolSchema = load('protocol.schema.json');
 const { validate } = createValidator({ 'mapping.schema.json': mappingSchema, 'protocol.schema.json': protocolSchema });
 const checkMapping = (m) => validate(mappingSchema, m);
 /** Сообщение валидно по схеме своего типа И по корневой oneOf. */
+const declineFx = JSON.parse(readFileSync(new URL('../fixtures/deanon-decline.json', import.meta.url), 'utf8'));
 const checkMessage = (m) => [...validate({ $ref: `#/$defs/${m.type}` }, m, protocolSchema), ...validate(protocolSchema, m)];
 
 describe('schemas/mapping.schema.json', () => {
@@ -91,6 +92,9 @@ describe('schemas/protocol.schema.json', () => {
     const end = out.find((m) => m.type === MSG.RESULT_END);
     await send({ type: MSG.DEANON, requestId: 'r5', mappingRef: ent.docId, text: 'Пишите на [EMAIL_1] и [EMAIL_99]' });
     await send({ type: MSG.DEANON, requestId: 'r6', mappingRef: end.mapping, text: '[EMAIL_1]' });
+    // FR-37: DEANON {decline: true} → DEANON_RESULT {declined[]} (карта — из фикстуры склонения)
+    await send({ type: MSG.DEANON, requestId: 'r6d', mappingRef: declineFx.mapping, text: 'Письмо [ФИО_1]у и от [ФИО_2].', decline: true });
+    expect(out.find((m) => m.requestId === 'r6d').declined.map((d) => d.case)).toEqual(['dat', 'gen']);
     await send({ type: MSG.LIST_SESSIONS, requestId: 'r7' });
     await upload('e1', new TextEncoder().encode('это не docx, а просто текст достаточной длины'), 'x.docx');
     await send({ type: MSG.CATALOG_CHANGED, requestId: 'c1' });
@@ -136,6 +140,15 @@ describe('schemas/protocol.schema.json', () => {
       { type: 'PROGRESS', requestId: 'r', stage: 'parse', percent: 120 },
       { type: 'RESULT_CHUNK', requestId: 'r', index: 0, data: 'не base64!' },
       { type: 'UNKNOWN', requestId: 'r' },
+      { type: 'DEANON', requestId: 'r', mappingRef: 'd1', text: 'x', decline: 'да' },
+      {
+        type: 'DEANON_RESULT',
+        requestId: 'r',
+        text: 'x',
+        unresolved: [],
+        replaced: 1,
+        declined: [{ start: 0, end: 1, case: 'dative', original: 'a', text: 'x' }],
+      },
     ]) {
       expect(validate(protocolSchema, bad), JSON.stringify(bad)).not.toEqual([]);
     }

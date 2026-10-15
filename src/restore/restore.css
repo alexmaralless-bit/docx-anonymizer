@@ -49,3 +49,15 @@ textarea.big {
   font-family: inherit;
   font-size: 15px;
 }
+/* FR-37: чекбокс склонения и подсветка склонённых подстановок (светло-зелёная — «проверьте») */
+.check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  cursor: pointer;
+}
+mark.declined {
+  background: color-mix(in srgb, var(--ok) 22%, transparent);
+  border-bottom: 1px dotted var(--ok);
+  cursor: help;
+}

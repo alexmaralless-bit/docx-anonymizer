@@ -17,6 +17,7 @@ export const MSG = Object.freeze({
   CANCEL: 'CANCEL',
   DISCARD: 'DISCARD',
   LIST_SESSIONS: 'LIST_SESSIONS',
+  /** {mappingRef, text, decline?} — decline: склонять ФИО по контексту (FR-37); ответ DEANON_RESULT {…, declined?} */
   DEANON: 'DEANON',
   BATCH_BEGIN: 'BATCH_BEGIN',
   BATCH_ADD: 'BATCH_ADD',

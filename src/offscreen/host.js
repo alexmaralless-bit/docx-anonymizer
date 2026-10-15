@@ -77,8 +77,9 @@ export function createHost(env) {
           const ref = msg.mappingRef;
           const mapping = typeof ref === 'string' ? getSession(ref).lastMapping : ref;
           if (!mapping) throw new CoreError('INTERNAL', 'Маппинг не найден: сначала примените замены');
-          const r = deanonymize(msg.text || '', mapping);
-          post({ type: MSG.DEANON_RESULT, requestId, text: r.text, unresolved: r.unresolved, replaced: r.replaced });
+          // FR-37: склонение ФИО по контексту — только по явной просьбе клиента
+          const r = deanonymize(msg.text || '', mapping, { decline: msg.decline === true });
+          post({ type: MSG.DEANON_RESULT, requestId, text: r.text, unresolved: r.unresolved, replaced: r.replaced, declined: r.declined });
           return;
         }
         case MSG.DISCARD:

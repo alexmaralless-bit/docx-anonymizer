@@ -57,6 +57,13 @@ describe('host: протокол §5.4 в воркере', () => {
     expect(de.type).toBe(MSG.DEANON_RESULT);
     expect(de.text).toContain('@');
     expect(de.unresolved.map((u) => u.text)).toEqual(['[EMAIL_9]']);
+    expect(de.declined).toEqual([]); // склонение (FR-37) — только по просьбе клиента
+    const author = ent.entities.find((e) => e.category === 'PERSON' && e.value === gold.author1);
+    const tok = end.mapping.entries.find((e) => e.value === author.value)?.token;
+    await send({ type: MSG.DEANON, requestId: 'r3d', mappingRef: ent.docId, text: `Письмо от ${tok}`, decline: true });
+    const dd = out.find((m) => m.requestId === 'r3d');
+    expect(dd.declined.map((d) => [d.case, d.original])).toEqual([['gen', author.value]]); // «Петров Олег» → «Петрова Олега»
+    expect(dd.text.slice(dd.declined[0].start, dd.declined[0].end)).toBe(dd.declined[0].text);
 
     const again = await upload('r4', bytes);
     expect(again.find((m) => m.type === MSG.ENTITIES).restoredDecisions).toBe(true);

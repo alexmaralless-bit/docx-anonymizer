@@ -1,5 +1,6 @@
 // Обратная замена (С3, FR-36, FR-37): текст с плейсхолдерами + маппинг (сессия или .mapping.json) → текст с реальными значениями.
-// Сессия: порт 'docx' → LIST_SESSIONS / DEANON {mappingRef: docId}. Файл: разбор на странице, замена ядром deanonymize().
+// Сессия: порт 'docx' → LIST_SESSIONS / DEANON {mappingRef: docId, decline}. Файл: разбор на странице, замена ядром deanonymize().
+// Склонение ФИО по контексту (FR-37, редакция 0.2) включено по умолчанию; склонённые подстановки подсвечиваются зелёным.
 import './restore.css';
 import { deanonymize } from '../core/deanon.js';
 import { MSG } from '../shared/protocol.js';
@@ -18,6 +19,8 @@ let sessions = [];
 let source = 'session';
 let sessionId = '';
 let fileMapping = null;
+/** Склонять ФИО по контексту метки (FR-37) */
+let decline = true;
 
 const getClient = () => (client ||= connectClient());
 
@@ -44,6 +47,12 @@ function render(lang) {
   const stat = h('div', { class: 'hint', dataset: { testid: 'restore-stat' } });
   const unres = h('div', { dataset: { testid: 'restore-unresolved' } });
   const msg = h('div', { class: 'err', role: 'alert', dataset: { testid: 'restore-error' } });
+  const declineBox = h(
+    'label',
+    { class: 'check' },
+    h('input', { type: 'checkbox', checked: decline, dataset: { testid: 'restore-decline' }, onchange: (e) => (decline = e.target.checked) }),
+    t('decline_label'),
+  );
   const copyBtn = h('button', { type: 'button', class: 'btn', disabled: true, dataset: { testid: 'restore-copy' } }, t('copy'));
   let lastText = '';
 
@@ -140,14 +149,14 @@ function render(lang) {
           msg.textContent = t('need_mapping');
           return;
         }
-        r = deanonymize(text, fileMapping);
+        r = deanonymize(text, fileMapping, { decline });
       } else {
         if (!sessionId) {
           msg.textContent = t('need_mapping');
           return;
         }
-        const res = await getClient().request(MSG.DEANON, { mappingRef: sessionId, text });
-        r = { text: res.text, unresolved: res.unresolved || [], replaced: res.replaced };
+        const res = await getClient().request(MSG.DEANON, { mappingRef: sessionId, text, decline });
+        r = { text: res.text, unresolved: res.unresolved || [], replaced: res.replaced, declined: res.declined || [] };
       }
     } catch (err) {
       const m = String(err?.message || err);
@@ -157,9 +166,16 @@ function render(lang) {
     lastText = r.text;
     out.className = 'result';
     out.replaceChildren(
-      ...toSegments(r.text, r.unresolved).map((s) => (s.unresolved ? h('mark', { dataset: { testid: 'unresolved-mark' } }, s.text) : s.text)),
+      ...toSegments(r.text, r.unresolved, r.declined).map((s) => {
+        if (s.unresolved) return h('mark', { dataset: { testid: 'unresolved-mark' } }, s.text);
+        if (s.declined) {
+          const title = t('declined_title', { case: t(`case_${s.item.case}`), original: s.item.original });
+          return h('mark', { class: 'declined', title, dataset: { testid: 'declined-mark' } }, s.text);
+        }
+        return s.text;
+      }),
     );
-    stat.textContent = t('stat', { n: r.replaced });
+    stat.textContent = t('stat', { n: r.replaced }) + (r.declined.length ? ` · ${t('declined_stat', { n: r.declined.length })}` : '');
     copyBtn.disabled = false;
     const groups = countUnresolved(r.unresolved);
     unres.replaceChildren(
@@ -201,7 +217,13 @@ function render(lang) {
         h('header', { class: 'page-head' }, h('h1', {}, t('title')), h('p', {}, t('subtitle'))),
         h('section', { class: 'card' }, h('h2', {}, t('input_h')), input),
         h('section', { class: 'card' }, h('h2', {}, t('source_h')), sourceBox),
-        h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn primary', dataset: { testid: 'restore-run' }, onclick: run }, t('restore')), msg),
+        h(
+          'div',
+          { class: 'row' },
+          h('button', { type: 'button', class: 'btn primary', dataset: { testid: 'restore-run' }, onclick: run }, t('restore')),
+          declineBox,
+          msg,
+        ),
         h(
           'section',
           { class: 'card' },

@@ -1,4 +1,4 @@
-// Словарь страницы «Восстановить текст» (WP4).
+// Словарь страницы «Восстановить текст» (WP4; склонение ФИО — WP6, FR-37).
 export const RESTORE_DICT = {
   ru: {
     title: 'Восстановить текст',
@@ -27,7 +27,16 @@ export const RESTORE_DICT = {
     unresolved_hint: 'Эти метки выделены в тексте жёлтым. Возможно, ответ относится к другому документу.',
     unresolved_none: 'Все метки восстановлены',
     declension_hint:
-      'Значения подставляются в той форме, как в документе (именительный падеж). Склонение по падежам не восстанавливается: «письмо [ФИО_1]у» придётся поправить вручную.',
+      'ФИО склоняются по контексту: падеж берётся из окончания, приклеенного к метке («письмо [ФИО_1]у»), или из предлога перед ней («от [ФИО_1]»). Склонённые подстановки выделены зелёным — просмотрите их. Если падеж не определить («в», «на», «за», «под», незнакомое окончание), подставляется именительный.',
+    decline_label: 'Склонять ФИО по контексту',
+    declined_stat: 'склонено: {n}',
+    declined_title: '{case} падеж; в карте: {original}',
+    case_nom: 'именительный',
+    case_gen: 'родительный',
+    case_dat: 'дательный',
+    case_acc: 'винительный',
+    case_ins: 'творительный',
+    case_prep: 'предложный',
     error: 'Ошибка: {msg}',
     need_text: 'Вставьте текст с плейсхолдерами',
     need_mapping: 'Выберите обработку или загрузите файл карты',
@@ -59,7 +68,16 @@ export const RESTORE_DICT = {
     unresolved_hint: 'These markers are highlighted in yellow. The answer may belong to another document.',
     unresolved_none: 'All markers restored',
     declension_hint:
-      'Values are inserted in the form used in the document (nominative case). Case endings are not restored: “a letter to [PERSON_1]” may need manual editing.',
+      'Russian names are declined by context: the case comes from an ending glued to the marker (“письмо [ФИО_1]у”) or from the preposition before it (“от [ФИО_1]”). Declined values are highlighted in green — please review them. When the case cannot be determined (“в”, “на”, “за”, “под”, an unknown ending), the nominative is used.',
+    decline_label: 'Decline names by context',
+    declined_stat: 'declined: {n}',
+    declined_title: '{case} case; in the mapping: {original}',
+    case_nom: 'nominative',
+    case_gen: 'genitive',
+    case_dat: 'dative',
+    case_acc: 'accusative',
+    case_ins: 'instrumental',
+    case_prep: 'prepositional',
     error: 'Error: {msg}',
     need_text: 'Paste text with placeholders',
     need_mapping: 'Choose a run or load a mapping file',

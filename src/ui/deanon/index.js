@@ -1,4 +1,4 @@
-// Логика страницы «Восстановить» без DOM: разбор файла карты, подготовка текста с подсветкой (FR-36, FR-37).
+// Логика страницы «Восстановить» без DOM: разбор файла карты, подготовка текста с подсветкой нераспознанного и склонённого (FR-36, FR-37).
 import { mergeMappings } from '../../core/mapping.js';
 
 /**
@@ -30,21 +30,31 @@ export function parseMappingFiles(texts) {
 }
 
 /**
- * Режет текст на сегменты для подсветки нераспознанных меток.
+ * Режет текст на сегменты для подсветки нераспознанных меток и склонённых подстановок (FR-36, FR-37).
+ * Диапазоны не пересекаются; при пересечении побеждает начавшийся раньше.
  * @param {string} text
  * @param {{start: number, end: number}[]} unresolved позиции в text
- * @returns {{text: string, unresolved: boolean}[]}
+ * @param {{start: number, end: number}[]} [declined] позиции склонённых подстановок в text
+ * @returns {{text: string, unresolved: boolean, declined: boolean, item?: any}[]} item — исходная запись declined
  */
-export function toSegments(text, unresolved) {
+export function toSegments(text, unresolved, declined = []) {
+  const marks = [
+    ...unresolved.map((u) => ({ start: u.start, end: u.end, kind: 'unresolved', item: u })),
+    ...declined.map((d) => ({ start: d.start, end: d.end, kind: 'declined', item: d })),
+  ].sort((a, b) => a.start - b.start);
   const out = [];
   let pos = 0;
-  for (const u of [...unresolved].sort((a, b) => a.start - b.start)) {
+  for (const u of marks) {
     if (u.start < pos) continue;
-    if (u.start > pos) out.push({ text: text.slice(pos, u.start), unresolved: false });
-    out.push({ text: text.slice(u.start, u.end), unresolved: true });
+    if (u.start > pos) out.push({ text: text.slice(pos, u.start), unresolved: false, declined: false });
+    out.push(
+      u.kind === 'declined'
+        ? { text: text.slice(u.start, u.end), unresolved: false, declined: true, item: u.item }
+        : { text: text.slice(u.start, u.end), unresolved: true, declined: false },
+    );
     pos = u.end;
   }
-  if (pos < text.length) out.push({ text: text.slice(pos), unresolved: false });
+  if (pos < text.length) out.push({ text: text.slice(pos), unresolved: false, declined: false });
   return out;
 }
 

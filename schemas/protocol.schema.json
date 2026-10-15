@@ -141,7 +141,8 @@
         "type": { "const": "DEANON" },
         "requestId": { "$ref": "#/$defs/requestId" },
         "mappingRef": { "oneOf": [{ "type": "string" }, { "$ref": "mapping.schema.json" }] },
-        "text": { "type": "string" }
+        "text": { "type": "string" },
+        "decline": { "type": "boolean" }
       }
     },
     "BATCH_BEGIN": {
@@ -334,7 +335,21 @@
         "requestId": { "$ref": "#/$defs/requestId" },
         "text": { "type": "string" },
         "unresolved": { "type": "array", "items": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" } } } },
-        "replaced": { "type": "integer", "minimum": 0 }
+        "replaced": { "type": "integer", "minimum": 0 },
+        "declined": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["start", "end", "case", "original", "text"],
+            "properties": {
+              "start": { "type": "integer", "minimum": 0 },
+              "end": { "type": "integer", "minimum": 0 },
+              "case": { "enum": ["nom", "gen", "dat", "acc", "ins", "prep"] },
+              "original": { "type": "string" },
+              "text": { "type": "string" }
+            }
+          }
+        }
       }
     },
     "ACK": {

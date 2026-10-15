@@ -136,6 +136,27 @@ export const MIGRATIONS = {
 };
 
 /**
+ * Прогоняет MIGRATIONS над объектом настроек версии `fromVersion` (целым или частичным — патчем из файла импорта,
+ * FR-47) до SETTINGS_SCHEMA_VERSION. Чистая функция: вход не меняется. Миграции обязаны работать и на частичном
+ * объекте (трогать только присутствующие поля). Версия больше текущей или нецелая (кроме отсутствующей — это 0) — без
+ * изменений. Возвращает объект со `schemaVersion` той версии, до которой дошли.
+ * @param {Record<string, any>} obj
+ * @param {number} [fromVersion]  по умолчанию obj.schemaVersion, без него — 0
+ */
+export function applyMigrations(obj, fromVersion = obj?.schemaVersion) {
+  let s = { ...obj };
+  let v = fromVersion === undefined ? 0 : fromVersion;
+  if (!Number.isInteger(v)) return s;
+  while (v < SETTINGS_SCHEMA_VERSION) {
+    const m = MIGRATIONS[v];
+    if (!m) break;
+    s = m(s);
+    v = s.schemaVersion;
+  }
+  return s;
+}
+
+/**
  * Приводит сохранённый объект (любой версии, в т.ч. undefined) к текущей схеме:
  * миграции → дополнение дефолтами → отбрасывание невалидных полей.
  * @param {any} stored
@@ -144,14 +165,7 @@ export const MIGRATIONS = {
 export function migrateSettings(stored) {
   const defaults = defaultSettings();
   if (!isPlainObject(stored)) return { settings: defaults, changed: true };
-  let s = { ...stored };
-  let v = Number.isInteger(s.schemaVersion) ? s.schemaVersion : 0;
-  while (v < SETTINGS_SCHEMA_VERSION) {
-    const m = MIGRATIONS[v];
-    if (!m) break;
-    s = m(s);
-    v = s.schemaVersion;
-  }
+  const s = applyMigrations(stored, Number.isInteger(stored.schemaVersion) ? stored.schemaVersion : 0);
   /** @type {any} */
   const out = {};
   for (const [k, def] of Object.entries(defaults)) {

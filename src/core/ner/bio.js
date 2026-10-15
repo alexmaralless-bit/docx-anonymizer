@@ -1,7 +1,7 @@
 // Разбор меток модели NER и слияние BIO в спаны (WP9, ТЗ §5.2 NLP). Метка слова — по его первому субтокену;
 // score спана — средняя вероятность его слов; спаны без букв и короче 2 символов отбрасываются.
 // Границы спанов приводятся к соглашениям каталога (FR-18): COMPANY — с ОПФ и кавычками, PERSON — с точкой инициала.
-import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, ROLE_WORDS, isStopWord, lowerE } from '../detect/names/lexicon.js';
+import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, ROLE_WORDS, POSITION_RE_SRC, isStopWord, lowerE } from '../detect/names/lexicon.js';
 
 /** Тип сущности по имени метки модели; прочие (MISC и т.п.) — вне контракта NerSpan, считаются O. */
 const TYPE_ALIASES = Object.freeze({
@@ -98,14 +98,18 @@ export function bridgePunct(preds, text) {
  * @property {number} prob   вероятность предсказанной метки
  */
 
+/** Граница абзаца/строки или объекта (U+FFFC — рисунок, поле) — сущность через неё не продолжается. */
+const HARD_BREAK_RE = /[\n\r\u2028\u2029\uFFFC]/u;
+
 /**
  * Слияние BIO по словам (в порядке текста): B открывает спан, I продолжает спан того же типа, I без B (или после
- * другого типа) начинает новый, O и смена типа закрывают. score — средняя prob слов спана.
+ * другого типа) начинает новый, O и смена типа закрывают. score — средняя prob слов спана. С `text` спан
+ * закрывается и на переносе строки или U+FFFC между словами («Директор\nИванов» — два спана, не один).
  * @param {WordPred[]} wordPreds
- * @param {{withWords?: boolean}} [opts]  withWords — добавить спанам число слов `words` (для joinAdjacent)
+ * @param {{withWords?: boolean, text?: string}} [opts]  withWords — добавить спанам число слов `words` (для joinAdjacent)
  * @returns {import('../contracts/ner.js').NerSpan[]}
  */
-export function mergeBio(wordPreds, { withWords = false } = {}) {
+export function mergeBio(wordPreds, { withWords = false, text } = {}) {
   /** @type {import('../contracts/ner.js').NerSpan[]} */
   const out = [];
   /** @type {{start: number, end: number, label: 'PER'|'ORG'|'LOC', sum: number, n: number} | null} */
@@ -115,10 +119,11 @@ export function mergeBio(wordPreds, { withWords = false } = {}) {
     cur = null;
   };
   for (const w of wordPreds) {
-    if (w.tag === 'O' || !w.type) {
+    if (w.tag === 'O' || !w.type || (text !== undefined && HARD_BREAK_RE.test(text.slice(w.start, w.end)))) {
       close();
       continue;
     }
+    if (cur && text !== undefined && HARD_BREAK_RE.test(text.slice(cur.end, w.start))) close();
     if (w.tag === 'I' && cur && cur.label === w.type) {
       cur.end = w.end;
       cur.sum += w.prob;
@@ -275,6 +280,76 @@ const TITLE_RE = /^(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sir|Mme|Herr|Frau|г-н|г-жа|г�
 const OPEN_QUOTES = new Set(['«', '„', '“', '"']);
 const BRACKETS = new Set(['(', '[']);
 
+/**
+ * Слова перед ФИО, которые модель нередко включает в PER: обращения, должности и роли сторон («Уважаемый Аркадий
+ * Валентинович», «Директор Иванов Пётр Сергеевич», «экспедитор Кравчук»). Должности — POSITION_RE_SRC словарей WP2
+ * (все падежи), роли — ROLE_WORDS; здесь — то, чего там нет.
+ */
+const PER_LEAD_WORDS = new Set(
+  [
+    ...[...ROLE_WORDS].filter((w) => !w.includes(' ')),
+    'уважаемый',
+    'уважаемая',
+    'уважаемые',
+    'дорогой',
+    'дорогая',
+    'г-н',
+    'г-жа',
+    'гн',
+    'гжа',
+    'господин',
+    'госпожа',
+    'господина',
+    'госпожи',
+    'гражданин',
+    'гражданка',
+    'менеджер',
+    'юрист',
+    'специалист',
+    'инженер',
+    'водитель',
+    'курьер',
+    'сотрудник',
+    'нотариус',
+    'адвокат',
+    'dear',
+    'mr',
+    'mrs',
+    'ms',
+    'miss',
+    'dr',
+    'prof',
+    'sir',
+    'madam',
+    ...EXTRA_TEMPLATE_WORDS,
+  ].map(lowerE),
+);
+const POSITION_LEAD_RE = new RegExp(`^(?:${POSITION_RE_SRC})(?![\\p{L}\\p{N}-])`, 'iu');
+const LEAD_WORD_RE = /^(\p{L}+(?:-\p{L}+)?)\.?(?![\p{L}\p{N}])/u;
+const LEAD_GAP_RE = /^[\s,:;—–]+/u;
+
+/**
+ * Начало PER без ведущих обращений и должностей. Возвращает новый start; −1 — в спане одни такие слова.
+ * @param {string} text @param {number} start @param {number} end
+ */
+function stripPersonLead(text, start, end) {
+  for (;;) {
+    const rest = text.slice(start, end);
+    const m = TITLE_RE.exec(rest) || POSITION_LEAD_RE.exec(rest) || leadWord(rest);
+    if (!m) return start;
+    const gap = LEAD_GAP_RE.exec(rest.slice(m[0].length));
+    const next = start + m[0].length + (gap ? gap[0].length : 0);
+    if (!LETTER_RE.test(text.slice(next, end))) return -1;
+    if (!gap && !/\s$/u.test(m[0])) return start; // слово не отделено от следующего («Директоров» — не «Директор»)
+    start = next;
+  }
+}
+
+function leadWord(rest) {
+  const m = LEAD_WORD_RE.exec(rest);
+  return m && PER_LEAD_WORDS.has(lowerE(m[1])) ? m : null;
+}
+
 /** Конец парной кавычки, открытой в позиции i (с учётом вложенных «…«…»…»), или −1. */
 function closingQuote(text, i) {
   const open = text[i];
@@ -294,8 +369,9 @@ function closingQuote(text, i) {
 /**
  * Границы по соглашениям каталога (FR-18, фикстура COMPANY): ORG включает кавычки вокруг названия, ОПФ перед ним
  * («ООО «Ромашка»», «Общество с ограниченной ответственностью «Сфера»») и латинскую ОПФ после («Acme Ltd.»);
- * спан из одной ОПФ («ПАО») дотягивается до названия в кавычках. PER: без обращения («Mr.», «г-н»), с точкой
- * последнего инициала («Иванов П. С.»). Спаны, от которых ничего не осталось, выбрасываются.
+ * спан из одной ОПФ («ПАО») дотягивается до названия в кавычках. PER: без обращения и должности впереди
+ * («Mr.», «г-н», «Уважаемый», «Директор»), с точкой последнего инициала («Иванов П. С.»). Спаны, от которых ничего
+ * не осталось, выбрасываются.
  * @param {import('../contracts/ner.js').NerSpan[]} spans
  * @param {string} text
  */
@@ -340,8 +416,9 @@ export function alignSpans(spans, text) {
       const after = SUFFIX_RE.exec(text.slice(end, end + 20));
       if (after) end += after[0].length;
     } else if (sp.label === 'PER') {
-      const t = TITLE_RE.exec(text.slice(start, end));
-      if (t) start += t[0].length;
+      // без обращения и должности впереди («Mr.», «г-н», «Уважаемый», «Директор»); спан из одних таких слов — не имя
+      start = stripPersonLead(text, start, end);
+      if (start < 0) continue;
     }
     // точка последнего инициала или сокращения ОПФ («Иванов П. С.», «Oakridge Partners Corp.»)
     if (sp.label !== 'LOC' && text[end] === '.' && ABBR_DOT_RE.test(text.slice(Math.max(start, end - 8), end))) end++;
@@ -349,4 +426,51 @@ export function alignSpans(spans, text) {
     out.push({ ...sp, start, end });
   }
   return out;
+}
+
+/**
+ * Дубликаты и пересечения после alignSpans (расширение ORG до ОПФ и кавычек сводит соседние спаны в один): вложенный
+ * спан того же типа поглощается объемлющим (score — больший из двух); спан другого типа внутри кавычек названия ORG
+ * («ПАО "Орион-Логистик"» и PER «Орион») — тоже: кавычки названия — признак сильнее score отдельного слова. Прочие
+ * пересечения (другой тип или частичное перекрытие) решаются в пользу большего score; непересекающиеся спаны остаются
+ * все. Результат — в порядке текста.
+ * @param {import('../contracts/ner.js').NerSpan[]} spans
+ * @param {string} [text]  без текста правило кавычек ORG не применяется
+ * @returns {import('../contracts/ner.js').NerSpan[]}
+ */
+export function dedupeSpans(spans, text) {
+  const sorted = [...spans].sort((a, b) => a.start - b.start || b.end - a.end);
+  /** @type {import('../contracts/ner.js').NerSpan[]} */
+  const out = [];
+  for (const sp of sorted) {
+    const cur = { ...sp };
+    let drop = false;
+    for (let i = out.length - 1; i >= 0; i--) {
+      const k = out[i];
+      if (k.end <= cur.start || cur.end <= k.start) continue;
+      const nested = k.start <= cur.start && cur.end <= k.end;
+      if (nested && (k.label === cur.label || (k.label === 'ORG' && text !== undefined && insideQuotes(text, k, cur)))) {
+        k.score = Math.max(k.score, cur.score);
+        drop = true;
+        break;
+      }
+      if (k.score >= cur.score) {
+        drop = true;
+        break;
+      }
+      out.splice(i, 1);
+    }
+    if (!drop) out.push(cur);
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/** inner лежит внутри парных кавычек, открытых в пределах outer и закрытых в нём же. */
+function insideQuotes(text, outer, inner) {
+  for (let q = outer.start; q < inner.start; q++) {
+    if (!OPEN_QUOTES.has(text[q])) continue;
+    const c = closingQuote(text, q);
+    if (c >= inner.end && c < outer.end) return true;
+  }
+  return false;
 }

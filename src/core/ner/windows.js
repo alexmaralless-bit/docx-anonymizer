@@ -41,3 +41,110 @@ export function makeWindows(wordIds, { maxLen, stride, cls, sep }) {
   }
   return out;
 }
+
+/** Сокращения, после точки которых предложение не кончается («г. Омск», «ул. Мира», «Acme Inc. Group»). */
+const ABBR = new Set(
+  [
+    'г',
+    'гг',
+    'ул',
+    'пр',
+    'просп',
+    'пер',
+    'д',
+    'кв',
+    'корп',
+    'стр',
+    'обл',
+    'р-н',
+    'им',
+    'тел',
+    'см',
+    'ст',
+    'т',
+    'п',
+    'пп',
+    'ч',
+    'рис',
+    'табл',
+    'руб',
+    'коп',
+    'тыс',
+    'млн',
+    'млрд',
+    'др',
+    'проф',
+    'акад',
+    'inc',
+    'ltd',
+    'corp',
+    'co',
+    'mr',
+    'mrs',
+    'ms',
+    'dr',
+    'prof',
+    'st',
+    'no',
+    'vs',
+    'jr',
+    'sr',
+    'e.g',
+    'i.e',
+  ].map((s) => s.toLowerCase()),
+);
+const END_RE = /^[.!?…]+$/u;
+const OPENERS_RE = /^[«„“"'([]$/u;
+const UPPER_START_RE = /^\p{Lu}/u;
+const INITIAL_RE = /^\p{Lu}$/u;
+const BREAK_RE = /[\n\r\u2028\u2029\uFFFC]/u;
+
+/**
+ * Границы предложений по словам pretokenize (опция провайдера splitSentences, WP9): после «.», «!», «?», «…», за
+ * которыми идёт слово с заглавной буквы (или открывающая кавычка/скобка перед ним), и на переносе строки. После
+ * точки однобуквенного инициала («Т.Е. Ходенковым») и сокращения («г. Омск») граница не ставится. Каждое предложение
+ * режется на окна отдельно: модель обучена на предложениях, а склейка «… Антонина. Груз …» тянет PER через точку.
+ * @param {{start: number, end: number, text: string}[]} words
+ * @param {string} text
+ * @param {{minWords?: number}} [opts]  предложение короче minWords слов с буквами идёт вместе со следующим
+ * @returns {[number, number][]}  [from, to) по индексам слов, покрывают все слова подряд
+ */
+export function sentenceRanges(words, text, { minWords = MIN_SENTENCE_WORDS } = {}) {
+  /** @type {[number, number][]} */
+  const out = [];
+  let from = 0;
+  for (let i = 1; i < words.length; i++) {
+    // короткий обрывок («Добрый день!», «Приложение 1.») идёт вместе со следующим предложением: без контекста
+    // модель путает типы; перенос строки — граница всегда
+    if (isBoundary(words, text, i) && (letterWords(words, from, i) >= minWords || hardBreak(words, text, i))) {
+      out.push([from, i]);
+      from = i;
+    }
+  }
+  if (words.length) out.push([from, words.length]);
+  return out;
+}
+
+/** Предложение короче стольких слов с буквами склеивается со следующим. */
+const MIN_SENTENCE_WORDS = 4;
+const LETTER_RE = /\p{L}/u;
+const letterWords = (words, from, to) => {
+  let n = 0;
+  for (let k = from; k < to; k++) if (LETTER_RE.test(words[k].text)) n++;
+  return n;
+};
+const hardBreak = (words, text, i) => BREAK_RE.test(text.slice(words[i - 1].end, words[i].start));
+
+/** Начинается ли новое предложение со слова i. */
+function isBoundary(words, text, i) {
+  const prev = words[i - 1];
+  if (hardBreak(words, text, i)) return true;
+  if (!END_RE.test(prev.text) || i < 2) return false;
+  // «.» вплотную за словом; «Т.» и «г.» — не конец
+  const before = words[i - 2];
+  if (prev.text === '.' && before.end === prev.start && (INITIAL_RE.test(before.text) || ABBR.has(before.text.toLowerCase()))) return false;
+  // за знаком — пробел и слово с заглавной (возможно, после открывающей кавычки или скобки)
+  if (words[i].start === prev.end) return false;
+  const next = OPENERS_RE.test(words[i].text) && words[i + 1] ? words[i + 1] : words[i];
+  return UPPER_START_RE.test(next.text);
+}

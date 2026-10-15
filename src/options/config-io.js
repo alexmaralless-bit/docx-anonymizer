@@ -1,5 +1,5 @@
 // Разбор файлов импорта настроек и категорий (FR-47, FR-53). Чистый JS, без DOM.
-import { validateSettingsPatch } from '../core/settings.js';
+import { applyMigrations, validateSettingsPatch } from '../core/settings.js';
 import { validateCustomCategory } from '../core/detect/custom/rules.js';
 
 export const CONFIG_KIND = 'docx-anonymizer-config';
@@ -25,7 +25,11 @@ export function parseCategoriesFile(text) {
 // nerModel — id пакета модели в хранилище этого браузера (WP8): на другой машине пакета нет, поэтому не переносится.
 export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel']);
 
-/** Разбор файла настроек: {patch, skipped} или {error}. */
+/**
+ * Разбор файла настроек: {patch, skipped} или {error}. `version` файла — версия формата файла, `schemaVersion` —
+ * версия схемы настроек (SETTINGS_SCHEMA_VERSION на момент экспорта). Файл без неё (0.1 и ранние сборки 0.2) или
+ * с меньшей версией проходит те же миграции, что и хранилище (settings.js MIGRATIONS): порог NER 0.6 из 0.1 → 0.7.
+ */
 export function parseConfigFile(text) {
   let j;
   try {
@@ -33,10 +37,12 @@ export function parseConfigFile(text) {
   } catch {
     return { error: 'JSON' };
   }
-  if (!j || j.kind !== CONFIG_KIND || !j.settings || typeof j.settings !== 'object') return { error: 'kind' };
+  if (!j || j.kind !== CONFIG_KIND || !j.settings || typeof j.settings !== 'object' || Array.isArray(j.settings)) return { error: 'kind' };
+  const from = Number.isInteger(j.schemaVersion) ? j.schemaVersion : Number.isInteger(j.settings.schemaVersion) ? j.settings.schemaVersion : 0;
+  const settings = applyMigrations(j.settings, from);
   const patch = {};
   const skipped = [];
-  for (const [k, v] of Object.entries(j.settings)) {
+  for (const [k, v] of Object.entries(settings)) {
     if (NOT_EXPORTED.has(k)) continue;
     if (validateSettingsPatch({ [k]: v }).length) skipped.push(k);
     else if (k === 'customCategories' && v.some((c) => validateCustomCategory(c).length)) skipped.push(k);

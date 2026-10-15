@@ -1,7 +1,7 @@
 // WP9: метки модели и слияние BIO (core/ner/bio.js): I без B, смена типа, средний score, подрезка краёв,
 // решение по маргинальным вероятностям типов, мостики через пунктуацию, границы по соглашениям каталога (FR-18).
 import { describe, it, expect } from 'vitest';
-import { labelsToTags, decodeWord, bridgePunct, mergeBio, joinAdjacent, filterSpans, alignSpans } from '../../../src/core/ner/bio.js';
+import { labelsToTags, decodeWord, bridgePunct, mergeBio, joinAdjacent, filterSpans, alignSpans, dedupeSpans } from '../../../src/core/ner/bio.js';
 
 /** Слова текста (по пробелам и пунктуации) с тегами: «Иван/B-PER:0.9». */
 function preds(text, tagged) {
@@ -80,6 +80,16 @@ describe('mergeBio', () => {
       ['Ромашка', 'ORG'],
       ['Москве', 'LOC'],
     ]);
+  });
+  it('с text: перенос строки и U+FFFC между словами закрывают спан', () => {
+    const t = 'Директор\nИванов Пётр Сергеевич и Анна\uFFFCПетрова';
+    const s = mergeBio(
+      preds(t, ['Директор/B-PER:0.8', 'Иванов/I-PER:0.9', 'Пётр/I-PER:0.9', 'Сергеевич/I-PER:0.9', 'и', 'Анна/B-PER:0.9', 'Петрова/I-PER:0.9']),
+      { text: t },
+    );
+    expect(s.map((x) => t.slice(x.start, x.end))).toEqual(['Директор', 'Иванов Пётр Сергеевич', 'Анна', 'Петрова']);
+    // без text — прежнее поведение
+    expect(mergeBio(preds(t, ['Директор/B-PER:0.8', 'Иванов/I-PER:0.9'])).map((x) => t.slice(x.start, x.end))).toEqual(['Директор\nИванов']);
   });
   it('withWords — число слов спана', () => {
     expect(mergeBio(preds(text, ['Иван/B-PER:1', 'Петров/I-PER:1']), { withWords: true })[0].words).toBe(2);
@@ -179,8 +189,76 @@ describe('alignSpans', () => {
     const t = 'Mr. John Smith и Иванов П.С. подписали';
     expect(vals(t, [sp(t, 'Mr. John Smith', 'PER'), sp(t, 'Иванов П.С', 'PER')])).toEqual(['John Smith', 'Иванов П.С.']);
   });
+  it('PER: без ведущей должности, обращения и роли; спан из одних таких слов выбрасывается', () => {
+    const t1 = 'Директор Иванов Пётр Сергеевич подписал';
+    expect(vals(t1, [sp(t1, 'Директор Иванов Пётр Сергеевич', 'PER')])).toEqual(['Иванов Пётр Сергеевич']);
+    const t2 = 'Уважаемый Аркадий Валентинович, направляем';
+    expect(vals(t2, [sp(t2, 'Уважаемый Аркадий Валентинович', 'PER')])).toEqual(['Аркадий Валентинович']);
+    const t3 = 'генеральный директор Иванова Петра, г-жа Смирнова, гражданка Олейник, ИСПОЛНИТЕЛЬ: КУЗНЕЦОВ ГЕННАДИЙ, экспедитор Кравчук';
+    expect(
+      vals(t3, [
+        sp(t3, 'генеральный директор Иванова Петра', 'PER'),
+        sp(t3, 'г-жа Смирнова', 'PER'),
+        sp(t3, 'гражданка Олейник', 'PER'),
+        sp(t3, 'ИСПОЛНИТЕЛЬ: КУЗНЕЦОВ ГЕННАДИЙ', 'PER'),
+        sp(t3, 'экспедитор Кравчук', 'PER'),
+      ]),
+    ).toEqual(['Иванова Петра', 'Смирнова', 'Олейник', 'КУЗНЕЦОВ ГЕННАДИЙ', 'Кравчук']);
+    // одна должность — не имя; фамилия, начинающаяся как должность, не режется
+    const t4 = 'Директор и Директоров Пётр';
+    expect(vals(t4, [sp(t4, 'Директор', 'PER'), sp(t4, 'Директоров Пётр', 'PER')])).toEqual(['Директоров Пётр']);
+  });
   it('LOC не меняется', () => {
     const t = 'в г. Москва.';
     expect(vals(t, [sp(t, 'Москва', 'LOC')])).toEqual(['Москва']);
+  });
+});
+
+describe('провайдерная цепочка: «Директор\\nИванов Пётр Сергеевич»', () => {
+  it('перенос строки отделяет должность, спан без «Директор» — один', () => {
+    const t = 'Директор\nИванов Пётр Сергеевич';
+    const p = preds(t, ['Директор/B-PER:0.9', 'Иванов/I-PER:0.95', 'Пётр/I-PER:0.95', 'Сергеевич/I-PER:0.95']);
+    const spans = dedupeSpans(filterSpans(alignSpans(filterSpans(joinAdjacent(mergeBio(p, { withWords: true, text: t }), t), t), t), t), t);
+    expect(spans.map((x) => [t.slice(x.start, x.end), x.label])).toEqual([['Иванов Пётр Сергеевич', 'PER']]);
+  });
+});
+
+describe('dedupeSpans', () => {
+  const at = (text, value, label, score, from = 0) => {
+    const start = text.indexOf(value, from);
+    return { start, end: start + value.length, label, score };
+  };
+  const show = (text, spans) => spans.map((x) => [text.slice(x.start, x.end), x.label, x.score]);
+  it('дубликат и вложенный спан того же типа поглощаются объемлющим, score — больший', () => {
+    const t = 'с ПАО «Кедр-Сервис» и ООО «Лотос»';
+    const out = dedupeSpans(
+      [at(t, 'ПАО «Кедр-Сервис»', 'ORG', 0.8), at(t, '«Кедр-Сервис»', 'ORG', 0.95), at(t, 'ПАО «Кедр-Сервис»', 'ORG', 0.7), at(t, 'ООО «Лотос»', 'ORG', 0.9)],
+      t,
+    );
+    expect(show(t, out)).toEqual([
+      ['ПАО «Кедр-Сервис»', 'ORG', 0.95],
+      ['ООО «Лотос»', 'ORG', 0.9],
+    ]);
+  });
+  it('разные типы: без пересечения — оба; пересечение — больший score; другой тип внутри кавычек ORG — поглощается', () => {
+    const t = 'Иванов из Москвы направил в ПАО "Орион-Логистик" письмо';
+    const out = dedupeSpans(
+      [
+        at(t, 'Иванов', 'PER', 0.9),
+        at(t, 'Москвы', 'LOC', 0.6),
+        at(t, 'Москвы', 'ORG', 0.7),
+        at(t, 'ПАО "Орион-Логистик"', 'ORG', 0.86),
+        at(t, 'Орион', 'PER', 0.94),
+      ],
+      t,
+    );
+    expect(show(t, out)).toEqual([
+      ['Иванов', 'PER', 0.9],
+      ['Москвы', 'ORG', 0.7],
+      ['ПАО "Орион-Логистик"', 'ORG', 0.94],
+    ]);
+    // частичное пересечение одного типа — больший score
+    const u = 'Анна Петрова Сидорова';
+    expect(show(u, dedupeSpans([at(u, 'Анна Петрова', 'PER', 0.7), at(u, 'Петрова Сидорова', 'PER', 0.9)], u))).toEqual([['Петрова Сидорова', 'PER', 0.9]]);
   });
 });

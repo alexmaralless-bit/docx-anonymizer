@@ -2,7 +2,7 @@
 // невалидное — подсвечивается и не сохраняется. Работает только через src/shared/settings-store.js.
 import './options.css';
 import { buildCatalog } from '../core/categories.js';
-import { defaultSettings, validateSettingsPatch } from '../core/settings.js';
+import { defaultSettings, validateSettingsPatch, SETTINGS_SCHEMA_VERSION } from '../core/settings.js';
 import { findCustomMatches } from '../core/detect/custom/index.js';
 import { checkRegexSource, validateCustomCategory, CUSTOM_VALIDATORS, SHAPES } from '../core/detect/custom/rules.js';
 import { loadSettings, onSettingsChanged, saveSettingsPatch } from '../shared/settings-store.js';
@@ -1042,7 +1042,13 @@ function dataSection() {
           onclick: () => {
             const s = { ...settings };
             for (const k of NOT_EXPORTED) delete s[k];
-            downloadJson('docx-anonymizer.config.json', { kind: CONFIG_KIND, version: 1, exportedAt: new Date().toISOString(), settings: s });
+            downloadJson('docx-anonymizer.config.json', {
+              kind: CONFIG_KIND,
+              version: 1,
+              schemaVersion: SETTINGS_SCHEMA_VERSION,
+              exportedAt: new Date().toISOString(),
+              settings: s,
+            });
           },
         },
         t('export_config'),

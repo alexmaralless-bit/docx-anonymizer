@@ -6,8 +6,8 @@
 import { CoreError } from '../errors.js';
 import { PACK_MANIFEST, parsePackManifest } from './pack.js';
 import { createWordPiece } from './wordpiece.js';
-import { makeWindows } from './windows.js';
-import { labelsToTags, decodeWord, bridgePunct, mergeBio, joinAdjacent, filterSpans, alignSpans } from './bio.js';
+import { makeWindows, sentenceRanges } from './windows.js';
+import { labelsToTags, decodeWord, bridgePunct, mergeBio, joinAdjacent, filterSpans, alignSpans, dedupeSpans } from './bio.js';
 
 const UPPER_RE = /\p{Lu}/u;
 const decoder = new TextDecoder('utf-8');
@@ -20,6 +20,8 @@ const decoder = new TextDecoder('utf-8');
  * @property {number} [batchSize=8]            окон в одном вызове run
  * @property {boolean} [skipLowercaseWindows=true]  пре-фильтр: окно без единого слова с заглавной буквой не считается (все O)
  * @property {number} [maxLen]                 ограничить maxLen пакета (митигация скорости, NFR-03); больше пакетного нельзя
+ * @property {boolean} [splitSentences=true]  резать поток на предложения перед окнами (windows.js sentenceRanges):
+ *   каждое предложение — свои окна, модель не видит соседних. Замер на склейках eval-ru — docs/contracts.md §6.7
  * @property {string[]} [executionProviders=['wasm']]
  * @property {(p: {windows: number, done: number}) => void} [onProgress]
  */
@@ -35,6 +37,7 @@ export function createOnnxNerProvider({
   batchSize = 8,
   skipLowercaseWindows = true,
   maxLen: maxLenCap,
+  splitSentences = true,
   executionProviders = ['wasm'],
   onProgress,
 }) {
@@ -44,11 +47,17 @@ export function createOnnxNerProvider({
   let session = null;
   /** @type {any} */
   let model = null; // {wp, tags, manifest, maxLen, stride, inputs, output, indexType}
+  /** Поколение: dispose() его увеличивает — загрузка и detect, начатые до dispose, это видят и не трогают null. */
+  let gen = 0;
   /** Счётчики для бенчмарка и тестов (без содержимого документа). */
   const stats = { initMs: 0, windows: 0, skippedWindows: 0, tokens: 0, runMs: 0, runs: 0 };
 
+  /** Ошибка «модель выгружена во время работы»: runner покажет её как NER_FAILED, анализ правилами продолжится. */
+  const disposedError = () => new CoreError('MODEL_LOAD_FAILED', `Модель ${modelId} выгружена во время распознавания`, { modelId, disposed: true });
+
   async function load() {
     const t0 = now();
+    const g = gen;
     try {
       const parsed = parsePackManifest(await files.read(PACK_MANIFEST));
       if (!parsed.ok) throw new Error(`pack.json: ${parsed.error}`);
@@ -82,6 +91,11 @@ export function createOnnxNerProvider({
         await s.release?.();
         throw new Error(`у модели нет выхода ${output}`);
       }
+      if (g !== gen) {
+        // dispose() во время загрузки: сессию не оставляем жить без владельца
+        await s.release?.();
+        throw disposedError();
+      }
       const maxLen = Math.min(tk.maxLen, maxLenCap || tk.maxLen);
       session = s;
       model = {
@@ -103,10 +117,12 @@ export function createOnnxNerProvider({
 
   async function init() {
     if (!loading) {
-      loading = load();
-      // сбой загрузки не кэшируется навсегда: следующий анализ попробует снова (файл могли переустановить)
-      loading.catch(() => {
-        loading = null;
+      const p = load();
+      loading = p;
+      // сбой загрузки не кэшируется навсегда: следующий анализ попробует снова (файл могли переустановить);
+      // загрузку, начатую после dispose, сбой прежней не сбрасывает
+      p.catch(() => {
+        if (loading === p) loading = null;
       });
     }
     return loading;
@@ -117,23 +133,40 @@ export function createOnnxNerProvider({
    * @returns {Promise<import('../contracts/ner.js').NerSpan[]>}
    */
   async function detect(text) {
+    const g = gen;
     await init();
-    const { wp, tags, maxLen, stride } = model;
+    // снимок модели и сессии: dispose() во время detect обнуляет их, а этот вызов доводит или прерывает работу сам
+    const m = model;
+    const sess = session;
+    if (g !== gen || !m || !sess) throw disposedError();
+    const { wp, tags, maxLen, stride } = m;
     const words = wp.pretokenize(text);
     if (!words.length) return [];
     const wordIds = wp.encodeWords(words);
-    const all = makeWindows(wordIds, { maxLen, stride, cls: wp.specials.cls, sep: wp.specials.sep });
+    const wopts = { maxLen, stride, cls: wp.specials.cls, sep: wp.specials.sep };
+    const all = splitSentences
+      ? sentenceRanges(words, text).flatMap(([a, b]) =>
+          makeWindows(wordIds.slice(a, b), wopts).map((w) => ({ ...w, wordFrom: w.wordFrom + a, wordTo: w.wordTo + a })),
+        )
+      : makeWindows(wordIds, wopts);
     const windows = skipLowercaseWindows ? all.filter((w) => hasUpper(words, w)) : all;
     stats.windows += windows.length;
     stats.skippedWindows += all.length - windows.length;
 
     // Лучшее предсказание по словам: из окна, чей центр ближе к слову (края окна видят меньше контекста)
-    const C = model.numLabels;
+    const C = m.numLabels;
     const best = new Float64Array(words.length).fill(Infinity);
     const probs = new Float32Array(words.length * C);
     for (let b = 0; b < windows.length; b += batchSize) {
       const batch = windows.slice(b, b + batchSize);
-      const logits = await runBatch(batch);
+      let logits;
+      try {
+        logits = await runBatch(batch, m, sess);
+      } catch (err) {
+        if (g !== gen) throw disposedError(); // сессию освободили посреди run
+        throw err;
+      }
+      if (g !== gen) throw disposedError();
       const L = Math.max(...batch.map((w) => w.ids.length));
       batch.forEach((w, bi) => {
         const center = (w.wordFrom + w.wordTo - 1) / 2;
@@ -151,18 +184,23 @@ export function createOnnxNerProvider({
     }
 
     // Слова → теги (маргинальные вероятности типов) → мостики через «-», «'», точку инициала → BIO → соседние спаны
-    // одного типа → подрезка краёв → границы по соглашениям каталога (ОПФ и кавычки у ORG, точка инициала у PER)
+    // одного типа → подрезка краёв → границы по соглашениям каталога (ОПФ и кавычки у ORG, точка инициала у PER, без
+    // должности и обращения впереди) → без дубликатов и вложенных спанов
     const preds = words.map((w, i) => {
       const d = best[i] === Infinity ? { tag: 'O', type: null, prob: 1 } : decodeWord(probs.subarray(i * C, i * C + C), tags);
       return { start: w.start, end: w.end, ...d };
     });
-    const spans = joinAdjacent(mergeBio(/** @type {any} */ (bridgePunct(/** @type {any} */ (preds), text)), { withWords: true }), text);
-    return filterSpans(alignSpans(filterSpans(spans, text), text), text);
+    const spans = joinAdjacent(mergeBio(/** @type {any} */ (bridgePunct(/** @type {any} */ (preds), text)), { withWords: true, text }), text);
+    return dedupeSpans(filterSpans(alignSpans(filterSpans(spans, text), text), text), text);
   }
 
-  /** Один вызов модели на батч окон, дополненных [PAD] до самого длинного. @returns {Promise<Float32Array>} [B, L, C] */
-  async function runBatch(batch) {
-    const { inputs, output, indexType, wp } = model;
+  /**
+   * Один вызов модели на батч окон, дополненных [PAD] до самого длинного.
+   * @param {any[]} batch @param {any} m  снимок model @param {any} sess  снимок session
+   * @returns {Promise<Float32Array>} [B, L, C]
+   */
+  async function runBatch(batch, m, sess) {
+    const { inputs, output, indexType, wp } = m;
     const B = batch.length;
     const L = Math.max(...batch.map((w) => w.ids.length));
     const big = indexType === 'int64';
@@ -186,13 +224,13 @@ export function createOnnxNerProvider({
     };
     if (inputs.types) feeds[inputs.types] = new ort.Tensor(indexType, new Arr(B * L), [B, L]);
     const t0 = now();
-    const out = await session.run(feeds);
+    const out = await sess.run(feeds);
     stats.runMs += now() - t0;
     stats.runs++;
     const t = out[output];
     const dims = t.dims;
-    if (dims.length !== 3 || dims[0] !== B || dims[1] !== L || dims[2] !== model.numLabels) {
-      throw new Error(`выход модели [${dims.join(',')}] не совпадает с [${B},${L},${model.numLabels}]`);
+    if (dims.length !== 3 || dims[0] !== B || dims[1] !== L || dims[2] !== m.numLabels) {
+      throw new Error(`выход модели [${dims.join(',')}] не совпадает с [${B},${L},${m.numLabels}]`);
     }
     return /** @type {Float32Array} */ (t.data);
   }
@@ -203,6 +241,7 @@ export function createOnnxNerProvider({
     detect,
     stats,
     dispose() {
+      gen++;
       const s = session;
       session = null;
       model = null;

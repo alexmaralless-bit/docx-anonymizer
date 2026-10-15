@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { defaultSettings, migrateSettings, validateSettingsPatch, effectiveSettings, SETTINGS_SCHEMA_VERSION } from '../../src/core/settings.js';
+import {
+  defaultSettings,
+  migrateSettings,
+  validateSettingsPatch,
+  effectiveSettings,
+  applyMigrations,
+  SETTINGS_SCHEMA_VERSION,
+} from '../../src/core/settings.js';
 import { matchOrigin, isOriginAllowed, isInterceptActive } from '../../src/core/sites.js';
 
 describe('settings', () => {
@@ -36,6 +43,25 @@ describe('settings', () => {
     expect(migrateSettings({ nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.7); // v0 → 1 → 2
     // текущая версия: 0.6 — выбор пользователя, не трогаем
     expect(migrateSettings({ ...defaultSettings(), nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.6);
+  });
+  it('импорт конфигурации (FR-47): файл старой схемы проходит миграции — порог 0.6 из 0.1 → 0.7', async () => {
+    const { parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
+    const file = (extra, settings) => JSON.stringify({ kind: CONFIG_KIND, version: 1, ...extra, settings });
+    // файл 0.1: schemaVersion нет (ни в файле, ни в settings — служебное поле не экспортировалось)
+    expect(parseConfigFile(file({}, { nerThreshold: 0.6, mode: 'mask' })).patch).toEqual({ nerThreshold: 0.7, mode: 'mask' });
+    expect(parseConfigFile(file({ schemaVersion: 1 }, { nerThreshold: 0.6 })).patch).toEqual({ nerThreshold: 0.7 });
+    // не прежний дефолт — выбор пользователя
+    expect(parseConfigFile(file({}, { nerThreshold: 0.55 })).patch).toEqual({ nerThreshold: 0.55 });
+    // файл текущей схемы: 0.6 — выбор пользователя
+    expect(parseConfigFile(file({ schemaVersion: 2 }, { nerThreshold: 0.6 })).patch).toEqual({ nerThreshold: 0.6 });
+    // версия из будущего — без миграций, поля проверяются как обычно
+    expect(parseConfigFile(file({ schemaVersion: 99 }, { nerThreshold: 0.6 })).patch).toEqual({ nerThreshold: 0.6 });
+    // общая функция чистая: вход не меняется, частичный объект остаётся частичным
+    const patch = { nerThreshold: 0.6 };
+    expect(applyMigrations(patch, 1)).toEqual({ nerThreshold: 0.7, schemaVersion: 2 });
+    expect(patch).toEqual({ nerThreshold: 0.6 });
+    expect(applyMigrations({ nerThreshold: 0.6 })).toEqual({ nerThreshold: 0.7, schemaVersion: 2 });
+    expect(applyMigrations({ nerThreshold: 0.6 }, 2)).toEqual({ nerThreshold: 0.6 });
   });
   it('nerModel (WP8): по умолчанию пусто, id пакета проверяется, в профили и экспорт конфига не попадает', async () => {
     expect(defaultSettings().nerModel).toBe('');

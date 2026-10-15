@@ -12,6 +12,7 @@ import { installClient, runPipeline } from './helpers/client.js';
 import { findKnownPack } from '../../src/core/ner/known-packs.js';
 import { bigDocument } from '../../scripts/bench-ner.mjs';
 import { makeDocx, para, run } from '../helpers/docx.js';
+import { captureAllRequests, externalRequests, offscreenRequests } from './helpers/network.js';
 
 const PACK = process.env.NER_PACK ? resolve(process.env.NER_PACK) : '';
 
@@ -29,8 +30,8 @@ test.skip(!PACK, 'нужен NER_PACK — путь к zip-пакету моде�
 
 test('реальный пакет модели: импорт, анализ с NER в воркере, source:ner, без сети, время', async ({ context, extensionId }) => {
   test.setTimeout(180000);
-  const urls = [];
-  context.on('request', (r) => urls.push(r.url()));
+  // все цели браузера: страницы, service worker, offscreen-документ и его воркер (NFR-01, К6; helpers/network.js)
+  const net = await captureAllRequests(context);
   const zip = readFileSync(PACK);
   const sha = createHash('sha256').update(zip).digest('hex');
   const known = findKnownPack(sha);
@@ -78,5 +79,10 @@ test('реальный пакет модели: импорт, анализ с NE
   console.log(`[ner-e2e] 20 страниц (${paras.join(' ').split(/\s+/).length} слов, ${paras.length} абзацев): analyzeFile ${Math.round(big.analyzeMs)} мс`);
   expect(big.analyzeMs).toBeLessThanOrEqual(15000);
 
-  expect(urls.filter((u) => /^https?:/i.test(u))).toEqual([]);
+  const urls = await net.stop();
+  expect(externalRequests(urls), 'NFR-01: http(s)-запросы').toEqual([]);
+  // запись действительно видит воркер offscreen и загрузку wasm ONNX Runtime — иначе проверка выше была бы пустой
+  expect(offscreenRequests(urls)).toEqual(
+    expect.arrayContaining([expect.stringMatching(/\/offscreen\/worker\.js$/), expect.stringMatching(/\/vendor\/ort-wasm-simd-threaded\.wasm$/)]),
+  );
 });

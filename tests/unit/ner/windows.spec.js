@@ -1,6 +1,7 @@
 // WP9: окна NER (core/ner/windows.js) — целые слова, [CLS] … [SEP], перекрытие ровно stride слов, усечение длинного слова.
 import { describe, it, expect } from 'vitest';
-import { makeWindows } from '../../../src/core/ner/windows.js';
+import { makeWindows, sentenceRanges } from '../../../src/core/ner/windows.js';
+import { createWordPiece } from '../../../src/core/ner/wordpiece.js';
 
 const CLS = 2;
 const SEP = 3;
@@ -61,5 +62,34 @@ describe('makeWindows', () => {
 
   it('maxLen < 3 — ошибка', () => {
     expect(() => makeWindows(words([1]), opts(2, 0))).toThrow();
+  });
+});
+
+describe('sentenceRanges', () => {
+  const wp = createWordPiece({
+    vocab: '[PAD]\n[UNK]\n[CLS]\n[SEP]\n',
+    lowercase: false,
+    stripAccents: false,
+    cls: '[CLS]',
+    sep: '[SEP]',
+    pad: '[PAD]',
+    unk: '[UNK]',
+  });
+  const split = (text) => {
+    const words = wp.pretokenize(text);
+    return sentenceRanges(words, text).map(([a, b]) => text.slice(words[a].start, words[b - 1].end));
+  };
+  it('граница — «.», «!», «?» перед словом с заглавной; инициалы и сокращения — не граница', () => {
+    expect(split('Груз принят водителем Аммосовой Антониной. Груз сопровождает Т.Е. Ходенков из г. Омск. Ключи передаются «Арендатору» сразу!')).toEqual([
+      'Груз принят водителем Аммосовой Антониной.',
+      'Груз сопровождает Т.Е. Ходенков из г. Омск.',
+      'Ключи передаются «Арендатору» сразу!',
+    ]);
+    expect(split('Сумма 1.5 млн руб. включает НДС. «Ромашка» платит в срок.')).toEqual(['Сумма 1.5 млн руб. включает НДС.', '«Ромашка» платит в срок.']);
+  });
+  it('короткий обрывок идёт со следующим предложением; перенос строки — граница всегда', () => {
+    expect(split('Добрый день! По поручению Тарасова сообщаю о переносе.')).toEqual(['Добрый день! По поручению Тарасова сообщаю о переносе.']);
+    expect(split('Директор\nИванов Пётр Сергеевич')).toEqual(['Директор', 'Иванов Пётр Сергеевич']);
+    expect(sentenceRanges([], '')).toEqual([]);
   });
 });

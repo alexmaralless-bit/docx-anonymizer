@@ -243,6 +243,60 @@ describe('createOnnxNerProvider: detect', () => {
     expect(Math.max(...calls.run.map((r) => r.L))).toBeLessThanOrEqual(32);
   });
 
+  it('splitSentences (по умолчанию): каждое предложение — свои окна; false — одно окно на поток', async () => {
+    const text = 'Иван Петров подписал договор в Москве. Иван подписал договор в Москве.';
+    const a = fakeOrt();
+    const p = createOnnxNerProvider({ files: packFiles().files, ort: a.ort, modelId: 'm' });
+    const spans = await p.detect(text, { language: 'ru' });
+    expect(p.stats.windows).toBe(2);
+    expect(spans.map((s) => [text.slice(s.start, s.end), s.label])).toEqual([
+      ['Иван Петров', 'PER'],
+      ['Москве', 'LOC'],
+      ['Иван', 'PER'],
+      ['Москве', 'LOC'],
+    ]);
+    const b = fakeOrt();
+    const q = createOnnxNerProvider({ files: packFiles().files, ort: b.ort, modelId: 'm', splitSentences: false });
+    expect(await q.detect(text, { language: 'ru' })).toEqual(spans);
+    expect(q.stats.windows).toBe(1);
+  });
+
+  it('dispose во время detect → CoreError MODEL_LOAD_FAILED, не TypeError; следующий detect загружает заново', async () => {
+    const files = packFiles({ tokenizer: { maxLen: 64, stride: 8 } }).files;
+    const text = Array.from({ length: 400 }, (_, i) => (i % 50 === 7 ? 'Иван' : 'слово')).join(' ');
+    // 1) между батчами: «модель» вызывает dispose на первом run
+    let p;
+    const { ort, calls } = fakeOrt({
+      labelFor: (pos, tok) => {
+        p.dispose();
+        return LABEL_BY_ID[tok] ?? 0;
+      },
+    });
+    p = createOnnxNerProvider({ files, ort, modelId: 'm', batchSize: 2 });
+    const err = await p.detect(text, { language: 'ru' }).catch((e) => e);
+    expect(err).toMatchObject({ name: 'CoreError', code: 'MODEL_LOAD_FAILED' });
+    expect(calls.run).toHaveLength(1);
+    await Promise.resolve();
+    expect(calls.release).toBe(1);
+    // 2) сразу после вызова detect (до окончания init)
+    const b = fakeOrt();
+    const q = createOnnxNerProvider({ files: packFiles().files, ort: b.ort, modelId: 'm' });
+    await q.init();
+    const pending = q.detect('Иван', { language: 'ru' });
+    q.dispose();
+    await expect(pending).rejects.toMatchObject({ code: 'MODEL_LOAD_FAILED' });
+    expect(await q.detect('Иван', { language: 'ru' })).toHaveLength(1);
+    // 3) во время загрузки: сессия освобождается, а не остаётся жить без владельца
+    const c = fakeOrt();
+    const r = createOnnxNerProvider({ files: packFiles().files, ort: c.ort, modelId: 'm' });
+    const loading = r.init();
+    r.dispose();
+    await expect(loading).rejects.toMatchObject({ code: 'MODEL_LOAD_FAILED' });
+    expect(c.calls.release).toBe(1);
+    expect(await r.detect('Иван', { language: 'ru' })).toHaveLength(1);
+    expect(c.calls.create).toBe(2);
+  });
+
   it('dispose освобождает сессию; следующий detect загружает модель заново', async () => {
     const { ort, calls } = fakeOrt();
     const p = createOnnxNerProvider({ files: packFiles().files, ort, modelId: 'm' });

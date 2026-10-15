@@ -1,0 +1,60 @@
+# Configuration of the NER model for DOCX Anonymizer.
+# Any key can be overridden from the command line: --set train.epochs=10 --set run_id=exp1
+id: rubert-tiny2-ner-ruen          # model pack id
+run_id: rubert-tiny2-ner-ruen      # artifacts go to runs/<run_id>/
+version: 1.0.0
+base_model: cointegrated/rubert-tiny2
+seed: 42
+labels: [O, B-PER, I-PER, B-ORG, I-ORG, B-LOC, I-LOC]
+
+data:
+  dataset: unimelb-nlp/wikiann
+  configs: [ru, en]
+  max_length: 128
+  oversample: {ru: 1, en: 1}   # repeat the train split of a language N times
+  synth:
+    enabled: true       # contract-style synthetic sentences (synth.py); see README
+    ratio: 0.1          # share of synthetic sentences relative to the WikiANN train size (<= 0.2)
+    seed: 7
+
+train:
+  learning_rate: 2.0e-4   # 5e-5 (spec default) gave ORG 0.708; see README
+  batch_size: 32
+  epochs: 15
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  label_smoothing: 0.0
+  fp16: true            # used only when CUDA is available
+  num_workers: 2
+
+export:
+  opset: 17
+
+quantize:
+  max_size_mb: 40
+
+verify:
+  sentences: 50
+  min_agreement: 0.99
+
+calibrate:
+  score: marginal     # marginal = P(B-X)+P(I-X) averaged over words (JS provider); argmax = P(predicted label)
+  grid_start: 0.30
+  grid_stop: 0.95
+  grid_step: 0.05
+
+gates:
+  ru_per_f1: 0.85
+  ru_org_f1: 0.75
+  en_per_f1: 0.80     # informational
+
+# Optional knowledge distillation (teacher.py, then train.py uses the teacher's soft labels)
+distill:
+  enabled: true
+  teacher: FacebookAI/xlm-roberta-base   # MIT; used only to produce soft labels, not distributed
+  teacher_license: MIT
+  teacher_lr: 3.0e-5
+  teacher_epochs: 3
+  teacher_batch: 32
+  temperature: 2.0
+  alpha: 0.3          # weight of the hard-label cross-entropy; (1 - alpha) for the KL term

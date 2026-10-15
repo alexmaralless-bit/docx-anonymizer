@@ -1,7 +1,16 @@
 // Разбор меток модели NER и слияние BIO в спаны (WP9, ТЗ §5.2 NLP). Метка слова — по его первому субтокену;
 // score спана — средняя вероятность его слов; спаны без букв и короче 2 символов отбрасываются.
 // Границы спанов приводятся к соглашениям каталога (FR-18): COMPANY — с ОПФ и кавычками, PERSON — с точкой инициала.
-import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, ROLE_WORDS, POSITION_RE_SRC, isStopWord, lowerE } from '../detect/names/lexicon.js';
+import {
+  PREFIX_FORMS,
+  FULL_FORMS_RE_SRC,
+  SUFFIX_FORMS_RE_SRC,
+  ROLE_WORDS,
+  POSITION_RE_SRC,
+  COMMON_NOUNS,
+  isStopWord,
+  lowerE,
+} from '../detect/names/lexicon.js';
 
 /** Тип сущности по имени метки модели; прочие (MISC и т.п.) — вне контракта NerSpan, считаются O. */
 const TYPE_ALIASES = Object.freeze({
@@ -222,6 +231,19 @@ export function filterSpans(spans, text) {
         changed = true;
       }
     }
+    // колонтитулы и заголовки: «Стр. 1», «Лист 2», «Раздел 3. Порядок расчётов» — не ORG/LOC; название с ОПФ или
+    // в кавычках после номера остаётся («Приложение № 2 ООО «Ромашка»» → «ООО «Ромашка»»)
+    if (sp.label !== 'PER') {
+      // «§» — знак, подрезка краёв его сняла: «§ 3. Предмет договора» проверяется целиком
+      const para = /§\s*$/u.exec(text.slice(Math.max(0, start - 3), start));
+      const from = para ? start - para[0].length : start;
+      const cut = structuralCut(text.slice(from, end), text.slice(end, end + 16));
+      if (cut >= 0) {
+        const org = sp.label === 'ORG' ? orgStart(text.slice(from + cut, end)) : -1;
+        if (org < 0) continue;
+        start = from + cut + org;
+      }
+    }
     const value = text.slice(start, end);
     if (value.length < 2 || !LETTER_RE.test(value)) continue;
     // имена, названия и топонимы пишутся с заглавной: «в примечании» — не LOC
@@ -232,6 +254,70 @@ export function filterSpans(spans, text) {
     out.push({ ...sp, start, end });
   }
   return out;
+}
+
+/**
+ * Структурные слова колонтитулов и заголовков (нижний регистр, «ё» → «е»): за ними идёт номер страницы, раздела,
+ * приложения. Русские — с падежными формами («согласно Приложению № 2», «в Разделе 3»).
+ */
+// prettier-ignore
+export const STRUCT_WORDS = new Set([
+  'стр', 'страница', 'страницы', 'странице', 'страницу', 'лист', 'листа', 'листе', 'раздел', 'раздела', 'разделу', 'разделом', 'разделе',
+  'статья', 'статьи', 'статье', 'статью', 'статьей', 'ст', 'глава', 'главы', 'главе', 'главу', 'главой', 'пункт', 'пункта', 'пункту',
+  'пунктом', 'пункте', 'п', 'подпункт', 'подпункта', 'подпункту', 'подпунктом', 'подпункте', 'пп', 'приложение', 'приложения',
+  'приложению', 'приложением', 'приложении', 'таблица', 'таблицы', 'таблице', 'таблицу', 'таблицей', 'табл', 'рис', 'рисунок', 'рисунка',
+  'рисунке', 'схема', 'схемы', 'схеме', 'форма', 'формы', 'форме', 'форму', 'часть', 'части', 'частью', 'том', 'тома', 'томе', 'книга',
+  'книги', 'книге', 'параграф', 'параграфа', 'параграфе', '§',
+  'page', 'sheet', 'section', 'article', 'chapter', 'clause', 'item', 'appendix', 'annex', 'schedule', 'exhibit', 'table', 'figure',
+  'fig', 'part', 'volume',
+].map(lowerE));
+
+/** Первое слово (или «§») с необязательной точкой и пробелами после. */
+const STRUCT_HEAD_RE = /^(§|\p{L}+)\.?\s*/u;
+/** Номер: «№ 2», «3», «4.1», «12/2025», «3а», римский «IV»; дальше не буква и не цифра. */
+const STRUCT_NUM_RE = /^(?:№\s*)?(?:\d[\d./-]*(?:\p{Ll}(?!\p{L}))?|[IVXLCDM]+)(?![\p{L}\p{N}])/u;
+/** Разделители между номером и заголовком: «Раздел 3. Порядок расчётов», «Статья 5 — Ответственность». */
+const STRUCT_GAP_RE = /^[\s.:;,—–-]*/u;
+/** Одно слово с заглавной и номер: «Лист 2», «Ромашка 2». */
+const WORD_NUM_RE = /^(\p{Lu}[\p{L}-]*)\.?\s+(?:№\s*)?\d[\d./-]*$/u;
+
+/**
+ * Спан начинается со структурного слова и номера («Стр. 1», «Раздел 3. Порядок расчётов», «Section IV») или это
+ * одно нарицательное слово с номером («Ромашка 2» — `COMMON_NOUNS` WP2). Спан из одного структурного слова — тоже,
+ * если номер идёт сразу за ним в тексте (`after`: модель отдала ORG только «Лист» в «Лист 2 из 3»). Возвращает
+ * смещение остатка после номера и разделителей (длина value — остатка нет); −1 — спан не структурный.
+ * @param {string} value
+ * @param {string} [after]  текст сразу за спаном
+ */
+export function structuralCut(value, after = '') {
+  const head = STRUCT_HEAD_RE.exec(value);
+  if (head && STRUCT_WORDS.has(lowerE(head[1]))) {
+    if (head[0].length === value.length) {
+      return STRUCT_NUM_RE.test(after.replace(/^\.?\s*/u, '')) && /^[.\s]/u.test(after) ? value.length : -1;
+    }
+    const num = STRUCT_NUM_RE.exec(value.slice(head[0].length));
+    if (num) {
+      const at = head[0].length + num[0].length;
+      return at + STRUCT_GAP_RE.exec(value.slice(at))[0].length;
+    }
+  }
+  const wn = WORD_NUM_RE.exec(value);
+  if (wn && COMMON_NOUNS.has(lowerE(wn[1]))) return value.length;
+  return -1;
+}
+
+/**
+ * Начало названия организации в остатке после номера: ОПФ («ООО «Ромашка»», в т.ч. после слов заголовка — «Реквизиты
+ * ООО «Ромашка»»), кавычки или латинская ОПФ после названия («Acme Ltd.»). −1 — признаков названия нет.
+ * @param {string} rest
+ */
+function orgStart(rest) {
+  if (!LETTER_RE.test(rest)) return -1;
+  if (OPEN_QUOTES.has(rest[0]) || OPF_LEAD_SHORT_RE.test(rest) || OPF_LEAD_FULL_RE.test(rest)) return 0;
+  const opf = OPF_INNER_RE.exec(rest);
+  if (opf) return opf.index + opf[0].length - opf[1].length;
+  for (let i = 0; i < rest.length; i++) if (OPEN_QUOTES.has(rest[i])) return i;
+  return SUFFIX_ANY_RE.test(rest) ? 0 : -1;
 }
 
 /**
@@ -275,6 +361,10 @@ const PREFIX_SHORT_RE = new RegExp(`(?:^|[\\s(,;:—–-])(${PREFIX_FORMS.join('
 const PREFIX_FULL_RE = new RegExp(`(?:^|[\\s(,;:—–-])(${FULL_FORMS_RE_SRC})\\s+$`, 'iu');
 const OPF_SHORT_ONLY_RE = new RegExp(`^(?:${PREFIX_FORMS.join('|')})$`, 'u');
 const OPF_FULL_ONLY_RE = new RegExp(`^(?:${FULL_FORMS_RE_SRC})$`, 'iu');
+const OPF_LEAD_SHORT_RE = new RegExp(`^(?:${PREFIX_FORMS.join('|')})\\s`, 'u');
+const OPF_LEAD_FULL_RE = new RegExp(`^(?:${FULL_FORMS_RE_SRC})\\s`, 'iu');
+const OPF_INNER_RE = new RegExp(`\\s((?:${PREFIX_FORMS.join('|')})\\s)`, 'u');
+const SUFFIX_ANY_RE = new RegExp(`[\\s,](?:${SUFFIX_FORMS_RE_SRC})(?![\\p{L}\\p{N}])`, 'u');
 const SUFFIX_RE = new RegExp(`^,?\\s(?:${SUFFIX_FORMS_RE_SRC})(?![\\p{L}\\p{N}])`, 'u');
 const TITLE_RE = /^(?:Mr|Mrs|Ms|Miss|Dr|Prof|Sir|Mme|Herr|Frau|г-н|г-жа|господин|госпожа)\.?\s+/iu;
 const OPEN_QUOTES = new Set(['«', '„', '“', '"']);

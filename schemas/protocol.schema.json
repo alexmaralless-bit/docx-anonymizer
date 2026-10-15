@@ -17,6 +17,7 @@
     { "$ref": "#/$defs/BATCH_BEGIN" },
     { "$ref": "#/$defs/BATCH_END" },
     { "$ref": "#/$defs/CATALOG_CHANGED" },
+    { "$ref": "#/$defs/MODEL_CHANGED" },
     { "$ref": "#/$defs/PROGRESS" },
     { "$ref": "#/$defs/ENTITIES" },
     { "$ref": "#/$defs/TEXT" },
@@ -159,6 +160,16 @@
       "type": "object",
       "required": ["type", "requestId"],
       "properties": { "type": { "const": "CATALOG_CHANGED" }, "requestId": { "$ref": "#/$defs/requestId" } }
+    },
+    "MODEL_CHANGED": {
+      "type": "object",
+      "description": "Пакет модели NER установлен или удалён (WP8): хост сбрасывает кэш провайдера. Ответ — ACK.",
+      "required": ["type", "requestId"],
+      "properties": {
+        "type": { "const": "MODEL_CHANGED" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "modelId": { "type": "string", "pattern": "^([a-z0-9][a-z0-9-]{1,40})?$" }
+      }
     },
 
     "PROGRESS": {

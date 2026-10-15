@@ -32,7 +32,7 @@ function render(lang) {
         ),
         h('section', { class: 'card', dataset: { testid: 'help-what' } }, h('h2', {}, t('what_h')), h('p', {}, t('what_p1')), h('p', {}, t('what_p2'))),
         h('section', { class: 'card', dataset: { testid: 'help-how' } }, h('h2', {}, t('how_h')), list('ol', t, 'how', 4)),
-        h('section', { class: 'card', dataset: { testid: 'help-privacy' } }, h('h2', {}, t('privacy_h')), list('ul', t, 'privacy', 3)),
+        h('section', { class: 'card', dataset: { testid: 'help-privacy' } }, h('h2', {}, t('privacy_h')), list('ul', t, 'privacy', 4)),
         h('section', { class: 'card', dataset: { testid: 'help-check' } }, h('h2', {}, t('check_h')), list('ul', t, 'check', 4)),
         h(
           'div',

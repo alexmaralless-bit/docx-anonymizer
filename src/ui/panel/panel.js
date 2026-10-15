@@ -227,7 +227,13 @@ export class Panel {
     const warns = [];
     if (d.restored) warns.push(h('div', { class: 'note', text: this.t('restored'), 'data-testid': 'restored-note' }));
     for (const w of d.warnings || []) {
-      const text = w.code === 'EMBEDDED_NOT_PROCESSED' ? this.t('warnEmbedded', { n: w.count ?? 0 }) : this.t('warnGeneric', { code: w.code });
+      const reason = w.details?.reason === 'MODEL_LOAD_FAILED' ? 'MODEL_LOAD_FAILED' : 'INFERENCE_FAILED';
+      const text =
+        w.code === 'EMBEDDED_NOT_PROCESSED'
+          ? this.t('warnEmbedded', { n: w.count ?? 0 })
+          : w.code === 'NER_FAILED' // WP8: сбой модели NER не мешает результату правил (NFR-13)
+            ? this.t('warnNer', { reason: this.t(`nerReason_${reason}`) })
+            : this.t('warnGeneric', { code: w.code });
       warns.push(h('div', { class: 'warn', text }));
     }
     if (warns.length) f.view.append(h('div', { class: 'warns' }, ...warns));

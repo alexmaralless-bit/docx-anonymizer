@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docx-anonymizer.local/schemas/model-pack.schema.json",
+  "title": "Манифест пакета модели NER — pack.json (WP8, ТЗ §5.2 NLP)",
+  "description": "Плоский zip docx-anonymizer-ner-<id>-<version>.zip: pack.json + файлы из files. Каждая запись zip, кроме pack.json, перечислена в files, и наоборот; model.file и tokenizer.vocab входят в files; tokenizer.stride < tokenizer.maxLen / 2 (проверяется кодом: src/core/ner/pack.js). models-src/<id>/pack.src.json — тот же объект без files.",
+  "type": "object",
+  "required": [
+    "kind",
+    "schemaVersion",
+    "id",
+    "version",
+    "name",
+    "languages",
+    "task",
+    "labels",
+    "tokenizer",
+    "model",
+    "files",
+    "license",
+    "source",
+    "minExtensionVersion"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "const": "docx-anonymizer-model-pack" },
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+    "version": { "$ref": "#/$defs/semver" },
+    "name": {
+      "type": "object",
+      "required": ["ru", "en"],
+      "additionalProperties": false,
+      "properties": { "ru": { "type": "string", "minLength": 1, "maxLength": 100 }, "en": { "type": "string", "minLength": 1, "maxLength": 100 } }
+    },
+    "languages": { "type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z]{2}$" } },
+    "task": { "const": "token-classification" },
+    "labels": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "prefixItems": [{ "const": "O" }],
+      "items": { "type": "string", "pattern": "^(O|[BI]-[A-Z][A-Z0-9_]*)$" }
+    },
+    "tokenizer": {
+      "type": "object",
+      "required": ["type", "vocab", "lowercase", "stripAccents", "maxLen", "stride", "cls", "sep", "pad", "unk"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "wordpiece" },
+        "vocab": { "$ref": "#/$defs/path" },
+        "lowercase": { "type": "boolean" },
+        "stripAccents": { "type": "boolean" },
+        "maxLen": { "type": "integer", "minimum": 64, "maximum": 512 },
+        "stride": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "cls": { "$ref": "#/$defs/token" },
+        "sep": { "$ref": "#/$defs/token" },
+        "pad": { "$ref": "#/$defs/token" },
+        "unk": { "$ref": "#/$defs/token" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["file", "inputs", "output", "indexType"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "$ref": "#/$defs/path" },
+        "inputs": {
+          "type": "object",
+          "required": ["ids", "mask"],
+          "additionalProperties": false,
+          "properties": { "ids": { "$ref": "#/$defs/tensorName" }, "mask": { "$ref": "#/$defs/tensorName" }, "types": { "$ref": "#/$defs/tensorName" } }
+        },
+        "output": { "$ref": "#/$defs/tensorName" },
+        "indexType": { "enum": ["int64", "int32"] }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "$ref": "#/$defs/path" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "license": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "source": {
+      "type": "object",
+      "description": "Происхождение: базовая модель, датасеты, дата обучения. Значения — строки, числа, логические или массивы строк (≤ 32 ключей).",
+      "additionalProperties": { "type": ["string", "number", "boolean", "array"], "items": { "type": "string" } }
+    },
+    "minExtensionVersion": { "$ref": "#/$defs/semver" },
+    "recommendedThreshold": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$" },
+    "path": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
+      "description": "Плоское имя файла: без '/', без '..' и скрытых файлов; не pack.json."
+    },
+    "token": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "tensorName": { "type": "string", "minLength": 1, "maxLength": 64 }
+  }
+}

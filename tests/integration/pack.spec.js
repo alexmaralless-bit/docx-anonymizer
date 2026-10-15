@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { packRelease, FIXED_TIME } from '../../scripts/pack.mjs';
+import RU_SURNAMES from '../../src/core/detect/names/dict/ru-surnames.js';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 let out;
@@ -55,6 +56,38 @@ describe('архив релиза', () => {
     expect(m).not.toHaveProperty('content_scripts');
     expect(m.optional_host_permissions).toEqual(['<all_urls>']);
     expect(m.permissions).toEqual(expect.arrayContaining(['scripting', 'activeTab']));
+  });
+
+  it('модель NER (WP8): unlimitedStorage, wasm ORT в vendor/, worker — ES-модуль; worker.js без ORT ≤ 700 КБ (К15)', () => {
+    const m = JSON.parse(strFromU8(zip['manifest.json']));
+    expect(m.permissions).toContain('unlimitedStorage');
+    const wasm = zip['vendor/ort-wasm-simd-threaded.wasm'];
+    expect(wasm, 'vendor/ort-wasm-simd-threaded.wasm').toBeDefined();
+    expect([...wasm.slice(0, 4)]).toEqual([0x00, 0x61, 0x73, 0x6d]); // \0asm
+    expect(zip['vendor/onnxruntime-web.LICENSE']).toBeDefined();
+    expect(strFromU8(zip['offscreen/offscreen.js'])).toMatch(/new Worker\("worker\.js", \{ type: "module" \}\)/);
+    const worker = strFromU8(zip['offscreen/worker.js']);
+    expect(worker).toMatch(/^export\s|\nexport\s|import\.meta\.url/); // ESM-сборка: import.meta доступен
+    expect(worker).not.toMatch(/^(?:(?:var|const|let)\s+\S+\s*=\s*)?require\(/m); // нет top-level require
+    // Размер без ORT: секции бандла esbuild помечены комментариями «// <путь модуля>»
+    const sections = worker.split(/\n(?=\/\/ (?:node_modules|src)\/)/);
+    const ortBytes = sections.filter((s) => s.startsWith('// node_modules/onnxruntime-web/')).reduce((n, s) => n + Buffer.byteLength(s), 0);
+    const total = zip['offscreen/worker.js'].length;
+    expect(ortBytes, 'ORT встроен в worker.js (bundle-вариант, glue без внешнего .mjs)').toBeGreaterThan(50 * 1024);
+    expect(total - ortBytes).toBeLessThanOrEqual(700 * 1024);
+    expect(Object.keys(zip).filter((n) => /ort-wasm.*\.mjs$/.test(n))).toEqual([]);
+  });
+
+  it('словари ФИО (WP7) только в offscreen/worker.js; content.js < 150 КБ и без словарей (К15)', () => {
+    // маркер — первые 24 символа упакованной строки фамилий (в бандле перевод строки может стать escape-последовательностью)
+    const marker = RU_SURNAMES.slice(0, 24);
+    const has = (code) => code.includes(marker) || code.includes(marker.replace(/\n/g, '\\n'));
+    const content = strFromU8(zip['content.js']);
+    expect(zip['content.js'].length).toBeLessThan(150 * 1024);
+    expect(has(content)).toBe(false);
+    expect(has(strFromU8(zip['offscreen/worker.js']))).toBe(true);
+    for (const f of ['background.js', 'popup/popup.js', 'options/options.js', 'restore/restore.js', 'help/help.js'])
+      expect(has(strFromU8(zip[f])), f).toBe(false);
   });
 
   it('иконки — PNG ожидаемых размеров', () => {

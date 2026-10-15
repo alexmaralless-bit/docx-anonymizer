@@ -6,3 +6,9 @@ test-output/
 .env
 .env.*
 release/
+# Модель NER: исходники пакета и артефакты обучения в git не попадают (WP8/WP9); пакет — в GitHub Releases
+models-src/
+tools/ner-train/runs/
+tools/ner-train/.venv/
+tools/ner-train/.cache/
+*.onnx

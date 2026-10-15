@@ -469,3 +469,13 @@ mark.hit {
   background: none;
   color: var(--accent);
 }
+/* WP8: статус пакета модели NER */
+.ner-status {
+  font-weight: 500;
+}
+.ner-verified {
+  color: var(--ok);
+}
+.ner-unverified {
+  color: var(--danger);
+}

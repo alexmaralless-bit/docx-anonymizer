@@ -123,22 +123,26 @@ export async function analyze(doc, settings, opts = {}) {
     }
   }
 
-  // 3. NER (в MVP — заглушка); сбой не прерывает анализ (NFR-13)
+  // 3. NER (§5.2 NLP): провайдер — из пакета модели (WP8/WP9); сбой не прерывает анализ (NFR-13).
+  // Ошибка загрузки модели (CoreError MODEL_LOAD_FAILED) не уходит клиенту как ERROR — только как причина предупреждения.
   if (settings.nerEnabled && opts.nerProvider) {
     progress('ner', 0);
     try {
       await opts.nerProvider.init();
-      for (const s of doc.streams) {
-        if (s.type !== 'live') continue;
+      const live = doc.streams.filter((s) => s.type === 'live');
+      for (let i = 0; i < live.length; i++) {
+        const s = live[i];
         const spans = await opts.nerProvider.detect(s.text, { language });
         for (const sp of spans) {
           if (sp.score < (settings.nerThreshold ?? 0.6)) continue;
           const cat = NER_LABEL_TO_CATEGORY[sp.label];
           if (cat) accept({ start: sp.start, end: sp.end, confidence: 'ner', source: 'ner', score: sp.score }, cat, s, 'ner');
         }
+        if (i % 50 === 49) progress('ner', Math.round(((i + 1) / live.length) * 100));
       }
     } catch (err) {
-      warnings.push({ code: 'NER_FAILED' });
+      const reason = /** @type {any} */ (err)?.code === 'MODEL_LOAD_FAILED' ? 'MODEL_LOAD_FAILED' : 'INFERENCE_FAILED';
+      warnings.push({ code: 'NER_FAILED', details: { reason } });
     }
     progress('ner', 100);
   }

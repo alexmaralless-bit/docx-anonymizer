@@ -8,7 +8,8 @@ popup / content / options / restore ──port "docx"──► background (route
         (клиенты протокола §5.4)                    добавляет settings                          (мост)                 host.js → core/
 ```
 
-Сборка: esbuild, все бандлы — **IIFE** (content script и classic worker не умеют ESM). Точки входа — `scripts/build.mjs`.
+Сборка: esbuild, бандлы — **IIFE** (content script и classic worker не умеют ESM), кроме `offscreen/worker.js`: с 0.2 (WP8) это
+**ES-модуль** (отдельный вызов esbuild `format: 'esm'`, `new Worker('worker.js', {type: 'module'})`) — его требует `onnxruntime-web`. Точки входа — `scripts/build.mjs`.
 
 ---
 
@@ -36,6 +37,10 @@ popup / content / options / restore ──port "docx"──► background (route
 | `src/background/` | роутер портов, жизненный цикл offscreen, миграция настроек | готово; `badge.js` — WP3 |
 | `src/core/validators.js`, `detect/identifiers/` | валидаторы и детекторы идентификаторов | **WP1** (сейчас — временный EMAIL) |
 | `src/core/detect/names/` | PERSON/COMPANY/ADDRESS + KB | **WP2** |
+| `src/core/detect/names/person-dict.js`, `names/dict/` | словарный детектор ФИО третьих лиц, словари (генерирует `scripts/make-dicts.mjs`) | 0.2, WP7 |
+| `src/core/hash.js` | `sha256Hex` (WebCrypto; `shared/protocol.js` реэкспортирует) | 0.2, WP8 |
+| `src/core/ner/pack.js`, `known-packs.js`, `pending-provider.js` | формат пакета модели NER: `parsePackManifest`, `verifyPackFiles`, `packZipName`; список проверенных пакетов; временный провайдер (до WP9) | 0.2, WP8 (§6) |
+| `src/shared/model-store.js` | хранилище пакетов модели в OPFS: импорт, проверка, чтение из воркера, удаление | 0.2, WP8 (§6) |
 | `src/content/`, `src/ui/`, `src/popup/` | перехват, панель, popup | **WP3** |
 | `src/options/`, `src/restore/`, `src/core/detect/custom/` | настройки, свои категории, восстановление | **WP4** |
 
@@ -133,7 +138,17 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 
 ### NER (`core/contracts/ner.js`)
 `NerProvider = {name, init(): Promise, detect(text, {language}): Promise<{start,end,label:'PER'|'ORG'|'LOC',score}[]>}`.
-В MVP — `NoopNerProvider`. Сбой провайдера → предупреждение `NER_FAILED`, анализ продолжается (NFR-13).
+`dispose?()` (0.2, WP8) — освободить модель; хост зовёт при `MODEL_CHANGED` и смене `nerModel`. `init()` вызывается на каждый анализ и кэширует модель сам.
+Провайдер создаёт фабрика хоста `env.createNerProvider(settings)` (§6.4); без модели (`nerModel: ''`), с `nerEnabled: false` или без фабрики провайдера нет и этапа `ner` нет.
+Сбой провайдера → предупреждение `NER_FAILED {details: {reason}}`, анализ продолжается (NFR-13): `reason = 'MODEL_LOAD_FAILED'`, если `init()`/`detect()` бросили ошибку с `code === 'MODEL_LOAD_FAILED'` (`CoreError`), иначе `'INFERENCE_FAILED'`.
+**`MODEL_LOAD_FAILED` никогда не уходит клиенту как `ERROR`** — только как `NER_FAILED.details.reason`. Панель показывает `warnNer` с причиной.
+
+### Словарный детектор ФИО (0.2, WP7 — ступень 1 NER)
+Работает внутри документного детектора `kb` (`names/kb.js`), не зависит от `nerEnabled` и модели; выключается настройкой `dictNames: false`.
+- `findPersonsByDict(text, {toks?, skip?}) → PersonSpan[]` (`names/person-dict.js`): пары «Имя Фамилия»/«Фамилия Имя» (`parse.kind: 'pair'`), «Имя Отчество» (`'fm'`), латиница; `span.dict = true`, `parse.lemma = {surname?, first, patronymic?, gender}`. Спаны правил (`findPersons`) передаются в `skip` — словарь их не пересекает.
+- Вхождения словаря выдаются с `confidence: 'kb'`, `source: 'kb'` (проигрывают `labeled`/`validated` других категорий по FR-20) и **не делают лицо стороной** (`party: false`).
+- Записи базы лиц: `kind ∈ full | pair | initials | fm | other`. `fm` — «Имя Отчество» без фамилии: присоединяется к единственной записи с такими именем и отчеством (`full`), иначе своя запись с canonical `имя отчество`. `hits` — число присоединённых вхождений; записи (кроме `other`/`fm`) с `hits ≥ 2` ищутся по документу в двух- и трёхсловных формах, одиночная фамилия — только для сторон.
+- Словари (`names/dict/index.js`, ленивое декодирование при первом вызове): `getDicts()`, `bigFirstNameInfo(word)`, `surnameLemmas(word)`, `surnameSuffixInfo(word)`, `isEnFirst`, `isEnSurname`. Модули словарей — генерируемые (`npm run dicts`), вручную не правятся; попадают только в `offscreen/worker.js` (К15).
 
 ---
 
@@ -144,6 +159,8 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 - `isCategoryEnabled(cat, settings)` — `settings.categories[id] ?? defaultOn`.
 - Настройки: `defaultSettings()`, `migrateSettings(stored) → {settings, changed}` (миграции — `MIGRATIONS[n]` + `SETTINGS_SCHEMA_VERSION`),
   `validateSettingsPatch(patch) → badKeys[]`, `VALIDATORS[key]`, `effectiveSettings(settings, profileId)`.
+- `dictNames` (boolean, по умолчанию `true`, поле профиля) — словарный детектор ФИО (WP7); тумблер в настройках, раздел «Обработка».
+- `nerModel` (string, по умолчанию `''`; иначе id пакета `/^[a-z0-9][a-z0-9-]{1,40}$/`) — установленный пакет модели NER (WP8). Не поле профиля, **не экспортируется** в файл настроек (`NOT_EXPORTED` в `options/config-io.js`): пакет живёт в OPFS этого браузера. Пишет только карточка «Модель NER».
 - Хранилище — **только** через `src/shared/settings-store.js`: `loadSettings()`, `saveSettingsPatch(patch) → {settings, rejected}`, `onSettingsChanged(cb)`.
 - Сайты: `matchOrigin`, `isOriginAllowed`, `isInterceptActive(settings, origin)` (FR-07, FR-35).
 
@@ -152,7 +169,8 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 ## 4. Протокол (`src/shared/protocol.js`)
 
 - Порт: `chrome.runtime.connect({name: 'docx'})` → `connectClient()` из `src/shared/port-client.js` возвращает клиента.
-- Все сообщения `{type, requestId, ...}`; типы — `MSG.*` (§5.4) + расширение `ACK` (ответ на `DISCARD`, `CANCEL`, `BATCH_BEGIN/END`, `CATALOG_CHANGED`).
+- Все сообщения `{type, requestId, ...}`; типы — `MSG.*` (§5.4) + расширение `ACK` (ответ на `DISCARD`, `CANCEL`, `BATCH_BEGIN/END`, `CATALOG_CHANGED`, `MODEL_CHANGED`).
+- `MODEL_CHANGED {modelId?}` (0.2, WP8): клиент (страница настроек) → bg → offscreen → worker; хост сбрасывает кэш NER-провайдера (`dispose()`), ответ `ACK`. Router не добавляет `settings`; если offscreen-документа нет — отвечает `ACK` сам, не поднимая его.
 - Файлы — чанками base64 по `CHUNK_CHARS` = 4 МиБ символов (кратно 4): `FILE_BEGIN {name, size, chunks, sha256?, origin?}` → `FILE_CHUNK {index, data}`… → `ANALYZE {settingsOverride?, batchId?}`.
   Ответ — `PROGRESS {stage, percent}`… и `ENTITIES`. Результат — `RESULT_BEGIN {name, size, chunks, docId}` → `RESULT_CHUNK`… → `RESULT_END {docId, mapping, stats}`.
 - Клиент:
@@ -177,7 +195,7 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 
 ## 4а. Доступ к сайтам (версия 0.2, К9)
 
-В манифесте нет `host_permissions` и `content_scripts`: `permissions` = `storage, offscreen, scripting, activeTab`, `optional_host_permissions: ["<all_urls>"]`.
+В манифесте нет `host_permissions` и `content_scripts`: `permissions` = `storage, unlimitedStorage, offscreen, scripting, activeTab` (`unlimitedStorage` — для пакета модели в OPFS, §6), `optional_host_permissions: ["<all_urls>"]`.
 Доступ к сайту выдаёт пользователь; **источник истины — `chrome.permissions`**, настройки (allowlist/blocklist) лишь решают, работать ли на сайте с доступом.
 
 `src/shared/permissions.js` (чистые функции + обёртки с параметром `api = chrome` для тестов):
@@ -213,4 +231,99 @@ UI: popup — `siteState(settings, url, {granted})` даёт `needsAccess` (на
 8. Блок «Проверка конвейера (dev)» в popup используется `tests/e2e/pipeline.spec.js`: id `#dev-file`, `data-testid` `dev-status`, `vt-length`, `entity-count`, `result-size` сохраняются (можно спрятать в `<details>`), пока WP5 не заменит этот e2e.
 9. Образец — `scripts/make-sample.mjs` (`buildSampleDocx() → {bytes, gold}`); `gold` — все чувствительные значения для проверок утечек.
 10. Snap-LibreOffice не видит скрытые каталоги и `/tmp`: интеграционный тест пишет в `test-output/` в репозитории; `SKIP_LIBREOFFICE=1` — пропустить.
-11. Сборка: новые точки входа добавляются в `entries` в `scripts/build.mjs`; HTML подключает бандлы обычным `<script src>`.
+11. Сборка: новые точки входа добавляются в `entries` в `scripts/build.mjs`; HTML подключает бандлы обычным `<script src>`. Исключение — `offscreen/worker.js`: отдельный ESM-вызов esbuild (§6.5); в него не добавлять код, который рассчитывает на IIFE-обёртку.
+12. Воркер ядра — модульный: в нём нет `importScripts`, а `import.meta.url` есть. `chrome.runtime.getURL` в воркере нет — пути к ресурсам расширения строятся от `import.meta.url`/`self.location`.
+
+---
+
+## 6. Пакет модели NER (версия 0.2, WP8)
+
+Модель не входит в архив расширения: пользователь скачивает zip-пакет (GitHub Releases), импортирует на странице настроек, расширение проверяет
+хеши и кладёт файлы в OPFS. Сетевых запросов из расширения нет (NFR-01, К6).
+
+### 6.1. Формат пакета
+
+Плоский zip `docx-anonymizer-ner-<id>-<version>.zip` (`packZipName(manifest)`): `pack.json` + файлы (`model.onnx`, `vocab.txt`, `config.json`, `LICENSE`, `NOTICE`).
+Схема `pack.json` — `schemas/model-pack.schema.json` (draft 2020-12, `additionalProperties: false`); код проверки — `core/ner/pack.js` (зеркалит схему и добавляет связи между полями).
+
+```jsonc
+{
+  "kind": "docx-anonymizer-model-pack", "schemaVersion": 1,
+  "id": "rubert-tiny2-ner-ruen",          // /^[a-z0-9][a-z0-9-]{1,40}$/
+  "version": "1.0.0",                      // semver
+  "name": { "ru": "…", "en": "…" }, "languages": ["ru", "en"],
+  "task": "token-classification",
+  "labels": ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"],   // labels[0] === 'O', далее O|B-X|I-X
+  "tokenizer": { "type": "wordpiece", "vocab": "vocab.txt", "lowercase": false, "stripAccents": false,
+                 "maxLen": 128 /* 64..512 */, "stride": 16 /* < maxLen/2 */, "cls": "[CLS]", "sep": "[SEP]", "pad": "[PAD]", "unk": "[UNK]" },
+  "model": { "file": "model.onnx", "inputs": { "ids": "input_ids", "mask": "attention_mask", "types": "token_type_ids" /* необяз. */ },
+             "output": "logits", "indexType": "int64" /* | int32 */ },
+  "files": [{ "path": "model.onnx", "sha256": "<hex64>", "size": 31852495 }, …],  // ВСЕ записи zip, кроме pack.json
+  "license": "MIT", "source": { "baseModel": "…", "data": ["…"] },  // source: строки/числа/логические/массивы строк
+  "minExtensionVersion": "0.2.0",
+  "recommendedThreshold": 0.7               // необязательно
+}
+```
+
+Правила: имя файла — `/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/` (без `/`, `..`, скрытых файлов; `LICENSE`/`NOTICE` — заглавными), не `pack.json`, без повторов;
+`model.file` и `tokenizer.vocab` ∈ `files`; каждая запись zip (кроме `pack.json`) есть в `files`, и наоборот; размер и sha256 совпадают.
+`minExtensionVersion` больше версии расширения → пакет отклоняется (`INCOMPATIBLE`).
+Исходник пакета — `models-src/<id>/pack.src.json` (тот же объект **без** `files`) + файлы; `npm run pack:model -- --id=<id>` (`scripts/pack-model.mjs`, `buildModelPack({srcDir, outDir, now})`)
+считает `files`, проверяет `parsePackManifest`, пишет детерминированный zip (`FIXED_TIME`, `pack.json` первой записью, остальные по имени) в `release/` и печатает sha256.
+
+API ядра (`core/ner/pack.js`, без побочных эффектов, не бросает):
+- `parsePackManifest(jsonOrObjOrBytes, {extensionVersion?}) → {ok: true, manifest} | {ok: false, error}` — `error`: путь к первому неверному полю (`'tokenizer.stride'`, `'files[2].path'`, лишний ключ — его имя), `'json'` или `'minExtensionVersion'`;
+- `verifyPackFiles(manifest, entries, {digest?}) → {ok: true} | {ok: false, error: 'EXTRA_FILE'|'MISSING_FILE'|'SIZE_MISMATCH'|'HASH_MISMATCH', path}`;
+- `core/ner/known-packs.js`: `KNOWN_PACKS = [{id, version, sha256}]` (sha256 **всего zip**; пополняет WP9 при публикации), `findKnownPack(sha256)`. Пакет из списка — «проверен», иначе установка только после подтверждения.
+
+### 6.2. Хранилище (`src/shared/model-store.js`)
+
+OPFS (`navigator.storage.getDirectory()`), работает в окне и в dedicated worker. Раскладка: `models/<id>/{pack.json, <files>, installed.json}`;
+во время установки в каталоге лежит `.installing` (время начала) — такой каталог не считается установленным, брошенный (> 10 мин) удаляется в `listInstalled()`.
+
+| Функция | Что делает |
+|---|---|
+| `isAvailable()` | есть ли OPFS в контексте |
+| `listInstalled()` | `[{id, version, name, languages, bytes, installedAt, verified, packSha256, manifest}]` |
+| `inspectPack(bytes, {extensionVersion?})` | unzip (fflate, ≤ 512 МБ распакованного) + `parsePackManifest` + `verifyPackFiles`, без записи → `{manifest, packSha256, verified, bytes}` |
+| `install(bytes, {verified?, extensionVersion?})` | повторная проверка; удаляет прежний `models/<id>/`, пишет `.installing` → `pack.json` → файлы (`createWritable`) → `installed.json` → снимает `.installing`. `verified` вычисляется по `KNOWN_PACKS`, параметр его не поднимает |
+| `remove(id)` | удаляет каталог; отсутствующий — не ошибка |
+| `getManifest(id)` | манифест или `null` |
+| `readFile(id, path)` | `Uint8Array`; путь проверяется (`PACK_PATH_RE`, без `/` и `..`) |
+| `openModelFiles(id)` | `{modelId, read(path)}` — синхронно, без обращения к хранилищу до первого `read` (для фабрики провайдера) |
+
+Ошибки — `ModelStoreError {code}`; `MODEL_STORE_ERROR_CODES`: `UNAVAILABLE | BAD_ZIP | BAD_MANIFEST | INCOMPATIBLE | HASH_MISMATCH | QUOTA | IO | NOT_INSTALLED`
+(`SIZE_MISMATCH`/`HASH_MISMATCH` файла → `HASH_MISMATCH`; лишний/отсутствующий файл → `BAD_MANIFEST`; `QuotaExceededError` → `QUOTA`). Тексты — `ner_err_<CODE>` в `ui/i18n/options.js`.
+
+### 6.3. Страница настроек
+
+Карточка `#ner` («Модель NER», после «Обработки»): тумблер `ner-enabled` (`nerEnabled`), число `ner-threshold` (`nerThreshold`, 0–1, шаг 0.05), статус `ner-status`,
+`ner-import` + скрытый `ner-import-file` (`.zip`), `ner-remove`, сообщения `ner-msg` (role=status), ссылка `ner-releases-link` (обычный `<a target=_blank>`), подсказка о приватности.
+Импорт: `inspectPack` → не проверен → `confirmDialog` → `install` → прочие пакеты удаляются (одна модель) → `save({nerModel: id})` → `MODEL_CHANGED`.
+Удаление: подтверждение → `remove` всех установленных → `save({nerModel: ''})` → `MODEL_CHANGED`. Сбой установки, оставивший `nerModel` без файлов, сбрасывает `nerModel`.
+
+### 6.4. Хост и воркер
+
+`createHost({post, toolVersion, nerProvider?, createNerProvider?})`. `createNerProvider(settings)` — **синхронная** фабрика, модель не читает (загрузка — в `init()`).
+Хост держит кэш `{modelId, provider}`: один провайдер на `nerModel`; смена `nerModel` или `MODEL_CHANGED` → `dispose?.()` и сброс. `env.nerProvider` (тесты) имеет приоритет.
+`providerFor(settings)` используется в `ANALYZE` и `ADD_ENTITY`; при `!nerEnabled || !nerModel || !createNerProvider` → провайдера нет.
+`worker.js` (ESM): `import * as ort from 'onnxruntime-web/wasm'`; `ort.env.wasm.numThreads = 1`, `proxy = false`, `wasmPaths = {wasm: new URL('../vendor/ort-wasm-simd-threaded.wasm', import.meta.url).href}`;
+фабрика — `createPendingNerProvider({files: openModelFiles(s.nerModel), modelId: s.nerModel, ort})` (`core/ner/pending-provider.js`): `init()` читает и проверяет `pack.json` и бросает
+`CoreError('MODEL_LOAD_FAILED')` → `NER_FAILED {reason: 'MODEL_LOAD_FAILED'}`. **WP9 заменяет тело провайдера** (ONNX + WordPiece) с тем же контрактом и той же фабрикой; `ort` уже передаётся.
+
+### 6.5. Сборка и упаковка
+
+- `scripts/build.mjs`: второй вызов esbuild для `offscreen/worker.js` (`format: 'esm'`, `platform: 'browser'`, `metafile`) — в лог пишется размер worker.js и доля ORT.
+  В бандл попадает **`ort.wasm.bundle.min.mjs`** (glue встроен, без внешнего `.mjs`); в `dist/vendor/` — `ort-wasm-simd-threaded.wasm` (14 239 897 байт) и `onnxruntime-web.LICENSE`
+  (в npm-пакете ORT файла лицензии нет — текст MIT лежит в `assets/licenses/`).
+- Размеры `offscreen/worker.js`: до WP8 (IIFE) 225 443 байт; после WP8 329 403 байт, из них ORT ≈ 102 400 (+ словари WP7: 719 209 байт на момент сдачи WP8, без ORT ≈ 616 400).
+  `tests/integration/pack.spec.js` проверяет «worker.js без ORT ≤ 700 КБ» (К15), считая ORT по секции бандла `// node_modules/onnxruntime-web/…`.
+- Архив релиза (`npm run pack`) с wasm: ≈ 4,2 МБ (wasm сжимается до ≈ 3,5 МБ).
+
+### 6.6. Спайки S1–S3 (Chromium из Playwright 1.63, headless new, `dist-e2e`)
+
+| Спайк | Результат |
+|---|---|
+| **S1** OPFS в dedicated worker offscreen-документа | **Работает.** Страница настроек записала `models/_probe/x.bin` через `navigator.storage.getDirectory()` + `createWritable()`; модульный воркер offscreen прочитал тот же файл (130 байт) — общий origin `chrome-extension://<id>`. В воркере `self.isSecureContext === true`, `self.location` = `chrome-extension://<id>/offscreen/worker.js`. Fallback на IndexedDB не нужен. |
+| **S2** квота | Запись 40 МБ одним файлом через `createWritable` прошла (даже без `unlimitedStorage`: `estimate().quota` ≈ 10,8 ГБ — квота считается от свободного места диска, `persisted() === false`). `unlimitedStorage` добавлен в манифест, чтобы квота не зависела от места на диске и вытеснения. `QuotaExceededError` → `ModelStoreError('QUOTA')` (код в `ioError`). |
+| **S3** модульный worker под CSP + ORT | `new Worker('worker.js', {type: 'module'})` из классического offscreen-скрипта работает под CSP `extension_pages` (`script-src 'self' 'wasm-unsafe-eval'`); все существующие e2e зелёные. `onnxruntime-web/wasm` → `ort.wasm.bundle.min.mjs`; `InferenceSession.create` на 1-оп модели (`mul_1.onnx`, Mul, opset 7) — 146 мс холодно, `run` дал верный результат `[1..6]`. `ort.env.wasm.numThreads` = 1 до и после создания сессии; `SharedArrayBuffer` в воркере есть, но нити не создаются; ни одного запроса, кроме `chrome-extension:` (нет `blob:`-воркеров, нет http(s)). wasm грузится через `fetch` ORT с `chrome-extension://…/vendor/…` — разрешено `connect-src 'self'`. |

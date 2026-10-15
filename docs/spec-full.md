@@ -264,6 +264,8 @@ SHA-256 содержимого совпадает с документом в с�
 - PERSON (EN): «First Last», «Last, First», «F. Last», «First L.», «Mr./Ms./Dr. Last», одиночная фамилия (при длине ≥ 4 и отсутствии в словаре английских нарицательных);
 - COMPANY: полное название с ОПФ, название без ОПФ, название в кавычках любого типа («», “”, "", ''), транслитерация RU↔EN по ГОСТ 7.79-2000 (система Б) и по ИКАО, аббревиатура из заглавных букв слов названия (если ≥ 2 слов).
 Варианты ищутся по всем частям и потокам без учёта регистра, с границами слов; найденные вхождения присоединяются к сущности-источнику (один плейсхолдер).
+- PERSON третьих лиц (версия 0.2, WP7 — ступень 1 NER): словарный детектор по всему документу без лейблов. Словари: русские фамилии (50 000 лемм) и имена (≈ 6 800, с родом) — datacoon/russiannames (BSD-3-Clause), имена-омонимы — natasha (MIT), английские имена и фамилии — US Census (public domain); генератор `npm run dicts`, атрибуция — `src/core/detect/names/dict/NOTICE.md`. Правило «два признака из трёх»: имя по словарю в любом падеже, отчество по суффиксу, фамилия по словарю или суффиксу; шаблоны «Имя Фамилия»/«Фамилия Имя» (с согласованием рода и падежа, если фамилия не словарная или имя — омоним), «Имя Отчество», ALL CAPS — только со словарной фамилией, латиница «First Last»/«First I. Last». Не срабатывает после топонимов («ул.», «им.», «г.»), в кавычках, в названиях госорганов, в устойчивых сочетаниях («Иван Купала», «Лада Веста»); в начале предложения и в заголовках требует словарного попадания. Вхождения — уровень `kb`, лицо не становится стороной; записи с ≥ 2 попаданиями ищутся по документу в парных формах (одиночная фамилия — только для сторон). Настройка `dictNames` (по умолчанию вкл.).
+**Приёмка (WP7):** `PERSON-dict.json` (≥ 40/40): ≥ 95 % позитивов, 0 ложных; 300 сгенерированных троек во всех падежах — ≥ 95 % в одной группе; время анализа со словарём ≤ 130 % (К1, К2, К4).
 **Приёмка:** фикстура `kb-forms.json`: «Иванов Пётр Сергеевич» в реквизитах → найдены «Иванова П.С.», «П.С. Иванов», «Иванову», «Пётр Иванов» в теле; «ООО «Ромашка-Трейд»» → «Ромашка-Трейд», «Romashka-Trade LLC», «РТ» не находится (аббревиатура 2 букв — исключение: минимальная длина аббревиатуры 3).
 
 **FR-24.** Сущности из KB имеют уровень `kb`; ложные присоединения можно отсоединить в превью («Это другая сущность»), что создаёт новую сущность с новым плейсхолдером.
@@ -507,11 +509,14 @@ SHA-256 содержимого совпадает с документом в с�
 
 **NLP.** Варианты: (а) `Babelscape/wikineural-multilingual-ner` (mBERT, 9 языков включая RU и EN, ≈ 180 МБ int8); (б) пара компактных моделей: RU — fine-tune `cointegrated/rubert-tiny2` для NER (≈ 12–30 МБ int8), EN — distil/bert-base-NER (≈ 65–110 МБ int8); (в) GLiNER multi (≈ 350 МБ int8, zero-shot). Выбор делается на этапе 0 (spike) по метрикам раздела 8 на dev-корпусе при ограничении суммарного размера моделей **≤ 200 МБ** и времени анализа 300-страничного документа ≤ 60 с (NFR-05). Предпочтение по умолчанию — **(а)** как одна модель на оба языка с задокументированной поддержкой русского; **(б)** — если (а) не укладывается в NFR-05 на эталонной машине. (в) отвергается по размеру. Модель и токенизатор лежат в пакете расширения (`models/`), загружаются через `chrome.runtime.getURL` (это не сетевой запрос); бэкенд ONNX Runtime Web — WASM с SIMD, одна нить (SharedArrayBuffer недоступен без cross-origin isolation). Вход NER — параграфы, окна по 256 токенов с перекрытием 32; выход — спаны PER/ORG/LOC с вероятностью; порог `nerThreshold`. Интерфейс `core/ner/NerProvider` с реализацией `OnnxNerProvider` и `NullNerProvider` (для тестов и `nerEnabled=false`).
 
+> **Отклонение (версия 0.2, WP8).** Модель **не входит** в пакет расширения и не лежит в `models/`: репозиторий публичный, весов модели в git нет. Модель распространяется отдельным zip-пакетом `docx-anonymizer-ner-<id>-<version>.zip` (манифест `pack.json` с sha256 каждого файла, схема `schemas/model-pack.schema.json`) через GitHub Releases; пользователь скачивает его сам и импортирует на странице настроек (карточка «Модель NER»). Расширение проверяет хеши и хранит файлы в OPFS (`navigator.storage.getDirectory()`, каталог `models/<id>/`) — разрешение `unlimitedStorage` снимает квоту; читает их воркер offscreen-документа. Настройка `nerModel` — id установленного пакета (не экспортируется). Страница настроек сообщает хосту о смене пакета сообщением `MODEL_CHANGED` (кэш провайдера сбрасывается). Сетевых запросов из расширения по-прежнему ноль (NFR-01): wasm ORT грузится из `vendor/` пакета расширения, модель — из OPFS. Нет модели или она не загрузилась — анализ идёт правилами и словарями, предупреждение `NER_FAILED {details: {reason}}` (NFR-13). Выбор модели — `cointegrated/rubert-tiny2`, дообученная на WikiANN ru+en, int8 (концепция 0.2, WP9). Формат, хранилище и контракт фабрики провайдера — `docs/contracts.md`, раздел 6.
+
 **Разрешения манифеста.**
 
 | Permission | Обоснование |
 |---|---|
 | `storage` | настройки, индекс сессий |
+| `unlimitedStorage` | пакет модели NER (≈ 30 МБ) хранится в OPFS без ограничения квоты (версия 0.2, WP8); документы и карты замен туда не пишутся |
 | `offscreen` | хост обработки |
 | `optional_host_permissions: <all_urls>` | доступ к сайту выдаёт пользователь через `chrome.permissions.request` при добавлении сайта (popup «Добавить …»/«Разрешить доступ», список в настройках); режим `all` запрашивает `<all_urls>`. Обязательных `host_permissions` нет — при установке Chrome не предупреждает о доступе к данным на всех сайтах (версия 0.2, К9) |
 | `scripting` | content script не объявлен в манифесте: background регистрирует его через `chrome.scripting.registerContentScripts` для выданных origin (`matches` = `chrome.permissions.getAll().origins`, `runAt: document_start`, `allFrames: true`, `persistAcrossSessions`), синхронизирует на `onInstalled`/`onStartup`/`permissions.onAdded`/`onRemoved` и после выдачи доступа внедряет скрипт в уже открытые вкладки (`executeScript`) |
@@ -747,9 +752,9 @@ docx-anonymizer/
 │   ├── workspace/ {workspace.html, workspace.js, batch.js, fs-access.js, report.js}
 │   ├── options/ {options.html, options.js, custom-category-form.js, regex-guard.worker.js}
 │   └── _locales/{ru,en}/messages.json
-├── models/                       # ONNX + tokenizer.json (+ LICENSE), в git LFS
-│   └── index.json                # имя, язык, sha256, размер
-├── vendor/                       # ort-wasm*.wasm (копируется из node_modules при сборке)
+├── models/                       # (0.2: не используется — см. отклонение ниже)
+├── models-src/<id>/              # 0.2: исходники пакета модели (pack.src.json + файлы), в git не попадают
+├── vendor/                       # ort-wasm-simd-threaded.wasm + лицензия ORT (копируются при сборке в dist/vendor/)
 ├── schemas/ {mapping.schema.json, protocol.schema.json, settings.schema.json, gold.schema.json}
 ├── fixtures/ {categories/, docs/, perf/, virtualtext.json, overlap.json, …}
 ├── tools/ {gen-corpus/, fetch-models.sh, eval.js, bench.js}
@@ -764,6 +769,8 @@ docx-anonymizer/
 **Сборщик.** Варианты: (а) без сборщика (ESM напрямую, `importScripts` в воркере); (б) esbuild; (в) Vite + CRXJS. Выбран **(б) esbuild**: нужен бандлинг ESM-ядра в один файл для Web Worker и content script (content script не поддерживает ESM-импорты), подключение `jszip` и `onnxruntime-web` из `node_modules`; esbuild делает это одним скриптом за < 1 с без плагинной экосистемы (в) и без ограничений (а). Точки входа: `background`, `content`, `offscreen`, `worker`, `workspace`, `options`, `popup`. Sourcemaps — только в dev-сборке.
 
 **Зависимости без сети при сборке.** `package-lock.json` фиксирует версии и integrity; `npm ci` выполняется один раз при настройке окружения; `npm run build` не обращается к сети (esbuild читает `node_modules`). WASM-файлы ORT копируются из `node_modules/onnxruntime-web/dist/` в `vendor/`. Модели: `tools/fetch-models.sh` скачивает выбранные файлы один раз, проверяет sha256 из `models/index.json`; в CI модели берутся из git LFS. Запрещён `importScripts`/`<script src>` с внешних URL (линт-правило).
+
+**Отклонение (версия 0.2, WP8).** Модели в git и в архиве расширения нет (ни LFS, ни `models/index.json`). Пакет модели собирает `npm run pack:model -- --id=<id>` из `models-src/<id>/` (детерминированный zip в `release/`, sha256 печатается и вносится в `src/core/ner/known-packs.js` для пометки «проверен»), публикуется в GitHub Releases отдельно от расширения. Worker offscreen-документа собирается отдельным вызовом esbuild как ES-модуль (`format: 'esm'`; `onnxruntime-web/wasm` находит wasm через `import.meta.url`) и создаётся как `new Worker('worker.js', {type: 'module'})`; остальные бандлы — IIFE. В `dist/vendor/` копируются только `ort-wasm-simd-threaded.wasm` (≈ 14 МБ) и лицензия ORT — JS-glue встроен в `worker.js`.
 
 **Линтер:** ESLint 9 (flat config) + `eslint-plugin-security` + кастомные правила: запрет литералов с кириллицей вне `_locales` и фикстур; запрет `console.log` с переменными, кроме белого списка; запрет `fetch`/`XMLHttpRequest`/`WebSocket` вне `tools/`.
 

@@ -1,7 +1,8 @@
 // Offscreen-документ: только мост runtime.sendMessage ⇄ Web Worker с ядром. UI нет.
 import { TARGET } from '../shared/protocol.js';
 
-const worker = new Worker('worker.js');
+// worker.js — ES-модуль (WP8): onnxruntime-web находит wasm через import.meta.url
+const worker = new Worker('worker.js', { type: 'module' });
 
 worker.onmessage = (e) => {
   const { clientId, msg } = e.data;

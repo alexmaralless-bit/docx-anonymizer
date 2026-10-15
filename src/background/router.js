@@ -1,7 +1,7 @@
 // Маршрутизатор: порты клиентов (content/popup/options/restore) ⇄ offscreen (§5.1, §5.4).
 // Background добавляет к сообщениям поле `settings` — offscreen не имеет доступа к chrome.storage.
 import { PORT_NAME, TARGET, MSG, errorMessage } from '../shared/protocol.js';
-import { ensureOffscreen } from './offscreen-manager.js';
+import { ensureOffscreen, hasDocument } from './offscreen-manager.js';
 import { loadSettings } from '../shared/settings-store.js';
 
 /** @type {Map<string, chrome.runtime.Port>} */
@@ -33,6 +33,12 @@ export function initRouter() {
 
 async function forward(clientId, port, msg) {
   try {
+    // WP8: смена пакета модели NER сбрасывает кэш провайдера в воркере. Нет offscreen — нет и кэша: отвечаем сами,
+    // не поднимая документ ради пустой операции (новый воркер прочтёт модель заново).
+    if (msg.type === MSG.MODEL_CHANGED && !(await hasDocument())) {
+      port.postMessage({ type: MSG.ACK, requestId: msg.requestId });
+      return;
+    }
     if (NEEDS_SETTINGS.has(msg.type)) msg = { ...msg, settings: await loadSettings() };
     await ensureOffscreen();
     try {

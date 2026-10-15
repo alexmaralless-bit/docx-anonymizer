@@ -13,7 +13,7 @@ export const DEFAULT_ALLOWLIST = Object.freeze([
   'https://www.perplexity.ai',
 ]);
 
-const PROFILE_FIELDS = ['categories', 'mode', 'language', 'placeholderLanguage', 'keepMetadata', 'stripEmbedded', 'govEntities', 'nerThreshold'];
+const PROFILE_FIELDS = ['categories', 'mode', 'language', 'placeholderLanguage', 'keepMetadata', 'stripEmbedded', 'govEntities', 'dictNames', 'nerThreshold'];
 
 function defaultCategories() {
   return Object.fromEntries(BUILTIN_CATEGORIES.map((c) => [c.id, c.defaultOn]));
@@ -32,12 +32,14 @@ function defaultCategories() {
  * @property {'document'|'ru'|'en'} placeholderLanguage
  * @property {boolean} nerEnabled
  * @property {number} nerThreshold
+ * @property {string} nerModel           id установленного пакета модели NER ('' — нет; WP8), не экспортируется
  * @property {boolean} keepMetadata
  * @property {boolean} stripEmbedded
  * @property {number} maxFileSizeMB
  * @property {'auto'|'ru'|'en'} uiLanguage
  * @property {{value: string, category: string}[]} exclusions
  * @property {boolean} govEntities
+ * @property {boolean} dictNames          словарный детектор ФИО третьих лиц (WP7, FR-23)
  * @property {Record<string, {x: number, y: number}>} panelPosition
  * @property {object[]} customCategories   CustomCategory (FR-44)
  * @property {{id: string, name: {ru: string, en: string}, builtin: boolean, values: object}[]} profiles
@@ -60,12 +62,14 @@ export function defaultSettings() {
     placeholderLanguage: 'document',
     nerEnabled: true,
     nerThreshold: 0.6,
+    nerModel: '',
     keepMetadata: false,
     stripEmbedded: false,
     maxFileSizeMB: 50,
     uiLanguage: 'auto',
     exclusions: [],
     govEntities: true,
+    dictNames: true,
     panelPosition: {},
     customCategories: [],
     profiles: [
@@ -100,12 +104,15 @@ export const VALIDATORS = Object.freeze({
   placeholderLanguage: (v) => ['document', 'ru', 'en'].includes(v),
   nerEnabled: (v) => typeof v === 'boolean',
   nerThreshold: (v) => typeof v === 'number' && v >= 0 && v <= 1,
+  // = PACK_ID_RE из core/ner/pack.js (не импортируется, чтобы не тянуть разбор пакета в content.js; равенство — в тесте)
+  nerModel: (v) => v === '' || (typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,40}$/.test(v)),
   keepMetadata: (v) => typeof v === 'boolean',
   stripEmbedded: (v) => typeof v === 'boolean',
   maxFileSizeMB: (v) => Number.isInteger(v) && v >= 1 && v <= 100,
   uiLanguage: (v) => ['auto', 'ru', 'en'].includes(v),
   exclusions: (v) => Array.isArray(v) && v.every((x) => isPlainObject(x) && typeof x.value === 'string' && typeof x.category === 'string'),
   govEntities: (v) => typeof v === 'boolean',
+  dictNames: (v) => typeof v === 'boolean',
   panelPosition: (v) => isPlainObject(v),
   customCategories: (v) => Array.isArray(v) && v.length <= 100 && v.every((x) => isPlainObject(x) && typeof x.id === 'string'),
   profiles: (v) => Array.isArray(v) && v.every((x) => isPlainObject(x) && typeof x.id === 'string'),

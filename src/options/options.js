@@ -13,6 +13,16 @@ import { confirmDialog, downloadJson, h } from '../ui/deanon/dom.js';
 import { madeByLine, helpLink } from '../ui/brand.js';
 import { guardRegex } from './regex-guard.js';
 import { CATEGORIES_KIND, CONFIG_KIND, NOT_EXPORTED, parseCategoriesFile, parseConfigFile } from './config-io.js';
+import {
+  MODEL_STORE_ERROR_CODES,
+  inspectPack,
+  install,
+  isAvailable as modelStoreAvailable,
+  listInstalled,
+  remove as removeModel,
+} from '../shared/model-store.js';
+import { connectClient } from '../shared/port-client.js';
+import { MSG } from '../shared/protocol.js';
 
 const TEST_MAX = 10000;
 const DICT_WARNED_KEY = 'dictWarned';
@@ -289,7 +299,176 @@ function processingSection() {
       toggle(t('keep_metadata'), t('keep_metadata_hint'), settings.keepMetadata, (v, el) => save({ keepMetadata: v }, el), 'keep-metadata'),
       toggle(t('strip_embedded'), t('strip_embedded_hint'), settings.stripEmbedded, (v, el) => save({ stripEmbedded: v }, el), 'strip-embedded'),
       toggle(t('gov_entities'), null, settings.govEntities, (v, el) => save({ govEntities: v }, el), 'gov-entities'),
+      // WP7, FR-23: словарный детектор ФИО третьих лиц; не зависит от NER
+      toggle(t('dict_names'), t('dict_names_hint'), settings.dictNames, (v, el) => save({ dictNames: v }, el), 'dict-names'),
     ),
+  );
+}
+
+// ---------- модель NER (WP8, §5.2 NLP) ----------
+
+const RELEASES_URL = 'https://github.com/alexmaralless-bit/docx-anonymizer/releases';
+const EXT_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0';
+const NER_ERRORS = new Set(MODEL_STORE_ERROR_CODES);
+
+/** Хост сбрасывает кэш NER-провайдера (MODEL_CHANGED → ACK). Хост недоступен — не страшно: новый воркер прочтёт модель сам. */
+async function notifyModelChanged(modelId) {
+  let client;
+  try {
+    client = connectClient();
+    await client.request(MSG.MODEL_CHANGED, { modelId });
+  } catch {
+    /* см. выше */
+  } finally {
+    try {
+      client?.port.disconnect();
+    } catch {
+      /* порт уже закрыт */
+    }
+  }
+}
+
+// Пакет модели импортируется из файла (сети нет, NFR-01), проверяется по sha256 и хранится в OPFS (src/shared/model-store.js).
+// Установлена не больше одной модели: импорт другой удаляет прежнюю.
+// Сохранение nerModel может перерисовать страницу (onSettingsChanged) посреди импорта — последнее сообщение
+// живёт вне секции и пишется в актуальный элемент.
+const nerNote = { text: '', bad: false, /** @type {HTMLElement|null} */ el: null };
+
+function nerSection() {
+  const msg = h('div', { class: nerNote.bad ? 'hint err' : 'hint', role: 'status', dataset: { testid: 'ner-msg' } }, nerNote.text);
+  nerNote.el = msg;
+  const status = h('div', { class: 'ner-status', dataset: { testid: 'ner-status' } }, t('ner_loading'));
+  let installed = [];
+  const say = (text, bad = false) => {
+    Object.assign(nerNote, { text, bad });
+    for (const el of new Set([msg, nerNote.el])) {
+      el.textContent = text;
+      el.classList.toggle('err', bad);
+    }
+  };
+  const fail = (e) => say(t(`ner_err_${NER_ERRORS.has(e?.code) ? e.code : 'IO'}`), true);
+  const label = (m) => ({ name: m.name[lang] || m.name.ru, version: m.version });
+
+  const refresh = async () => {
+    if (!modelStoreAvailable()) {
+      status.textContent = t('ner_err_UNAVAILABLE');
+      importBtn.disabled = true;
+      removeBtn.hidden = true;
+      return;
+    }
+    try {
+      installed = await listInstalled();
+    } catch (e) {
+      installed = [];
+      fail(e);
+    }
+    const active = installed.find((m) => m.id === settings.nerModel);
+    if (active) {
+      const size = t('ner_size_mb', { n: (active.bytes / (1024 * 1024)).toFixed(1) });
+      status.replaceChildren(
+        t('ner_installed', { ...label(active), size }),
+        ' · ',
+        h('span', { class: active.verified ? 'ner-verified' : 'ner-unverified' }, t(active.verified ? 'ner_verified' : 'ner_unverified')),
+      );
+    } else {
+      status.textContent = t('ner_not_installed');
+    }
+    removeBtn.hidden = !installed.length;
+  };
+
+  // Сбой посреди установки мог оставить nerModel без файлов — сбрасываем, чтобы анализ не ссылался на пустоту
+  const dropDangling = async () => {
+    const list = await listInstalled().catch(() => []);
+    if (settings.nerModel && !list.some((m) => m.id === settings.nerModel)) {
+      await save({ nerModel: '' });
+      await notifyModelChanged('');
+    }
+  };
+
+  const file = h('input', {
+    type: 'file',
+    accept: '.zip,application/zip',
+    hidden: true,
+    dataset: { testid: 'ner-import-file' },
+    onchange: async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      importBtn.disabled = true;
+      say(t('ner_importing'));
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const info = await inspectPack(bytes, { extensionVersion: EXT_VERSION });
+        const l = label(info.manifest);
+        if (!info.verified && !(await confirmDialog(t('ner_unverified_confirm', l), { ok: t('ner_install'), cancel: t('cancel') }))) {
+          say(t('ner_import_cancelled'));
+          return;
+        }
+        const rec = await install(bytes, { verified: info.verified, extensionVersion: EXT_VERSION });
+        for (const m of await listInstalled()) if (m.id !== rec.id) await removeModel(m.id);
+        await save({ nerModel: rec.id });
+        await notifyModelChanged(rec.id);
+        say(t('ner_imported', l));
+      } catch (e) {
+        fail(e);
+        await dropDangling();
+      } finally {
+        importBtn.disabled = false;
+        await refresh();
+      }
+    },
+  });
+  const importBtn = h('button', { type: 'button', class: 'btn', dataset: { testid: 'ner-import' }, onclick: () => file.click() }, t('ner_import'));
+  const removeBtn = h(
+    'button',
+    {
+      type: 'button',
+      class: 'btn danger',
+      hidden: true,
+      dataset: { testid: 'ner-remove' },
+      onclick: async () => {
+        if (!(await confirmDialog(t('ner_remove_confirm'), { ok: t('ner_remove'), cancel: t('cancel'), danger: true }))) return;
+        try {
+          for (const m of installed) await removeModel(m.id);
+          await save({ nerModel: '' });
+          await notifyModelChanged('');
+          say(t('ner_removed'));
+        } catch (e) {
+          fail(e);
+        } finally {
+          await refresh();
+        }
+      },
+    },
+    t('ner_remove'),
+  );
+
+  const threshold = h('input', {
+    type: 'number',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    value: String(settings.nerThreshold),
+    dataset: { testid: 'ner-threshold' },
+    id: 'ner-threshold',
+  });
+  threshold.addEventListener('input', () => {
+    const v = threshold.value.trim() === '' ? NaN : Number(threshold.value);
+    save({ nerThreshold: v }, threshold);
+  });
+
+  refresh();
+  return card(
+    'ner',
+    t('ner_h'),
+    t('ner_hint'),
+    toggle(t('ner_enabled'), t('ner_enabled_hint'), settings.nerEnabled, (v, el) => save({ nerEnabled: v }, el), 'ner-enabled'),
+    h('div', { class: 'field' }, h('label', { for: 'ner-threshold' }, t('ner_threshold')), threshold),
+    h('div', { class: 'field' }, status),
+    h('div', { class: 'row', style: 'margin-top:10px' }, importBtn, file, removeBtn),
+    msg,
+    h('p', { class: 'hint' }, h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener', dataset: { testid: 'ner-releases-link' } }, t('ner_releases'))),
+    h('p', { class: 'hint', dataset: { testid: 'ner-privacy' } }, t('ner_privacy')),
   );
 }
 
@@ -897,6 +1076,7 @@ function renderApp() {
     ['intercept', 'nav_intercept'],
     ['categories', 'nav_categories'],
     ['processing', 'nav_processing'],
+    ['ner', 'nav_ner'],
     ['exclusions', 'nav_exclusions'],
     ['custom', 'nav_custom'],
     ['data', 'nav_data'],
@@ -921,6 +1101,7 @@ function renderApp() {
         interceptSection(),
         categoriesSection(),
         processingSection(),
+        nerSection(),
         exclusionsSection(),
         customSection(),
         dataSection(),

@@ -102,3 +102,15 @@ describe('protocol: клиент', () => {
     await expect(p).rejects.toMatchObject({ code: 'HOST_UNAVAILABLE' });
   });
 });
+
+describe('protocol: MODEL_CHANGED (WP8)', () => {
+  it('тип есть в MSG и в схеме протокола; ответ — терминальный ACK', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { TERMINAL } = await import('../../src/shared/protocol.js');
+    expect(MSG.MODEL_CHANGED).toBe('MODEL_CHANGED');
+    expect(TERMINAL.has(MSG.ACK)).toBe(true);
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/protocol.schema.json', import.meta.url), 'utf8'));
+    expect(schema.$defs.MODEL_CHANGED.properties.type.const).toBe('MODEL_CHANGED');
+    expect(schema.oneOf).toContainEqual({ $ref: '#/$defs/MODEL_CHANGED' });
+  });
+});

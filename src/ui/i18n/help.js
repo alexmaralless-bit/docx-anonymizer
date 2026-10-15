@@ -18,10 +18,12 @@ export const HELP_DICT = {
     privacy_1: 'Расширение не делает ни одного сетевого запроса: это закреплено политикой безопасности расширения и проверяется тестами.',
     privacy_2: 'Документ обрабатывается в изолированном окне самого браузера и никуда не отправляется.',
     privacy_3: 'Содержимое документа и карта замен живут только в памяти и не записываются в хранилище браузера.',
+    privacy_4:
+      'Если вы импортировали пакет модели NER, его файлы хранятся в хранилище браузера на этом компьютере; документы и результаты распознавания туда не записываются.',
     check_h: 'Что стоит знать',
     check_1: 'Перед отправкой всегда просматривайте результат — ответственность за содержимое остаётся за вами.',
     check_2:
-      'Нейросетевого распознавания нет: имена и названия находятся по меткам, шаблонам и базе знаний сторон из реквизитов, поэтому имя, упомянутое без метки и не связанное со сторонами, может остаться.',
+      'Имена и названия находятся встроенными правилами: по меткам, шаблонам, словарям имён и базе знаний сторон из реквизитов. Дополнительно можно импортировать пакет нейросетевой модели NER в настройках — она тоже работает офлайн, на этом компьютере. Имя без метки и вне словарей всё равно может остаться — проверяйте результат.',
     check_3: 'Встроенные объекты (OLE-вложения) не обезличиваются — расширение предупреждает об этом или удаляет их по настройке.',
     check_4: 'Работает только с файлами .docx и .docm.',
     open_options: 'Открыть настройки',
@@ -47,10 +49,12 @@ export const HELP_DICT = {
     privacy_1: 'The extension makes no network requests at all: this is enforced by the extension security policy and checked by tests.',
     privacy_2: 'The document is processed in an isolated browser window and is not sent anywhere.',
     privacy_3: 'Document content and the replacement map live in memory only and are not written to browser storage.',
+    privacy_4:
+      'If you imported an NER model pack, its files are kept in browser storage on this computer; documents and recognition results are never written there.',
     check_h: 'Good to know',
     check_1: 'Always review the result before sending — you remain responsible for the content.',
     check_2:
-      'There is no neural recognition: names and titles are found by labels, patterns and the knowledge base of the parties from the requisites, so a name mentioned without a label and unrelated to the parties may remain.',
+      'Names and titles are found by built-in rules: labels, patterns, name dictionaries and the knowledge base of the parties from the requisites. You can additionally import a neural NER model pack in the settings — it also runs offline, on this computer. A name without a label and outside the dictionaries may still remain — review the result.',
     check_3: 'Embedded objects (OLE attachments) are not anonymized — the extension warns about them or removes them, depending on settings.',
     check_4: 'Only .docx and .docm files are supported.',
     open_options: 'Open settings',

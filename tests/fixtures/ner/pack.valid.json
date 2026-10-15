@@ -1,0 +1,70 @@
+{
+  "kind": "docx-anonymizer-model-pack",
+  "schemaVersion": 1,
+  "id": "fixture-ner-ruen",
+  "version": "1.0.0",
+  "name": {
+    "ru": "Тестовая модель NER",
+    "en": "Test NER model"
+  },
+  "languages": ["ru", "en"],
+  "task": "token-classification",
+  "labels": ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"],
+  "tokenizer": {
+    "type": "wordpiece",
+    "vocab": "vocab.txt",
+    "lowercase": false,
+    "stripAccents": false,
+    "maxLen": 128,
+    "stride": 32,
+    "cls": "[CLS]",
+    "sep": "[SEP]",
+    "pad": "[PAD]",
+    "unk": "[UNK]"
+  },
+  "model": {
+    "file": "model.onnx",
+    "inputs": {
+      "ids": "input_ids",
+      "mask": "attention_mask",
+      "types": "token_type_ids"
+    },
+    "output": "logits",
+    "indexType": "int64"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "e5dcffe836b6ec8a58e492419b550e65fb8cbdc308503979e5dacb33ac7ea3b7",
+      "size": 3
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "a1cac5013b6488ca0faece8e68f0040e2da718cb7f4d5c31688ab90f336f16f3",
+      "size": 11
+    },
+    {
+      "path": "config.json",
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "size": 2
+    },
+    {
+      "path": "model.onnx",
+      "sha256": "ffe3b26b7ea9dba6c8a9ae8ec8dba9178d920b65c6359ebb5e2cdd8c3b9fbbef",
+      "size": 9
+    },
+    {
+      "path": "vocab.txt",
+      "sha256": "c4b8e11215f047171c3b588b2e0b06b81e3937afeb929b234026ef802be5ebdf",
+      "size": 24
+    }
+  ],
+  "license": "MIT",
+  "source": {
+    "base": "cointegrated/rubert-tiny2",
+    "dataset": "wikiann (ru, en)",
+    "note": "фикстура тестов, не модель"
+  },
+  "minExtensionVersion": "0.1.0",
+  "recommendedThreshold": 0.6
+}

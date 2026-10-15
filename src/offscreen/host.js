@@ -15,18 +15,21 @@ import {
   PlaceholderAllocator,
   resolvePlaceholderLanguage,
   registerBuiltinDetectors,
-  NoopNerProvider,
   CoreError,
   summarizeSession,
 } from '../core/index.js';
 import { MSG, ChunkAssembler, postChunked, errorMessage, sha256Hex } from '../shared/protocol.js';
 
 /**
- * @param {{post: (clientId: string, msg: object) => void, nerProvider?: any, toolVersion?: string}} env
+ * @param {{post: (clientId: string, msg: object) => void, nerProvider?: any, toolVersion?: string,
+ *   createNerProvider?: (settings: import('../core/settings.js').Settings) => import('../core/contracts/ner.js').NerProvider}} env
+ *   nerProvider — готовый провайдер (тесты; имеет приоритет), createNerProvider — синхронная фабрика по settings.nerModel (worker.js)
  */
 export function createHost(env) {
   registerBuiltinDetectors();
-  const nerProvider = env.nerProvider || new NoopNerProvider();
+  /** Кэш провайдера NER (WP8): один на модель, сбрасывается MODEL_CHANGED и сменой nerModel. */
+  /** @type {{modelId: string, provider: any} | null} */
+  let ner = null;
   /** @type {Map<string, {begin: any, assembler: ChunkAssembler}>} */
   const uploads = new Map();
   /** @type {Map<string, any>} docId → Session */
@@ -107,6 +110,10 @@ export function createHost(env) {
         case MSG.CATALOG_CHANGED:
           post({ type: MSG.ACK, requestId });
           return;
+        case MSG.MODEL_CHANGED:
+          resetNer();
+          post({ type: MSG.ACK, requestId });
+          return;
         default:
           throw new CoreError('INTERNAL', `Неизвестный тип сообщения ${msg.type}`);
       }
@@ -136,7 +143,7 @@ export function createHost(env) {
     const doc = parseDocx(bytes);
     progress('parse', 100);
     const allocator = msg.batchId ? batches.get(msg.batchId) : undefined;
-    const analysis = await analyze(doc, settings, { nerProvider, allocator, onProgress: progress });
+    const analysis = await analyze(doc, settings, { nerProvider: providerFor(settings), allocator, onProgress: progress });
     const docId = `d${++docSeq}`;
     const session = {
       docId,
@@ -167,7 +174,12 @@ export function createHost(env) {
     // Переанализ с сохранением решений по ключу (категория + нормализованное значение)
     const prev = new Map(s.groups.map((g) => [`${g.category}\u0000${g.normalized}`, g]));
     const allocator = s.batchId ? batches.get(s.batchId) : undefined;
-    const analysis = await analyze(s.doc, s.settings, { nerProvider, allocator, userEntities: s.userEntities, onProgress: progress });
+    const analysis = await analyze(s.doc, s.settings, {
+      nerProvider: providerFor(s.settings),
+      allocator,
+      userEntities: s.userEntities,
+      onProgress: progress,
+    });
     s.analysis = analysis;
     s.groups = analysis.groups.map((g) => {
       const p = prev.get(`${g.category}\u0000${g.normalized}`);
@@ -197,6 +209,29 @@ export function createHost(env) {
     progress('zip', 100);
     postChunked(post, { requestId, kind: 'RESULT', bytes: r.docxBytes, meta: { name: resultName, docId: s.docId } });
     post({ type: MSG.RESULT_END, requestId, docId: s.docId, mapping: r.mapping, stats: r.stats });
+  }
+
+  /**
+   * Провайдер NER для этих настроек: без включённого NER, выбранной модели или фабрики — нет провайдера (этап пропускается).
+   * Фабрика синхронная и не читает модель: загрузка — в provider.init() внутри analyze, её сбой — предупреждение NER_FAILED.
+   */
+  function providerFor(settings) {
+    if (env.nerProvider) return env.nerProvider;
+    if (!settings.nerEnabled || !settings.nerModel || !env.createNerProvider) return undefined;
+    if (ner?.modelId !== settings.nerModel) {
+      resetNer();
+      ner = { modelId: settings.nerModel, provider: env.createNerProvider(settings) };
+    }
+    return ner.provider;
+  }
+
+  function resetNer() {
+    try {
+      ner?.provider?.dispose?.();
+    } catch {
+      /* освобождение модели не должно ронять хост */
+    }
+    ner = null;
   }
 
   function getSession(docId) {

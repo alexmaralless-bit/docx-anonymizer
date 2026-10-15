@@ -22,7 +22,8 @@ export function parseCategoriesFile(text) {
   return { categories: arr };
 }
 
-export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition']);
+// nerModel — id пакета модели в хранилище этого браузера (WP8): на другой машине пакета нет, поэтому не переносится.
+export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel']);
 
 /** Разбор файла настроек: {patch, skipped} или {error}. */
 export function parseConfigFile(text) {

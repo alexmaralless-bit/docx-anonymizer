@@ -28,6 +28,36 @@ describe('settings', () => {
     expect(validateSettingsPatch({ mode: 'mask', nerThreshold: 0.5 })).toEqual([]);
     expect(validateSettingsPatch({ mode: 'x', allowlist: ['chatgpt.com'], unknown: 1 })).toEqual(['mode', 'allowlist', 'unknown']);
   });
+  it('nerModel (WP8): по умолчанию пусто, id пакета проверяется, в профили и экспорт конфига не попадает', async () => {
+    expect(defaultSettings().nerModel).toBe('');
+    expect(validateSettingsPatch({ nerModel: 'rubert-tiny2-ner-ruen' })).toEqual([]);
+    expect(validateSettingsPatch({ nerModel: '' })).toEqual([]);
+    expect(validateSettingsPatch({ nerModel: 'Bad Id' })).toEqual(['nerModel']);
+    expect(validateSettingsPatch({ nerModel: '../x' })).toEqual(['nerModel']);
+    expect(migrateSettings({ nerModel: 'Bad Id' }).settings.nerModel).toBe('');
+    expect(migrateSettings({ nerModel: 'my-model' }).settings.nerModel).toBe('my-model');
+    const s = {
+      ...defaultSettings(),
+      nerModel: 'my-model',
+      profiles: [{ id: 'p', name: { ru: 'p', en: 'p' }, builtin: false, values: { nerModel: 'other' } }],
+    };
+    expect(effectiveSettings(s, 'p').nerModel).toBe('my-model');
+    const { NOT_EXPORTED, parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
+    expect(NOT_EXPORTED.has('nerModel')).toBe(true);
+    const r = parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { nerModel: 'my-model', mode: 'mask' } }));
+    expect(r.patch).toEqual({ mode: 'mask' });
+  });
+  it('dictNames (WP7): по умолчанию вкл., boolean, поле профиля, переносится миграцией и экспортом конфига', async () => {
+    expect(defaultSettings().dictNames).toBe(true);
+    expect(validateSettingsPatch({ dictNames: false })).toEqual([]);
+    expect(validateSettingsPatch({ dictNames: 'no' })).toEqual(['dictNames']);
+    expect(migrateSettings({ dictNames: 1 }).settings.dictNames).toBe(true);
+    expect(migrateSettings({ dictNames: false }).settings.dictNames).toBe(false);
+    const s = { ...defaultSettings(), profiles: [{ id: 'p', name: { ru: 'p', en: 'p' }, builtin: false, values: { dictNames: false } }] };
+    expect(effectiveSettings(s, 'p').dictNames).toBe(false);
+    const { parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
+    expect(parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { dictNames: false } })).patch).toEqual({ dictNames: false });
+  });
   it('профиль external включает все категории', () => {
     const s = effectiveSettings(defaultSettings(), 'external');
     expect(s.categories.AMOUNT).toBe(true);

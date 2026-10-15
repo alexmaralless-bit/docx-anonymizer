@@ -24,6 +24,8 @@ export const MSG = Object.freeze({
   BATCH_END: 'BATCH_END',
   BATCH_APPLY: 'BATCH_APPLY',
   CATALOG_CHANGED: 'CATALOG_CHANGED',
+  /** {modelId?} — пакет модели NER установлен/удалён (WP8): хост сбрасывает кэш провайдера; ответ ACK */
+  MODEL_CHANGED: 'MODEL_CHANGED',
   // bg → client
   PROGRESS: 'PROGRESS',
   ENTITIES: 'ENTITIES',
@@ -35,7 +37,7 @@ export const MSG = Object.freeze({
   SESSIONS: 'SESSIONS',
   DEANON_RESULT: 'DEANON_RESULT',
   BATCH_DONE: 'BATCH_DONE',
-  /** Расширение протокола: подтверждение для DISCARD/CANCEL/CATALOG_CHANGED/BATCH_* без данных. */
+  /** Расширение протокола: подтверждение для DISCARD/CANCEL/CATALOG_CHANGED/MODEL_CHANGED/BATCH_* без данных. */
   ACK: 'ACK',
 });
 
@@ -118,11 +120,8 @@ export function dataUrlToBase64(dataUrl) {
   return i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
 }
 
-/** SHA-256 в hex (WebCrypto есть и в браузере, и в Node 22). */
-export async function sha256Hex(bytes) {
-  const d = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+/** SHA-256 в hex — живёт в ядре (src/core/hash.js), здесь реэкспорт для прежних импортов. */
+export { sha256Hex } from '../core/hash.js';
 
 /* ---------- приём чанков ---------- */
 

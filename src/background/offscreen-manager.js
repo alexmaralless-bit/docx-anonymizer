@@ -2,7 +2,7 @@
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 let creating = null;
 
-async function hasDocument() {
+export async function hasDocument() {
   if (chrome.runtime.getContexts) {
     const ctx = await chrome.runtime.getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT'],

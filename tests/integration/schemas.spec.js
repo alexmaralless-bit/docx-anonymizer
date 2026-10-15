@@ -98,6 +98,9 @@ describe('schemas/protocol.schema.json', () => {
     await send({ type: MSG.LIST_SESSIONS, requestId: 'r7' });
     await upload('e1', new TextEncoder().encode('это не docx, а просто текст достаточной длины'), 'x.docx');
     await send({ type: MSG.CATALOG_CHANGED, requestId: 'c1' });
+    await send({ type: MSG.MODEL_CHANGED, requestId: 'm1', modelId: 'rubert-tiny2-ner-ruen' });
+    await send({ type: MSG.MODEL_CHANGED, requestId: 'm2' });
+    expect(out.filter((m) => m.requestId === 'm1' || m.requestId === 'm2').map((m) => m.type)).toEqual(['ACK', 'ACK']);
     await send({ type: MSG.CANCEL, requestId: 'cx' });
     await send({ type: MSG.DISCARD, requestId: 'd1', docId: ent.docId });
     await send({ type: MSG.BATCH_END, requestId: 'b2', batchId: 'batch-1' });
@@ -121,6 +124,7 @@ describe('schemas/protocol.schema.json', () => {
       'DEANON',
       'ADD_ENTITY',
       'GET_TEXT',
+      'MODEL_CHANGED',
     ]) {
       expect(types.has(t), `в прогоне нет ${t}`).toBe(true);
     }
@@ -141,6 +145,8 @@ describe('schemas/protocol.schema.json', () => {
       { type: 'RESULT_CHUNK', requestId: 'r', index: 0, data: 'не base64!' },
       { type: 'UNKNOWN', requestId: 'r' },
       { type: 'DEANON', requestId: 'r', mappingRef: 'd1', text: 'x', decline: 'да' },
+      { type: 'MODEL_CHANGED', requestId: 'r', modelId: 'Bad Id' },
+      { type: 'MODEL_CHANGED' },
       {
         type: 'DEANON_RESULT',
         requestId: 'r',

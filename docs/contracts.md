@@ -1,7 +1,8 @@
-# Контракты модулей (для параллельных рабочих пакетов)
+# Контракты модулей
 
-Документ описывает, **что уже есть** в фундаменте и **как к этому подключаться**. Источник истины — код с JSDoc;
-здесь — смысл и правила. Рамки — `docs/mvp-scope.md`, ТЗ — `docs/spec-full.md`.
+Документ описывает, **что есть** в коде и **как к этому подключаться** (версия 0.2.0: MVP WP1–WP5 и пакеты WP6–WP9).
+Источник истины — код с JSDoc; здесь — смысл и правила. Рамки MVP — `docs/mvp-scope.md`, цели 0.2 — `docs/concept-0.2.md`,
+ТЗ — `docs/spec-full.md`, рабочие пакеты — `docs/tasks.md`.
 
 ```
 popup / content / options / restore ──port "docx"──► background (router) ──runtime.sendMessage──► offscreen ──postMessage──► Web Worker
@@ -15,35 +16,50 @@ popup / content / options / restore ──port "docx"──► background (route
 
 ## 0. Карта кода
 
-| Путь | Что | Статус |
+| Путь | Что | Пакет |
 |---|---|---|
-| `src/core/docx/zip.js` | свой ZIP: чтение, детерминированная запись, байт-копия нетронутых записей | готово |
-| `src/core/docx/xml.js` | линейный токенизатор XML, (un)escape, `applyRangeEdits` | готово |
-| `src/core/docx/model.js` | `parseDocx` → `DocModel` (части, параграфы, потоки, virtualText, charMap) | готово |
-| `src/core/docx/replace.js` | `serializeDocx(doc, edits, opts)` — замена через раны, метаданные, rels, ZIP | готово |
-| `src/core/categories.js` | **единственный** каталог 21 категории + `buildCatalog`, `normalizeValue` | готово (данные) |
-| `src/core/contracts/` | типы `Entity`/`EntityGroup`/`Decision`, реестр детекторов, `NerProvider`, `Session` | готово |
-| `src/core/detect/runner.js` | `analyze()` — весь конвейер поиска | готово |
-| `src/core/detect/overlap.js` | `resolveOverlaps()` (FR-20) | готово |
-| `src/core/apply.js`, `mapping.js`, `placeholders.js` | `applyDecisions()`, маппинг, плейсхолдеры, режимы | готово |
-| `src/core/deanon.js` | `deanonymize()` (FR-36) | готово |
+| `src/core/docx/zip.js` | свой ZIP: чтение, детерминированная запись, байт-копия нетронутых записей | фундамент |
+| `src/core/docx/xml.js` | линейный токенизатор XML, (un)escape, `applyRangeEdits` | фундамент |
+| `src/core/docx/model.js` | `parseDocx` → `DocModel` (части, параграфы, потоки, virtualText, charMap) | фундамент |
+| `src/core/docx/replace.js` | `serializeDocx(doc, edits, opts)` — замена через раны, метаданные, rels, ZIP | фундамент |
+| `src/core/categories.js` | **единственный** каталог 21 категории + `buildCatalog`, `normalizeValue` | фундамент (данные — WP1/WP2) |
+| `src/core/contracts/` | типы `Entity`/`EntityGroup`/`Decision`, реестр детекторов, `NerProvider` (+ `dispose`, `NER_LABEL_TO_CATEGORY`), `Session` | фундамент; `ner.js` — WP8 |
+| `src/core/detect/runner.js` | `analyze()` — весь конвейер поиска, этап `ner`, порог `nerThreshold` | фундамент; WP8/WP9 |
+| `src/core/detect/overlap.js` | `resolveOverlaps()` (FR-20) | фундамент |
+| `src/core/apply.js`, `mapping.js`, `placeholders.js` | `applyDecisions()`, маппинг, плейсхолдеры, режимы | фундамент |
+| `src/core/deanon.js` | `deanonymize()` (FR-36), опция `decline` (FR-37) | фундамент; WP6 |
 | `src/core/deanon-morph.js` | склонение ФИО при восстановлении: `parsePersonValue`, `detectCase`, `declineInContext` (FR-37) | WP6 |
-| `src/core/settings.js`, `sites.js` | схема настроек, дефолты, миграции; allowlist/blocklist | готово |
-| `src/core/search.js`, `text-view.js` | поиск всех вхождений; данные для вкладки «Текст» | готово |
-| `src/shared/protocol.js` | протокол §5.4 + транспорт (чанки base64, клиент) | готово |
-| `src/shared/settings-store.js`, `port-client.js` | обёртки `chrome.storage` и порта | готово |
-| `src/shared/permissions.js`, `src/background/site-access.js` | опциональный доступ к сайтам, динамическая регистрация content script (§4а) | 0.2, WP6 |
-| `src/offscreen/host.js` | обработчик протокола в воркере (сессии, ANALYZE/APPLY/…) | готово |
-| `src/background/` | роутер портов, жизненный цикл offscreen, миграция настроек | готово; `badge.js` — WP3 |
-| `src/core/validators.js`, `detect/identifiers/` | валидаторы и детекторы идентификаторов | **WP1** (сейчас — временный EMAIL) |
-| `src/core/detect/names/` | PERSON/COMPANY/ADDRESS + KB | **WP2** |
-| `src/core/detect/names/person-dict.js`, `names/dict/` | словарный детектор ФИО третьих лиц, словари (генерирует `scripts/make-dicts.mjs`) | 0.2, WP7 |
-| `src/core/hash.js` | `sha256Hex` (WebCrypto; `shared/protocol.js` реэкспортирует) | 0.2, WP8 |
-| `src/core/ner/pack.js`, `known-packs.js`, `pending-provider.js` | формат пакета модели NER: `parsePackManifest`, `verifyPackFiles`, `packZipName`; список проверенных пакетов; временный провайдер (до WP9) | 0.2, WP8 (§6) |
-| `src/core/ner/wordpiece.js`, `windows.js`, `bio.js`, `onnx-provider.js` | ONNX-провайдер NER: WordPiece с офсетами, окна, BIO и границы спанов, инференс через переданный `ort` | 0.2, WP9 (§6.7) |
-| `src/shared/model-store.js` | хранилище пакетов модели в OPFS: импорт, проверка, чтение из воркера, удаление | 0.2, WP8 (§6) |
-| `src/content/`, `src/ui/`, `src/popup/` | перехват, панель, popup | **WP3** |
-| `src/options/`, `src/restore/`, `src/core/detect/custom/` | настройки, свои категории, восстановление | **WP4** |
+| `src/core/settings.js`, `sites.js` | схема настроек (`SETTINGS_SCHEMA_VERSION` 2), дефолты, миграции; allowlist/blocklist | фундамент; WP6–WP9 |
+| `src/core/search.js`, `text-view.js` | поиск всех вхождений; данные для вкладки «Текст» | фундамент |
+| `src/core/hash.js` | `sha256Hex` (WebCrypto; `shared/protocol.js` реэкспортирует) | WP8 |
+| `src/core/validators.js`, `detect/identifiers/` | валидаторы и детекторы 18 категорий идентификаторов | WP1 |
+| `src/core/detect/names/` | PERSON/COMPANY/ADDRESS, база знаний сторон (`kb.js`), морфология, транслитерация | WP2 |
+| `src/core/detect/names/person-dict.js` | словарный детектор ФИО третьих лиц `findPersonsByDict` (§2) | WP7 |
+| `src/core/detect/names/dict/` | `index.js` (ленивое декодирование, поиск), `codec.js` (front-coding), генерируемые `ru-surnames.js`, `ru-first.js`, `en-first.js`, `en-surnames.js`, `NOTICE.md` | WP7 |
+| `src/core/detect/custom/` | документный детектор пользовательских категорий | WP4 |
+| `src/core/ner/pack.js`, `known-packs.js` | формат пакета модели: `parsePackManifest`, `verifyPackFiles`, `packZipName`; список проверенных пакетов (§6.1) | WP8; sha256 — WP9 |
+| `src/core/ner/pending-provider.js` | заглушка провайдера WP8 (только для `tests/unit/ner/pack.spec.js`) | WP8 |
+| `src/core/ner/wordpiece.js`, `windows.js`, `bio.js`, `onnx-provider.js` | ONNX-провайдер NER: WordPiece с офсетами, окна, BIO и границы спанов, инференс через переданный `ort` (§6.7) | WP9 |
+| `src/shared/protocol.js` | протокол §5.4 + транспорт (чанки base64, клиент), `MODEL_CHANGED` | фундамент; WP8 |
+| `src/shared/settings-store.js`, `port-client.js` | обёртки `chrome.storage` и порта | фундамент |
+| `src/shared/permissions.js` | опциональный доступ к сайтам: паттерны, `requestOrigins`, `removeOrigins`, `hasOriginAccess` (§4а) | WP6 |
+| `src/shared/model-store.js` | хранилище пакетов модели в OPFS: проверка, установка в слоты, чтение из воркера, удаление (§6.2) | WP8 |
+| `src/background/index.js`, `router.js`, `offscreen-manager.js` | роутер портов, жизненный цикл offscreen, миграция настроек | фундамент |
+| `src/background/site-access.js` | динамическая регистрация content script по выданным origin (§4а) | WP6 |
+| `src/background/badge.js` | бейдж `ON` (FR-43) | WP3 |
+| `src/offscreen/` | `offscreen.js` (мост, модульный воркер), `host.js` (сессии, ANALYZE/APPLY/DEANON/…, кэш NER-провайдера), `worker.js` (ESM + ORT) | фундамент; WP6, WP8, WP9 |
+| `src/content/`, `src/ui/panel/`, `src/ui/preview/`, `src/popup/` | перехват, панель, предпросмотр, popup | WP3 |
+| `src/ui/components/site-state.js` | состояние сайта для popup (`needsAccess`) | WP6 |
+| `src/options/`, `src/restore/`, `src/ui/deanon/` | настройки (в т.ч. «Модель NER»), свои категории, восстановление (склонение, подсветка) | WP4; WP6–WP8 |
+| `src/help/`, `src/ui/brand.js` | справка, подпись «Сделано в Sitimlab» | 0.1 |
+| `schemas/` | `mapping`, `protocol`, `model-pack` (JSON Schema draft 2020-12) | WP5; WP8 |
+| `scripts/build.mjs`, `pack.mjs` | сборка `dist/` (`--e2e` → `dist-e2e/`), архив релиза | фундамент; WP6, WP8 |
+| `scripts/make-dicts.mjs` | генератор словарей ФИО из закреплённых коммитов (`npm run dicts`, `--check`) | WP7 |
+| `scripts/pack-model.mjs` | детерминированный zip пакета модели (`npm run pack:model -- --id=<id>`) | WP8 |
+| `scripts/bench-ner.mjs` | бенчмарк и span-F1 провайдера в Node (`npm run bench-ner`), помощники для тестов | WP9 |
+| `scripts/gen-ner-eval.mjs` | корпус оценки NER `tests/fixtures/ner/eval-{ru,en}.json` (`npm run gen-ner-eval`) | WP9 |
+| `scripts/gen-fixtures.mjs`, `make-sample.mjs` | документы-фикстуры с gold, образец договора | WP5; WP7 (`third-persons`) |
+| `tools/ner-train/` | обучение модели (Python, uv): WikiANN ru+en, дистилляция, ONNX int8, калибровка порога, `models-src/<id>/` | WP9 |
 
 `src/core/**` — чистый JS: без `chrome.*`, DOM и сети (ESLint это проверяет). Тесты ядра — Vitest в Node 22.
 
@@ -163,7 +179,9 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 - `isCategoryEnabled(cat, settings)` — `settings.categories[id] ?? defaultOn`.
 - Настройки: `defaultSettings()`, `migrateSettings(stored) → {settings, changed}` (миграции — `MIGRATIONS[n]` + `SETTINGS_SCHEMA_VERSION`),
   `validateSettingsPatch(patch) → badKeys[]`, `VALIDATORS[key]`, `effectiveSettings(settings, profileId)`.
+- `SETTINGS_SCHEMA_VERSION` = 2 (0.2): миграция 1 → 2 меняет `nerThreshold` 0.6 (прежний дефолт) на 0.7, другие значения порога не трогает.
 - `dictNames` (boolean, по умолчанию `true`, поле профиля) — словарный детектор ФИО (WP7); тумблер в настройках, раздел «Обработка».
+- `nerEnabled` (boolean, `true`) и `nerThreshold` (0–1, по умолчанию **0.7** = `recommendedThreshold` пакета, поле профиля) — этап NER; без установленного пакета не действуют.
 - `nerModel` (string, по умолчанию `''`; иначе id пакета `/^[a-z0-9][a-z0-9-]{1,40}$/`) — установленный пакет модели NER (WP8). Не поле профиля, **не экспортируется** в файл настроек (`NOT_EXPORTED` в `options/config-io.js`): пакет живёт в OPFS этого браузера. Пишет только карточка «Модель NER».
 - Хранилище — **только** через `src/shared/settings-store.js`: `loadSettings()`, `saveSettingsPatch(patch) → {settings, rejected}`, `onSettingsChanged(cb)`.
 - Сайты: `matchOrigin`, `isOriginAllowed`, `isInterceptActive(settings, origin)` (FR-07, FR-35).
@@ -191,6 +209,9 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
   await client.request(MSG.DISCARD, { docId }); // → ACK
   ```
   Ошибки — `ProtocolError {code, message}`; разрыв порта → `HOST_UNAVAILABLE` для всех ожидающих запросов.
+- `DEANON` (FR-36/37): `mappingRef` — `docId` сессии (берётся её последний маппинг; нет маппинга → ошибка «сначала примените замены») или объект маппинга.
+  Хост склоняет ФИО **только при `decline === true`** (иначе результат прежний, `declined: []`). Страница восстановления шлёт `decline` из флажка (по умолчанию вкл.);
+  маппинг из файла `.mapping.json` она восстанавливает сама, вызывая `deanonymize()` ядра, без хоста.
 - Сущность в `ENTITIES`: `{id, category, value, normalized, placeholder, replacement?, level, source, validated, enabled, occurrences[{id, part, pid, streamId, stream, start, end, text, context, variantOf?}]}`.
 - Повторная загрузка того же файла (SHA-256) в одной сессии браузера → `restoredDecisions: true` и прежние решения (§3.6).
 - Сквозная нумерация по нескольким файлам: `BATCH_BEGIN {batchId}` → `analyzeFile({..., batchId})` для каждого → `BATCH_END`.
@@ -231,12 +252,19 @@ UI: popup — `siteState(settings, url, {granted})` даёт `needsAccess` (на
 4. Плейсхолдеры назначаются в `analyze` (порядок обхода); тексты `mask`/`delete` — в `applyDecisions`.
 5. Для `\n`/`U+FFFC` внутри сущности — кандидат отбрасывается без предупреждения: проверяйте детекторы на текстах с переносами строк.
 6. Логи — без значений сущностей и текста документа (NFR-14): только id, категории, длины, тайминги.
-7. Временный детектор EMAIL (`detect/identifiers/index.js`) нужен `tests/integration/host.spec.js` и e2e — WP1 заменяет его настоящим, тесты должны остаться зелёными (настоящий детектор находит те же 4 адреса образца).
-8. Блок «Проверка конвейера (dev)» в popup используется `tests/e2e/pipeline.spec.js`: id `#dev-file`, `data-testid` `dev-status`, `vt-length`, `entity-count`, `result-size` сохраняются (можно спрятать в `<details>`), пока WP5 не заменит этот e2e.
+7. Детектор EMAIL — настоящий (WP1); `tests/integration/host.spec.js` и e2e рассчитывают на те же 4 адреса образца.
+8. Блок «Проверка конвейера (dev)» в popup (`#dev-file`) остался для ручной отладки; e2e от него не зависят — `pipeline.spec.js` и `ner.spec.js` гоняют конвейер через клиент протокола (`tests/e2e/helpers/client.js`).
 9. Образец — `scripts/make-sample.mjs` (`buildSampleDocx() → {bytes, gold}`); `gold` — все чувствительные значения для проверок утечек.
 10. Snap-LibreOffice не видит скрытые каталоги и `/tmp`: интеграционный тест пишет в `test-output/` в репозитории; `SKIP_LIBREOFFICE=1` — пропустить.
 11. Сборка: новые точки входа добавляются в `entries` в `scripts/build.mjs`; HTML подключает бандлы обычным `<script src>`. Исключение — `offscreen/worker.js`: отдельный ESM-вызов esbuild (§6.5); в него не добавлять код, который рассчитывает на IIFE-обёртку.
 12. Воркер ядра — модульный: в нём нет `importScripts`, а `import.meta.url` есть. `chrome.runtime.getURL` в воркере нет — пути к ресурсам расширения строятся от `import.meta.url`/`self.location`.
+13. Сеть в e2e (NFR-01, К6): `context.on('request')` Playwright не видит offscreen-документ и его воркер. `tests/e2e/helpers/network.js` (`captureAllRequests`,
+    `externalRequests`, `offscreenRequests`) подключается к браузерной CDP-цели (фикстура запускает Chromium с `--remote-debugging-port=0`, порт — из
+    `<профиль>/DevToolsActivePort`) и через `Target.setAutoAttach` пишет запросы всех целей: страниц, service worker, offscreen, worker. Работает в новом headless.
+14. CI (`.github/workflows/ci.yml`, К12): push и pull request в `main`; задание `test` — `npm ci`, `lint`, `npm test` (`SKIP_LIBREOFFICE=1`, xmllint из `libxml2-utils`),
+    `build`, `pack`, архив — артефакт; задание `e2e` — `npx playwright install --with-deps chromium`, `npm run e2e` (headless, без xvfb), `test-output/` — артефакт при сбое.
+    Гейтовые тесты реальной модели (`NER_MODEL_DIR` — `tests/integration/ner-provider.spec.js`, `NER_PACK` — `tests/e2e/ner.spec.js`) в CI пропускаются: модели в git нет.
+    Главный сценарий `tests/e2e/chat.spec.js` (12 тестов) по-прежнему за флагом `E2E_WP3=1` (флаг времён параллельной работы WP3/WP5): CI его выставляет, локальный `npm run e2e` без флага их пропускает.
 
 ---
 
@@ -335,8 +363,9 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
   (в npm-пакете ORT файла лицензии нет — текст MIT лежит в `assets/licenses/`).
 - Размеры `offscreen/worker.js`: до WP8 (IIFE) 225 443 байт; после WP8 329 403 байт, из них ORT ≈ 102 400 (+ словари WP7: 719 209 байт на момент сдачи WP8, без ORT ≈ 616 400).
   После WP9 (провайдер, токенизатор, BIO): 745 462 байт, из них ORT 102 795, без ORT 642 667 (≤ 700 КБ, К15).
+  Финальное состояние 0.2.0 (`npm run build`, 15.10.2026): `worker.js` 747 708 байт, из них ORT 102 795, без ORT 644 913; `content.js` 110 048 байт (< 150 КБ, без словарей); `dist/` целиком 15 491 656 байт.
   `tests/integration/pack.spec.js` проверяет «worker.js без ORT ≤ 700 КБ» (К15), считая ORT по секции бандла `// node_modules/onnxruntime-web/…`.
-- Архив релиза (`npm run pack`) с wasm: ≈ 4,2 МБ (wasm сжимается до ≈ 3,5 МБ).
+- Архив релиза (`npm run pack`, 0.2.0): 4 240 994 байт (4,0 МБ), 27 файлов; wasm 14 239 897 байт (13,6 МБ) сжимается в архиве до 3 824 625 байт. Модели в архиве нет.
 
 ### 6.6. Спайки S1–S3 (Chromium из Playwright 1.63, headless new, `dist-e2e`)
 
@@ -380,39 +409,49 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
    и короткие сокращения с точкой, за которыми не начинается предложение («Стр. 1»).
 
 Порог: runner отбрасывает `score < settings.nerThreshold`. Дефолт **0.7** = `recommendedThreshold` пакета (было 0.6; миграция настроек 1 → 2 меняет только
-прежний дефолт 0.6). `score` — средняя маргинальная вероятность типа, поэтому он выше, чем вероятность отдельной метки при калибровке T1: на корпусе
-`eval-ru` span-F1 почти не меняется в диапазоне 0.4–0.7 (PER 0.91–0.92, ORG 0.70–0.76) и падает выше 0.75 (ORG 0.62 при 0.75, 0.54 при 0.8).
+прежний дефолт 0.6). `score` — средняя маргинальная вероятность типа, поэтому он выше, чем вероятность отдельной метки при калибровке. Замеры по порогу — ниже, под таблицей результатов.
 
 **Корпус оценки** — `scripts/gen-ner-eval.mjs` (сид 20261015, вымышленные данные: ФИО из словарей WP7 со склонением `names/morph.js`, придуманные компании,
 общеупотребительные топонимы) → `tests/fixtures/ner/eval-ru.json` (240 предложений договорного стиля: PER 169, ORG 94, LOC 88 спанов; 8 шаблонов без сущностей)
 и `eval-en.json` (120: PER 80, ORG 42, LOC 58). Соглашение о gold: PER — ФИО как написано (с точкой последнего инициала), ORG — с ОПФ и кавычками, LOC — топоним
 без родового слова («Ленина» в «ул. Ленина»). Метрика — span-F1 с точным совпадением границ и метки (`scoreSpans` в `scripts/bench-ner.mjs`).
 
-**Результаты** (`rubert-tiny2-ner-ruen` 1.0.0, int8, `model.onnx` sha256 `0ab310c0…cd01` — финальная модель T1 (дистилляция + 10 % синтетики), опубликованный zip `ca023f16…318f`; `maxLen` 128, `stride` 16, порог 0.7; `tests/integration/ner-provider.spec.js`, `npm run bench-ner`). При переэкспорте модели числа, zip и `KNOWN_PACKS` обновляются вместе:
+**Результаты** (`rubert-tiny2-ner-ruen` 1.0.0, int8, `model.onnx` 31 852 495 байт (30,4 МБ), sha256 `0ab310c0…cd01` — финальная модель T1 (дистилляция XLM-R + 10 % синтетики);
+опубликованный zip `docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip`, 29 517 760 байт, sha256 `ca023f16799f08b1b1d6134fae242461bda6ab79dfe74e34eda1ec6c9a48318f` (= `KNOWN_PACKS`);
+`maxLen` 128, `stride` 16, порог 0.7; `npm run bench-ner` и `tests/integration/ner-provider.spec.js`, 15.10.2026). При переэкспорте модели числа, zip и `KNOWN_PACKS` обновляются вместе:
 
 | Корпус | PER P / R / F1 | ORG P / R / F1 | LOC P / R / F1 | Гейт |
 |---|---|---|---|---|
-| eval-ru (240) | 0.979 / 0.846 / **0.908** | 0.859 / 0.585 / **0.696** | 0.948 / 0.830 / 0.885 | PER ≥ 0.80 ✓, ORG ≥ 0.65 ✓ |
-| eval-en (120) | 0.908 / 0.738 / **0.814** | 0.764 / 1.000 / 0.866 | 0.921 / 0.603 / 0.729 | PER ≥ 0.75 ✓ |
+| eval-ru (240) | 0.982 / 0.982 / **0.982** | 0.955 / 0.894 / **0.923** | 0.933 / 0.943 / 0.938 | PER ≥ 0.80 ✓, ORG ≥ 0.65 ✓ (К8) |
+| eval-en (120) | 0.986 / 0.850 / **0.913** | 0.778 / 1.000 / 0.875 | 0.957 / 0.776 / 0.857 | PER ≥ 0.75 ✓ |
 
-Без постобработки шагов 6–9 (argmax метки, строгий BIO, только подрезка пунктуации по краям, тот же порог 0.7) на тех же корпусах: ru PER 0.711 / ORG 0.145 / LOC 0.877,
-en PER 0.671 / ORG 0.460 / LOC 0.796 — модель ставит B на каждое слово ФИО,
-делит массу между B и I, не включает ОПФ и кавычки в ORG. Основные оставшиеся ошибки модели (для T1): ORG с ОПФ и кавычками часто не находится вовсе
-(«АО «Березка»», «ООО «Ромашка»» — 38 из 94 пропущены), названия без ОПФ («Промтехснаб»), фамилия перед именем в им. падеже («Кадров Антон Сергеевич» → только
-«Антон Сергеевич»), инициалы перед фамилией в en («C. Toth»), голая фамилия после обращения («Mr. Stanfill»), «Mr. Campa» → ORG.
+Тест WikiANN (`tools/ner-train/evaluate.py`, `verify_onnx.py`; токен-уровень seqeval, F1): ru — PER **0.915**, ORG **0.760**, LOC 0.861 (гейты К7 PER ≥ 0.85, ORG ≥ 0.75 ✓);
+en — PER 0.809, ORG 0.652, LOC 0.772. Согласие argmax int8 ↔ PyTorch fp32 — 99,7 % (50 предложений; 99,65 % на 2 000), гейт ≥ 99 % ✓.
+Числа на `eval-{ru,en}` оптимистичны: в обучение добавлена шаблонная синтетика того же договорного стиля (`synth.py`, свои словари и шаблоны), поэтому решающие для К7 — числа WikiANN.
 
-**Бенчмарк** (AMD Ryzen 9 7945HX, одна нить WASM SIMD; в Node — `npm run bench-ner`, в Chromium — спайк S6 и e2e `ner.spec.js`):
+Без постобработки шагов 6–9 (argmax метки, строгий BIO, только подрезка пунктуации по краям, порог 0.7) — замер WP9 на предыдущем экспорте той же архитектуры:
+ru PER 0.711 / ORG 0.145 / LOC 0.877, en PER 0.671 / ORG 0.460 / LOC 0.796 — модель ставит B на каждое слово ФИО, делит массу между B и I, не включает ОПФ и кавычки в ORG.
+Оставшиеся ошибки финальной модели (`npm run bench-ner -- --errors=10`): ORG без ОПФ или без ОПФ перед кавычками не находится («Севзапкабель», «Эталон-Логистик»»),
+граница ORG захватывает соседние слова («силами ООО «Север-М»», «АНО "Вектор-Технологии" Коростелкина»), «Ростов-на-Дону» → «Ростов»;
+в en — инициал перед фамилией («C. Bozeman»), голая фамилия после обращения («Mr. Stanfill», «Dr. Childers» → ORG), названия штатов и стран без контекста («California», «Bavaria»).
+
+Порог: на `eval-ru` span-F1 почти не зависит от порога в диапазоне 0.4–0.8 (PER 0.982 везде, ORG 0.904 при 0.4, 0.929 при 0.6, 0.923 при 0.7, 0.917 при 0.75–0.8);
+на `eval-en` выше порог — точнее ORG (0.840 при 0.4 → 0.923 при 0.8) ценой полноты PER/LOC. Калибровка на validation WikiANN (`calibrate.py`) даёт максимум micro-F1 при 0.70
+(кривая плоская: 0.65–0.75 различаются < 0.001), поэтому дефолт 0.7 = `recommendedThreshold` пакета.
+
+**Бенчмарк** (AMD Ryzen 9 7945HX, одна нить WASM SIMD; в Node — `npm run bench-ner`, в Chromium — e2e `ner.spec.js` и спайк S6). Финальная модель, 15.10.2026;
+Chromium — e2e `ner.spec.js` с опубликованным zip (`NER_PACK`, headless). Строки с пометкой «WP9» измерены на предыдущем экспорте той же архитектуры и размера (скорость от весов не зависит):
 
 | Замер | Node 22 (onnxruntime-web) | Chromium (расширение) |
 |---|---|---|
-| Холодная `init()` (чтение файлов + словарь 83 828 токенов + сессия) | 270–470 мс | `create` 271 мс + чтение 103 мс; холодный `analyzeFile` образца — 0,6–0,9 с |
-| Окно 128 токенов, батч 1 / батч 8 | 13,6 / 13,8 мс на окно | 13,2 / 14,2 мс на окно |
-| Окно 256 токенов, батч 1 / батч 8 | — | 32,2 / 37,0 мс на окно |
-| Токены/с (длинный поток, окна по 128) | ≈ 9 000 | — |
-| eval-ru, 240 предложений (по потоку на предложение) | 0,5 с, ≈ 9 600 токенов/с | — |
-| «20 страниц» ≈ 9 000 слов, 286 абзацев | NER 1,6 с (пре-фильтр пропустил 0 окон: в каждом абзаце есть заглавные) | `analyzeFile` целиком (правила + NER) 2,0 с |
-| Тёплый `analyzeFile` образца | — | 0,12–0,14 с |
-| «300 страниц» ≈ 150 000 слов, 4 764 абзаца | NER 23,2 с (282 282 токена) | — |
+| Холодная `init()` (чтение файлов + словарь 83 828 токенов + сессия) | **0,28–0,32 с** | холодный `analyzeFile` образца (чтение из OPFS + словарь + сессия + анализ) — 0,57 с (WP9: `create` 271 мс + чтение 103 мс) |
+| Окно 128 токенов, батч 1 / батч 8 | **11,5 / 10,8 мс** на окно (≈ 12 мс) | WP9: 13,2 / 14,2 мс на окно |
+| Окно 256 токенов, батч 1 / батч 8 (WP9) | — | 32,2 / 37,0 мс на окно |
+| Токены/с (длинный поток, окна по 128) | **≈ 10 000** (10 900 / 11 700 при батче 1 / 8) | — |
+| eval-ru, 240 предложений (по потоку на предложение) | 0,42 с, ≈ 12 000 токенов/с | — |
+| «20 страниц», 9 016 слов, 286 абзацев | NER **1,4 с** (1 338 мс; пре-фильтр пропустил 0 окон: в каждом абзаце есть заглавные) | `analyzeFile` целиком (правила + NER) — 2,15 с |
+| Тёплый `analyzeFile` образца | — | 0,10 с |
+| «300 страниц» ≈ 150 000 слов, 4 764 абзаца (WP9) | NER 23,2 с (282 282 токена) | — |
 
 Батч 8 не быстрее батча 1 в одной нити (≈ одинаковое время на окно), но и не медленнее; в документах батч собирается только внутри потока (абзаца), поэтому
 короткие абзацы идут по одному окну. 20 страниц укладываются в 15 с с большим запасом — митигации (`maxLen` 128 уже в пакете, батч 8, пре-фильтр) включены по
@@ -422,5 +461,31 @@ en PER 0.671 / ORG 0.460 / LOC 0.796 — модель ставит B на каж
 
 | Спайк | Результат |
 |---|---|
+| **S4** окружение обучения (`tools/ner-train`) | **Работает** (запись по `tools/ner-train/README.md`; отдельного отчёта спайка в WP9 не было): Python 3.12 через `uv`, PyTorch с CUDA 12.8 (`pytorch-cu128`) на RTX 5070 Laptop (Blackwell, `sm_120`); WikiANN `unimelb-nlp/wikiann` (`ru`, `en`) загружается напрямую (parquet, `datasets` 5.x), зеркало не понадобилось. Без GPU конвейер работает на CPU, медленнее. |
 | **S5** `onnxruntime-web` под vitest/Node | **Работает без `onnxruntime-node`.** `import 'onnxruntime-web'` в Node разрешается в `dist/ort.node.min.mjs` (WASM-бэкенд, wasm из пакета); `InferenceSession.create(Uint8Array)` на `model.onnx` (int8, 31,9 МБ) — 0,3–0,4 с, `inputNames` = `input_ids, attention_mask, token_type_ids`, выход `logits` float32 `[B, L, 7]`. ESM-импорт подпути `onnxruntime-web/wasm` (тот же, что в воркере) в Node тоже работает; CJS-вход (`require.resolve` → `ort.wasm.min.js`) при `import()` кладёт API в `default`. Тесты и бенчмарк берут основной ESM-вход (`loadOrt()` в `scripts/bench-ner.mjs`), `onnxruntime-node` не нужен. |
-| **S6** int8-модель в ORT WASM (браузер и Node) | **Исполняется** в обоих: квантованные MatMul/Gather поддерживает WASM EP; одна нить (`numThreads = 1`), без proxy. Числа — в таблице бенчмарка. Браузерный замер — отдельная страница в копии `dist-e2e` (ESM-бандл `ort.wasm.bundle.min.mjs`, модель с `chrome-extension://`), Chromium из Playwright 1.63, headless. |
+| **S6** int8-модель в ORT WASM (браузер и Node) | **Исполняется** в обоих: квантованные MatMul/Gather (в т.ч. построчно квантованная таблица эмбеддингов `Gather → Cast → Mul → Add`) поддерживает WASM EP; одна нить (`numThreads = 1`), без proxy. Числа — в таблице бенчмарка. Браузерный замер — отдельная страница в копии `dist-e2e` (ESM-бандл `ort.wasm.bundle.min.mjs`, модель с `chrome-extension://`), Chromium из Playwright 1.63, headless. |
+
+**Поток из нескольких предложений, `splitSentences`, границы PER, дубликаты** (доработка после ревью WP9, 15.10.2026). В документе модель получает поток
+абзаца, а обучена на отдельных предложениях: в склейке она тянет PER через точку («… Антонина. Груз …») и чаще ошибается в типе. Опция провайдера
+`splitSentences` (**по умолчанию `true`**) режет поток на предложения до `makeWindows` (`windows.js` `sentenceRanges`: граница — `.`/`!`/`?`/`…` перед словом
+с заглавной, в т.ч. после открывающей кавычки, и перенос строки/U+FFFC; не после однобуквенного инициала и сокращений «г.», «ул.», «Inc.»; обрывок короче
+4 слов с буквами идёт со следующим предложением — иначе «Добрый день!» без контекста становится ORG); окна строятся по каждому предложению отдельно.
+Дополнительно: `mergeBio` закрывает спан на переносе строки и U+FFFC между словами; `alignSpans` срезает у PER ведущие обращения, должности и роли
+(`POSITION_RE_SRC`, `ROLE_WORDS`, «Уважаемый», «г-жа», «гражданка», «менеджер» …; спан из одних таких слов выбрасывается); `dedupeSpans` после последнего
+`filterSpans` убирает дубликаты и вложенные спаны того же типа (остаётся объемлющий с большим score), а спан другого типа внутри кавычек названия ORG
+(PER «Орион» в «ПАО "Орион-Логистик"») поглощается ORG; прочие пересечения — в пользу большего score. `dispose()` во время `detect`/`init` →
+`CoreError('MODEL_LOAD_FAILED')` (сессия, созданная после dispose, освобождается), а не `TypeError`.
+
+Склейка eval-ru по k подряд идущих предложений через пробел (gold сдвигается), порог 0.7, span-F1 PER / ORG / LOC:
+
+| k | до доработки (ревью) | `splitSentences: false` | `splitSentences: true` (по умолчанию) |
+|---|---|---|---|
+| 1 | 0.982 / 0.923 / 0.938 | 0.982 / 0.923 / 0.938 | 0.982 / 0.923 / 0.938 |
+| 3 | 0.893 / 0.891 / 0.894 | 0.893 / 0.891 / 0.894 | **0.959 / 0.917 / 0.938** |
+| 5 | 0.877 / 0.930 / 0.903 | 0.886 / 0.930 / 0.903 | **0.959 / 0.923 / 0.938** |
+| 10 | 0.856 / 0.885 / 0.880 | 0.859 / 0.891 / 0.880 | **0.964 / 0.917 / 0.938** |
+
+eval-en при k = 5: PER 0.902 → 0.899, ORG 0.792 → 0.845, LOC 0.846 → 0.849 (без нарезки → с нарезкой). Гейт `tests/integration/ner-provider.spec.js` —
+eval-ru абзацами по 5 предложений: PER ≥ 0.80, ORG ≥ 0.65 ✓. Собственный корпус ревьюера (30 предложений ru/en): PER 0.930 → **0.977**, ORG 0.933, LOC 1.000
+(без изменений); трудный (15): PER 0.800, ORG 0.533, LOC 0.667 (без изменений). Цена нарезки: «20 страниц» — 813 окон вместо 286, NER в Node 1,35–1,42 → 1,72 с;
+`analyzeFile` в Chromium (e2e `ner.spec.js`) 2,1 с — гейт 15 с с запасом.

@@ -147,7 +147,7 @@ export const OPTIONS_DICT = {
     nav_ner: 'Модель NER',
     ner_h: 'Распознавание имён моделью (NER)',
     ner_hint:
-      'Необязательный пакет нейросетевой модели дополняет правила и словари: находит имена людей и названия организаций без меток. Пакет скачивается отдельно и импортируется здесь.',
+      'Необязательный пакет нейросетевой модели дополняет правила и словари: находит людей, организации и места (как адрес) без меток. Пакет скачивается отдельно и импортируется здесь.',
     ner_enabled: 'Использовать модель при анализе',
     ner_enabled_hint: 'Действует, только когда пакет модели установлен.',
     ner_threshold: 'Порог уверенности модели (0–1)',
@@ -329,7 +329,7 @@ export const OPTIONS_DICT = {
     nav_ner: 'NER model',
     ner_h: 'Name recognition by a model (NER)',
     ner_hint:
-      'An optional neural model pack complements rules and dictionaries: it finds people and organization names without labels. The pack is downloaded separately and imported here.',
+      'An optional neural model pack complements rules and dictionaries: it finds people, organizations and places (as addresses) without labels. The pack is downloaded separately and imported here.',
     ner_enabled: 'Use the model during analysis',
     ner_enabled_hint: 'Takes effect only when a model pack is installed.',
     ner_threshold: 'Model confidence threshold (0–1)',

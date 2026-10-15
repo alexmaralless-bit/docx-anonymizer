@@ -1,4 +1,5 @@
 // Строки справки. Факты — из README: что делает, как пользоваться, что данные не покидают компьютер.
+// Версия 0.2: доступ к сайтам по запросу (К9), словарный поиск ФИО (FR-23), пакет модели NER (§5.2), склонение при восстановлении (FR-37).
 export const HELP_DICT = {
   ru: {
     title: 'Справка',
@@ -13,17 +14,18 @@ export const HELP_DICT = {
       'Откройте меню расширения на сайте чата и включите «Перехват загрузки». Если сайта нет в списке, нажмите «Добавить …» и подтвердите запрос Chrome на доступ к сайту; для сайтов из списка по умолчанию нажмите «Разрешить доступ». По умолчанию перехват выключен, а доступа к сайтам у расширения нет.',
     how_2: 'Приложите .docx в чате: кнопкой, перетаскиванием или вставкой. Расширение остановит файл и покажет панель: что найдено и где.',
     how_3: 'Снимите лишние галочки и нажмите «Анонимизировать и загрузить» — в чат уйдёт файл имя.anon.docx.',
-    how_4: 'Ответ ИИ вставьте на странице «Восстановить текст»: расширение подставит настоящие значения из карты замен, которая хранится только у вас.',
+    how_4:
+      'Ответ ИИ вставьте на странице «Восстановить текст»: расширение подставит настоящие значения из карты замен, которая хранится только у вас. ФИО ставятся в нужный падеж по контексту, склонённые подстановки выделены зелёным — проверьте их.',
     privacy_h: 'Данные не покидают ваш компьютер',
     privacy_1: 'Расширение не делает ни одного сетевого запроса: это закреплено политикой безопасности расширения и проверяется тестами.',
     privacy_2: 'Документ обрабатывается в изолированном окне самого браузера и никуда не отправляется.',
     privacy_3: 'Содержимое документа и карта замен живут только в памяти и не записываются в хранилище браузера.',
     privacy_4:
-      'Если вы импортировали пакет модели NER, его файлы хранятся в хранилище браузера на этом компьютере; документы и результаты распознавания туда не записываются.',
+      'Пакет модели NER вы скачиваете и импортируете сами — расширение ничего не загружает. Его файлы хранятся в хранилище браузера на этом компьютере; документы и результаты распознавания туда не записываются.',
     check_h: 'Что стоит знать',
     check_1: 'Перед отправкой всегда просматривайте результат — ответственность за содержимое остаётся за вами.',
     check_2:
-      'Имена и названия находятся встроенными правилами: по меткам, шаблонам, словарям имён и базе знаний сторон из реквизитов. Дополнительно можно импортировать пакет нейросетевой модели NER в настройках — она тоже работает офлайн, на этом компьютере. Имя без метки и вне словарей всё равно может остаться — проверяйте результат.',
+      'Имена и названия находятся правилами: по меткам, шаблонам, базе знаний сторон из реквизитов и словарям имён и фамилий — так находятся и третьи лица без подписи «в лице». Для остального можно подключить модель NER: скачайте пакет с GitHub Releases и импортируйте в настройках («Модель NER» → «Импортировать пакет…»); модель работает офлайн, на этом компьютере. Одиночная фамилия или редкое имя всё равно могут остаться.',
     check_3: 'Встроенные объекты (OLE-вложения) не обезличиваются — расширение предупреждает об этом или удаляет их по настройке.',
     check_4: 'Работает только с файлами .docx и .docm.',
     open_options: 'Открыть настройки',
@@ -44,17 +46,17 @@ export const HELP_DICT = {
       'Attach a .docx in the chat: with the button, by drag and drop or by pasting. The extension holds the file and shows a panel with what was found and where.',
     how_3: 'Clear the checkmarks you do not need and press "Anonymize and upload" — the chat receives name.anon.docx.',
     how_4:
-      'Paste the AI answer on the "Restore text" page: the extension puts the real values back from the replacement map, which is stored only on your computer.',
+      'Paste the AI answer on the "Restore text" page: the extension puts the real values back from the replacement map, which is stored only on your computer. Russian names are put in the right case by context; declined values are highlighted in green — check them.',
     privacy_h: 'Your data never leaves your computer',
     privacy_1: 'The extension makes no network requests at all: this is enforced by the extension security policy and checked by tests.',
     privacy_2: 'The document is processed in an isolated browser window and is not sent anywhere.',
     privacy_3: 'Document content and the replacement map live in memory only and are not written to browser storage.',
     privacy_4:
-      'If you imported an NER model pack, its files are kept in browser storage on this computer; documents and recognition results are never written there.',
+      'You download and import the NER model pack yourself — the extension downloads nothing. Its files are kept in browser storage on this computer; documents and recognition results are never written there.',
     check_h: 'Good to know',
     check_1: 'Always review the result before sending — you remain responsible for the content.',
     check_2:
-      'Names and titles are found by built-in rules: labels, patterns, name dictionaries and the knowledge base of the parties from the requisites. You can additionally import a neural NER model pack in the settings — it also runs offline, on this computer. A name without a label and outside the dictionaries may still remain — review the result.',
+      'Names and titles are found by rules: labels, patterns, the knowledge base of the parties from the requisites and first-name and surname dictionaries — this also finds third persons without a “represented by” label. For the rest you can add the NER model: download the pack from GitHub Releases and import it in the settings (“NER model” → “Import pack…”); the model runs offline, on this computer. A lone surname or a rare name may still remain.',
     check_3: 'Embedded objects (OLE attachments) are not anonymized — the extension warns about them or removes them, depending on settings.',
     check_4: 'Only .docx and .docm files are supported.',
     open_options: 'Open settings',

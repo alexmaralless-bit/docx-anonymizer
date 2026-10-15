@@ -48,4 +48,10 @@ async function boot() {
   }
 }
 
-boot();
+// Скрипт может прийти дважды: через зарегистрированный content script и через executeScript сразу после выдачи доступа
+// (background/site-access.js). Изолированный мир у обоих общий — второй запуск ничего не делает.
+const BOOT_FLAG = '__docxAnonymizerBooted';
+if (!globalThis[BOOT_FLAG]) {
+  globalThis[BOOT_FLAG] = true;
+  boot();
+}

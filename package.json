@@ -11,10 +11,11 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:dev": "node scripts/build.mjs --dev",
+    "build:e2e": "node scripts/build.mjs --e2e",
     "pack": "node scripts/pack.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node scripts/build.mjs && playwright test",
+    "e2e": "node scripts/build.mjs --e2e && playwright test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "sample": "node scripts/make-sample.mjs",

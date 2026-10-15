@@ -4,9 +4,10 @@ import { isInterceptActive, isOriginAllowed, matchOrigin } from '../../core/site
 /**
  * @param {import('../../core/settings.js').Settings} settings
  * @param {string|undefined} url адрес вкладки
- * @returns {{state: 'unsupported'|'off'|'on'|'notListed'|'blocked', host: string, origin: string}}
+ * @param {{granted?: boolean}} [access] выдан ли доступ к сайту (chrome.permissions); не задано — неизвестно (бейдж)
+ * @returns {{state: 'unsupported'|'off'|'on'|'needsAccess'|'notListed'|'blocked', host: string, origin: string}}
  */
-export function siteState(settings, url) {
+export function siteState(settings, url, { granted } = {}) {
   let u;
   try {
     u = new URL(url || '');
@@ -18,7 +19,8 @@ export function siteState(settings, url) {
   const host = u.host;
   const blocked = settings.blocklist.some((p) => matchOrigin(p, origin));
   if (blocked) return { state: 'blocked', host, origin };
-  if (isInterceptActive(settings, origin)) return { state: 'on', host, origin };
+  // К9: настройки разрешают, но Chrome не дал доступа к сайту — content script туда не попадёт
+  if (isInterceptActive(settings, origin)) return { state: granted === false ? 'needsAccess' : 'on', host, origin };
   if (settings.interceptEnabled && !isOriginAllowed(settings, origin)) return { state: 'notListed', host, origin };
   return { state: 'off', host, origin };
 }

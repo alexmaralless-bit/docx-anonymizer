@@ -1,17 +1,19 @@
-// Фикстура Playwright: Chromium с распакованным расширением из dist/ (ТЗ §9.3).
+// Фикстура Playwright: Chromium с распакованным расширением из dist-e2e/ (ТЗ §9.3).
 // headless — новый headless Chromium (поддерживает расширения); E2E_HEADED=1 — с окном.
+// dist-e2e/ — сборка `node scripts/build.mjs --e2e`: в манифесте есть host_permissions <all_urls>, потому что нативный диалог
+// chrome.permissions.request Playwright нажать не может (К9). Content script регистрируется динамически при установке.
 import { test as base, chromium } from '@playwright/test';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-export const DIST = resolve('dist');
+export const DIST = resolve('dist-e2e');
 
 export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
   context: async ({}, use) => {
-    if (!existsSync(join(DIST, 'manifest.json'))) throw new Error('Сначала npm run build');
+    if (!existsSync(join(DIST, 'manifest.json'))) throw new Error('Сначала npm run build:e2e');
     const userDataDir = mkdtempSync(join(tmpdir(), 'docx-anon-e2e-'));
     const context = await chromium.launchPersistentContext(userDataDir, {
       channel: 'chromium',
@@ -45,6 +47,13 @@ export const test = base.extend({
   extensionId: async ({ context }, use) => {
     let [sw] = context.serviceWorkers();
     if (!sw) sw = await context.waitForEvent('serviceworker');
+    // background/site-access.js регистрирует content script на onInstalled асинхронно: страницы, открытые раньше, остались бы без него
+    await base
+      .expect(async () => {
+        const ids = await sw.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).map((s) => s.id));
+        base.expect(ids).toContain('intercept');
+      })
+      .toPass({ timeout: 10000, intervals: [50, 100, 250] });
     await use(new URL(sw.url()).host);
   },
 });

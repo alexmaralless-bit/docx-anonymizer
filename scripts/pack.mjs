@@ -13,7 +13,12 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const FIXED_TIME = new Date(2000, 0, 1, 12);
+// Фиксированное время всех записей архива (воспроизводимость, К11). Дата создаётся ЛОКАЛЬНЫМ конструктором намеренно:
+// fflate 0.8.3 пишет DOS-время локальными геттерами (getFullYear/getHours/…) и не пишет extra-поле с UTC-временем,
+// поэтому «полдень 1 января 2000 по местному времени» даёт одни и те же байты в любом часовом поясе.
+// Date.UTC(...) здесь сломал бы воспроизводимость: локальные часы/дата такой отметки зависят от TZ сборщика.
+// Полдень выбран с запасом от смены суток. Проверка — tests/integration/pack.spec.js («DOS-время не зависит от TZ»).
+export const FIXED_TIME = new Date(2000, 0, 1, 12);
 
 function walk(dir) {
   return readdirSync(dir)

@@ -6,6 +6,7 @@ import { defaultSettings, validateSettingsPatch } from '../core/settings.js';
 import { findCustomMatches } from '../core/detect/custom/index.js';
 import { checkRegexSource, validateCustomCategory, CUSTOM_VALIDATORS, SHAPES } from '../core/detect/custom/rules.js';
 import { loadSettings, onSettingsChanged, saveSettingsPatch } from '../shared/settings-store.js';
+import { ALL_URLS, desiredPatterns, removeOrigins, requestOrigins, toMatchPattern } from '../shared/permissions.js';
 import { createT, resolveUiLanguage } from '../ui/i18n/index.js';
 import { OPTIONS_DICT } from '../ui/i18n/options.js';
 import { confirmDialog, downloadJson, h } from '../ui/deanon/dom.js';
@@ -80,9 +81,12 @@ function normalizeOrigin(v) {
   return v.trim().replace(/\/+$/, '').toLowerCase();
 }
 
+// К9: allowlist связан с host-разрешениями. Добавление сайта запрашивает доступ (синхронно, в жесте пользователя),
+// удаление — отзывает его (в режиме «все сайты» доступ держит <all_urls>, отдельные сайты не трогаем).
 function originList(key, title, testid) {
   const box = h('div', { dataset: { testid: `${testid}-box` } });
   const err = h('div', { class: 'err' });
+  const access = h('div', { class: 'err', dataset: { testid: `${testid}-access` } });
   const input = h('input', { type: 'text', placeholder: t('origin_placeholder'), dataset: { testid: `${testid}-input` }, 'aria-label': title });
   const draw = () => {
     box.replaceChildren(
@@ -103,6 +107,7 @@ function originList(key, title, testid) {
     );
   };
   const remove = async (o) => {
+    if (key === 'allowlist' && settings.siteMode !== 'all') removeOrigins([toMatchPattern(o)]);
     await save({ [key]: settings[key].filter((x) => x !== o) });
     draw();
   };
@@ -114,11 +119,16 @@ function originList(key, title, testid) {
       err.textContent = t('origin_bad');
       return;
     }
+    // первым оператором после проверки, до любого await: permissions.request работает только из жеста пользователя
+    const granted = key === 'allowlist' ? requestOrigins([toMatchPattern(v)]) : null;
     input.classList.remove('invalid');
     err.textContent = '';
+    access.textContent = '';
+    // сохраняем независимо от ответа Chrome: сайт в списке, доступ можно выдать позже из меню расширения
     if (!settings[key].includes(v)) await save({ [key]: [...settings[key], v] });
     input.value = '';
     draw();
+    if (granted && !(await granted)) access.textContent = t('access_denied_hint');
   };
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') add();
@@ -138,7 +148,9 @@ function originList(key, title, testid) {
       h('div', { style: 'flex:1;min-width:220px' }, input),
       h('button', { type: 'button', class: 'btn', dataset: { testid: `${testid}-add` }, onclick: add }, t('add')),
     ),
+    key === 'allowlist' ? h('span', { class: 'hint' }, t('allowlist_hint')) : null,
     err,
+    access,
     box,
   );
 }
@@ -158,6 +170,17 @@ function interceptSection() {
           sel.value = settings.siteMode;
           return;
         }
+        // К9: сразу после клика «Подтвердить» (жест пользователя) — запрос доступа ко всем сайтам; без него режим не меняем
+        if (!(await requestOrigins([ALL_URLS]))) {
+          sel.value = settings.siteMode;
+          flash(t('site_all_denied'), true);
+          return;
+        }
+      } else if (settings.siteMode === 'all') {
+        // all → allowlist: снять доступ ко всем сайтам и запросить доступ только к сайтам списка.
+        // Сначала remove: пока <all_urls> выдан, request отдельных сайтов вернул бы true, ничего не добавив.
+        await removeOrigins([ALL_URLS]);
+        requestOrigins(desiredPatterns({ ...settings, siteMode: v }));
       }
       await save({ siteMode: v }, sel);
     },

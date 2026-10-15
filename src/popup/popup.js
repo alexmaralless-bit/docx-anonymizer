@@ -1,4 +1,6 @@
 // Popup (§3.2a, FR-42): тумблер перехвата с состоянием для текущего сайта, недавние сессии, «Восстановить», «Настройки».
+// Доступ к сайту (К9): «Добавить сайт» и «Разрешить доступ» запрашивают host-разрешение синхронно в обработчике клика.
+// Адрес вкладки popup получает через activeTab (без разрешения tabs).
 // Блок «Проверка конвейера (dev)» оставлен для tests/e2e/pipeline.spec.js.
 import { connectClient } from '../shared/port-client.js';
 import { MSG } from '../shared/protocol.js';
@@ -9,10 +11,14 @@ import { common } from '../ui/i18n/common.js';
 import { popup as popupDict } from '../ui/i18n/popup.js';
 import { h, clear } from '../ui/components/dom.js';
 import { matchOrigin } from '../core/sites.js';
+import { hasOriginAccess, requestOrigins, toMatchPattern } from '../shared/permissions.js';
 
 const $ = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
 let settings;
 let tabUrl;
+/** @type {boolean|undefined} выдан ли доступ к сайту текущей вкладки */
+let granted;
+let accessDenied = false;
 let t = (k) => k;
 
 async function currentTabUrl() {
@@ -39,15 +45,37 @@ function applyLanguage() {
   $('t-dev').textContent = t('devTitle');
 }
 
+async function refreshAccess() {
+  const { origin } = siteState(settings, tabUrl);
+  granted = origin ? await hasOriginAccess(origin) : undefined;
+}
+
+async function render() {
+  await refreshAccess();
+  renderSite();
+}
+
+/** Запрос доступа к сайту: requestOrigins — первым оператором обработчика клика (жест пользователя). */
+function grantAccess(origin, patch) {
+  const ok = requestOrigins([toMatchPattern(origin)]);
+  if (patch) saveSettingsPatch(patch); // сохраняется независимо от ответа: popup может закрыться вместе с диалогом Chrome
+  ok.then((v) => {
+    accessDenied = !v;
+    return render();
+  });
+}
+
 function renderSite() {
   const toggle = /** @type {HTMLInputElement} */ ($('intercept-toggle'));
   toggle.checked = settings.interceptEnabled;
-  const st = siteState(settings, tabUrl);
+  const st = siteState(settings, tabUrl, { granted });
   const status = $('site-status');
   const actions = $('site-actions');
   clear(actions);
   status.dataset.state = st.state;
   const btn = (text, patch, testid) => h('button', { class: 'btn-sm', type: 'button', text, 'data-testid': testid, onClick: () => saveSettingsPatch(patch) });
+  const grantBtn = (text, patch, testid) =>
+    h('button', { class: 'btn-sm', type: 'button', text, 'data-testid': testid, onClick: () => grantAccess(st.origin, patch) });
   switch (st.state) {
     case 'unsupported':
       status.textContent = t('siteUnsupported');
@@ -56,9 +84,14 @@ function renderSite() {
       status.textContent = t('siteOn', { host: st.host });
       actions.append(btn(t('blockSite', { host: st.host }), { blocklist: [...settings.blocklist, st.origin] }, 'site-block'));
       break;
+    case 'needsAccess':
+      status.textContent = t('siteNeedsAccess', { host: st.host });
+      actions.append(grantBtn(t('grantAccess'), null, 'site-grant'));
+      actions.append(btn(t('blockSite', { host: st.host }), { blocklist: [...settings.blocklist, st.origin] }, 'site-block'));
+      break;
     case 'notListed':
       status.textContent = t('siteNotListed', { host: st.host });
-      actions.append(btn(t('addSite', { host: st.host }), { allowlist: [...settings.allowlist, st.origin] }, 'site-add'));
+      actions.append(grantBtn(t('addSite', { host: st.host }), { allowlist: [...settings.allowlist, st.origin] }, 'site-add'));
       break;
     case 'blocked':
       status.textContent = t('siteBlocked', { host: st.host });
@@ -67,6 +100,8 @@ function renderSite() {
     default:
       status.textContent = t('siteOff');
   }
+  if (accessDenied && (st.state === 'needsAccess' || st.state === 'notListed'))
+    actions.append(h('small', { class: 'site-note', 'data-testid': 'access-denied', text: t('accessDenied') }));
 }
 
 async function renderRecent() {
@@ -111,6 +146,7 @@ async function renderRecent() {
 async function init() {
   settings = await loadSettings();
   tabUrl = await currentTabUrl();
+  await refreshAccess();
   applyLanguage();
   renderSite();
   const toggle = /** @type {HTMLInputElement} */ ($('intercept-toggle'));
@@ -118,8 +154,11 @@ async function init() {
   onSettingsChanged((s) => {
     settings = s;
     applyLanguage();
-    renderSite();
+    render();
   });
+  // доступ могли выдать или отозвать в chrome://extensions, пока popup открыт
+  chrome.permissions?.onAdded?.addListener(() => render());
+  chrome.permissions?.onRemoved?.addListener(() => render());
   $('open-options').addEventListener('click', (e) => {
     e.preventDefault();
     chrome.runtime.openOptionsPage();

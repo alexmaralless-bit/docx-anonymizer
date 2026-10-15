@@ -146,6 +146,19 @@ input:focus-visible + .switch {
 .site-actions:empty {
   display: none;
 }
+.site-actions .btn-sm + .btn-sm {
+  margin-left: 6px;
+}
+.site[data-state='needsAccess'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.site-note {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
 .btn-sm {
   font: inherit;
   font-size: 12.5px;

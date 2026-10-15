@@ -9,7 +9,8 @@ export const HELP_DICT = {
     what_p2:
       'В сервис уходит обезличенный документ: форматирование, таблицы, сноски и колонтитулы сохранены, метаданные файла очищены. Ответ ИИ можно вернуть обратно с настоящими названиями и именами.',
     how_h: 'Как пользоваться',
-    how_1: 'Откройте меню расширения, включите «Перехват загрузки» и добавьте нужный сайт — по умолчанию перехват выключен.',
+    how_1:
+      'Откройте меню расширения на сайте чата и включите «Перехват загрузки». Если сайта нет в списке, нажмите «Добавить …» и подтвердите запрос Chrome на доступ к сайту; для сайтов из списка по умолчанию нажмите «Разрешить доступ». По умолчанию перехват выключен, а доступа к сайтам у расширения нет.',
     how_2: 'Приложите .docx в чате: кнопкой, перетаскиванием или вставкой. Расширение остановит файл и покажет панель: что найдено и где.',
     how_3: 'Снимите лишние галочки и нажмите «Анонимизировать и загрузить» — в чат уйдёт файл имя.anon.docx.',
     how_4: 'Ответ ИИ вставьте на странице «Восстановить текст»: расширение подставит настоящие значения из карты замен, которая хранится только у вас.',
@@ -35,7 +36,8 @@ export const HELP_DICT = {
     what_p2:
       'The service receives an anonymized document: formatting, tables, footnotes and headers are kept, file metadata is cleared. The AI answer can be turned back into real names and titles.',
     how_h: 'How to use it',
-    how_1: 'Open the extension menu, turn on "Upload interception" and add the site you need — interception is off by default.',
+    how_1:
+      'Open the extension menu on the chat site and turn on "Upload interception". If the site is not listed, press "Add …" and accept Chrome\'s request for access to the site; for sites listed by default, press "Allow access". Interception is off by default and the extension has no access to sites until you allow it.',
     how_2:
       'Attach a .docx in the chat: with the button, by drag and drop or by pasting. The extension holds the file and shows a panel with what was found and where.',
     how_3: 'Clear the checkmarks you do not need and press "Anonymize and upload" — the chat receives name.anon.docx.',

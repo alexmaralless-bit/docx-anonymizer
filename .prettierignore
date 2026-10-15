@@ -2,3 +2,4 @@ dist
 node_modules
 test-output
 docs
+dist-e2e

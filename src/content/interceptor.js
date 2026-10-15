@@ -56,6 +56,11 @@ export function createInterceptor(flow, env = {}) {
     if (bypass) return;
     const input = e.composedPath?.()[0] ?? e.target;
     if (!isFileInput(input)) return;
+    // input (composed) доходит до window раньше change (не composed). Если открытый Shadow DOM ещё не досканирован
+    // (MutationObserver сканирует с задержкой 150 мс), подписываемся на его корень сейчас — иначе change с исходным
+    // файлом уйдёт странице мимо перехвата (FR-01, NFR-01).
+    const root = input.getRootNode?.();
+    if (root && root !== doc && root.host) hookRoot(root);
     if (held.has(input)) {
       e.stopImmediatePropagation(); // input → change: второе событие той же выборки
       return;

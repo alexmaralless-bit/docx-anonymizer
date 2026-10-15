@@ -26,10 +26,12 @@ popup / content / options / restore ──port "docx"──► background (route
 | `src/core/detect/overlap.js` | `resolveOverlaps()` (FR-20) | готово |
 | `src/core/apply.js`, `mapping.js`, `placeholders.js` | `applyDecisions()`, маппинг, плейсхолдеры, режимы | готово |
 | `src/core/deanon.js` | `deanonymize()` (FR-36) | готово |
+| `src/core/deanon-morph.js` | склонение ФИО при восстановлении: `parsePersonValue`, `detectCase`, `declineInContext` (FR-37) | WP6 |
 | `src/core/settings.js`, `sites.js` | схема настроек, дефолты, миграции; allowlist/blocklist | готово |
 | `src/core/search.js`, `text-view.js` | поиск всех вхождений; данные для вкладки «Текст» | готово |
 | `src/shared/protocol.js` | протокол §5.4 + транспорт (чанки base64, клиент) | готово |
 | `src/shared/settings-store.js`, `port-client.js` | обёртки `chrome.storage` и порта | готово |
+| `src/shared/permissions.js`, `src/background/site-access.js` | опциональный доступ к сайтам, динамическая регистрация content script (§4а) | 0.2, WP6 |
 | `src/offscreen/host.js` | обработчик протокола в воркере (сессии, ANALYZE/APPLY/…) | готово |
 | `src/background/` | роутер портов, жизненный цикл offscreen, миграция настроек | готово; `badge.js` — WP3 |
 | `src/core/validators.js`, `detect/identifiers/` | валидаторы и детекторы идентификаторов | **WP1** (сейчас — временный EMAIL) |
@@ -92,10 +94,13 @@ popup / content / options / restore ──port "docx"──► background (route
 `placeholder` — полная форма (`ООО «[КОМПАНИЯ_1]»`), `original` — `ООО «Ромашка»`. Записи отсортированы по каталогу и номеру.
 `mergeMappings([...])` — склейка маппингов файлов одной отправки. **Маппинг никогда не пишется в `chrome.storage`** (FR-29).
 
-### 1.5. `deanonymize(text, mapping) → {text, unresolved[], replaced}`
+### 1.5. `deanonymize(text, mapping, {decline = false} = {}) → {text, unresolved[], replaced, declined[]}`
 
 Понимает `[ФИО_1]`, `ФИО_1`, `ФИО 1`, `ФИО-1`, любой регистр, Markdown-обёртки; `ООО «[КОМПАНИЯ_1]»` → `ООО «Ромашка»`.
 Записи режимов `mask`/`delete` не восстанавливаются. `unresolved` — оставшиеся `[X_n]` (позиции в результирующем тексте).
+`decline: true` (FR-37, редакция 0.2) — PERSON в форме `[X_n]` склоняется по контексту (`core/deanon-morph.js`: приклеенное окончание → предлог → сочинение, иначе именительный);
+`declined[] = {start, end, case: 'nom'|'gen'|'dat'|'acc'|'ins'|'prep', original, text}` — позиции в результирующем тексте, `original` — значение из карты.
+При `decline: false` результат побайтно прежний, `declined` пуст. Карта замен не меняется: лемма и род выводятся из `value`/`variants`.
 
 ---
 
@@ -159,7 +164,7 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
   // res: {name: 'x.anon.docx', bytes: Uint8Array, mapping, stats}
   await client.request(MSG.GET_TEXT, { docId, part, from, count });          // → TEXT {paragraphs[{pid,text,spans[]}], total}
   await client.request(MSG.ADD_ENTITY, { docId, category, text, replaceAll }); // → ENTITIES (ПОЛНЫЙ список, не дельта; решения сохраняются)
-  await client.request(MSG.DEANON, { mappingRef: docId /* или объект маппинга */, text }); // → DEANON_RESULT {text, unresolved, replaced}
+  await client.request(MSG.DEANON, { mappingRef: docId /* или объект маппинга */, text, decline /* необяз., FR-37 */ }); // → DEANON_RESULT {text, unresolved, replaced, declined}
   await client.request(MSG.LIST_SESSIONS);  // → SESSIONS {sessions[] без значений}
   await client.request(MSG.DISCARD, { docId }); // → ACK
   ```
@@ -167,6 +172,32 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 - Сущность в `ENTITIES`: `{id, category, value, normalized, placeholder, replacement?, level, source, validated, enabled, occurrences[{id, part, pid, streamId, stream, start, end, text, context, variantOf?}]}`.
 - Повторная загрузка того же файла (SHA-256) в одной сессии браузера → `restoredDecisions: true` и прежние решения (§3.6).
 - Сквозная нумерация по нескольким файлам: `BATCH_BEGIN {batchId}` → `analyzeFile({..., batchId})` для каждого → `BATCH_END`.
+
+---
+
+## 4а. Доступ к сайтам (версия 0.2, К9)
+
+В манифесте нет `host_permissions` и `content_scripts`: `permissions` = `storage, offscreen, scripting, activeTab`, `optional_host_permissions: ["<all_urls>"]`.
+Доступ к сайту выдаёт пользователь; **источник истины — `chrome.permissions`**, настройки (allowlist/blocklist) лишь решают, работать ли на сайте с доступом.
+
+`src/shared/permissions.js` (чистые функции + обёртки с параметром `api = chrome` для тестов):
+- `toMatchPattern('https://host')` → `'https://host/*'` (`*.` и порт сохраняются; `'<all_urls>'` как есть; мусор → `null`); `originFromPattern(match)` — обратно;
+- `desiredPatterns(settings)` → `['<all_urls>']` в режиме `all`, иначе паттерны allowlist без дублей;
+- `requestOrigins(patterns)` → `Promise<boolean>`, **вызывает `permissions.request` синхронно** — звать первым оператором обработчика клика, до любого `await` (нужен жест пользователя); не отклоняется;
+- `removeOrigins(patterns)` → `Promise<boolean>` (ошибки, например снятие обязательного разрешения в e2e-сборке, глотаются);
+- `hasOriginAccess(origin)` — `permissions.contains` для паттерна сайта (`activeTab` не учитывается).
+
+`src/background/site-access.js`:
+- `planRegistration(granted, registered)` → `{op: 'none'|'register'|'update'|'unregister', matches}` — чистая; `<all_urls>` поглощает остальные, не-http(s) паттерны отбрасываются;
+- `createSiteAccess(api)` → `{sync(), inject(patterns), init()}`. Скрипт: `{id: 'intercept', js: ['content.js'], matches, allFrames: true, runAt: 'document_start', persistAcrossSessions: true}`.
+  `sync()` сериализован (очередь промисов). `inject()` — `executeScript` во все кадры открытых вкладок, ошибки вкладок глотаются.
+  `init()` — слушатели `runtime.onInstalled/onStartup` и `permissions.onRemoved` → `sync`, `permissions.onAdded` → `sync` + `inject(added.origins)`; вызывается синхронно из `background/index.js`.
+- `content.js` может прийти дважды (регистрация + `executeScript`) — защита флагом `globalThis.__docxAnonymizerBooted`.
+
+UI: popup — `siteState(settings, url, {granted})` даёт `needsAccess` (настройки разрешают, доступа нет; кнопка `site-grant`), `site-add` запрашивает доступ и сохраняет allowlist независимо от ответа. Настройки: добавление в allowlist → `requestOrigins`, удаление → `removeOrigins` (кроме режима `all`); `allowlist → all` сохраняется только при выданном `<all_urls>`, `all → allowlist` снимает `<all_urls>` и запрашивает сайты списка.
+Бейдж (`background/badge.js`) не трогается: без доступа `tab.url` не виден, бейдж пуст.
+
+Сборка `node scripts/build.mjs --e2e` → `dist-e2e/` с `host_permissions: ["<all_urls>"]` (нативный диалог Playwright не нажимает, опциональные разрешения заранее не выдать). e2e-фикстура грузит `dist-e2e/` и ждёт регистрации `intercept`. Релиз и `npm run pack` — без флага.
 
 ---
 

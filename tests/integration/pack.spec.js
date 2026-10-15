@@ -1,10 +1,11 @@
 // Архив релиза (npm run pack): состав, манифест в корне, иконки, воспроизводимость. Сети не требуется.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { packRelease } from '../../scripts/pack.mjs';
+import { packRelease, FIXED_TIME } from '../../scripts/pack.mjs';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 let out;
@@ -35,9 +36,10 @@ describe('архив релиза', () => {
 
   it('все файлы, на которые ссылается манифест, есть в архиве: скрипты, страницы, иконки четырёх размеров', () => {
     const m = JSON.parse(strFromU8(zip['manifest.json']));
+    // content script регистрируется динамически (background/site-access.js, К9) — в манифесте его нет
     const refs = [
       m.background.service_worker,
-      ...m.content_scripts.flatMap((c) => c.js),
+      'content.js',
       m.action.default_popup,
       m.options_ui.page,
       ...Object.values(m.icons),
@@ -45,6 +47,14 @@ describe('архив релиза', () => {
     ];
     expect(Object.keys(m.icons)).toEqual(['16', '32', '48', '128']);
     for (const f of refs) expect(zip[f], f).toBeDefined();
+  });
+
+  it('доступ к сайтам опциональный: без host_permissions и content_scripts, с optional_host_permissions (К9)', () => {
+    const m = JSON.parse(strFromU8(zip['manifest.json']));
+    expect(m).not.toHaveProperty('host_permissions');
+    expect(m).not.toHaveProperty('content_scripts');
+    expect(m.optional_host_permissions).toEqual(['<all_urls>']);
+    expect(m.permissions).toEqual(expect.arrayContaining(['scripting', 'activeTab']));
   });
 
   it('иконки — PNG ожидаемых размеров', () => {
@@ -70,6 +80,22 @@ describe('архив релиза', () => {
       expect(code, f).toContain('https://sitimlab.ru');
       expect(code, f).toContain('Сделано в');
     }
+  });
+
+  it('DOS-время не зависит от TZ: fflate с FIXED_TIME даёт одни байты в UTC+14 и UTC-8 (К11)', () => {
+    // Тот же вызов, что в pack.mjs (локальный конструктор даты), в отдельных процессах с разными часовыми поясами.
+    const code = [
+      "import { zipSync } from 'fflate';",
+      "const zip = zipSync({ 'a.txt': [new TextEncoder().encode('docx'), { mtime: new Date(2000, 0, 1, 12) }] });",
+      "process.stdout.write(Buffer.from(zip).toString('hex'));",
+    ].join('\n');
+    const run = (TZ) => execFileSync(process.execPath, ['--input-type=module', '-e', code], { env: { ...process.env, TZ }, encoding: 'utf8' });
+    const east = run('Pacific/Kiritimati');
+    const west = run('America/Los_Angeles');
+    expect(east.length).toBeGreaterThan(0);
+    expect(east).toBe(west);
+    // и pack.mjs использует именно эту отметку
+    expect([FIXED_TIME.getFullYear(), FIXED_TIME.getMonth(), FIXED_TIME.getDate(), FIXED_TIME.getHours()]).toEqual([2000, 0, 1, 12]);
   });
 
   it('архив воспроизводим: повторная сборка даёт те же байты', () => {

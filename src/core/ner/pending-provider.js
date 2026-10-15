@@ -1,7 +1,7 @@
 // Временный NER-провайдер (WP8): проводка «настройки → хост → хранилище модели» готова, инференса ещё нет.
 // init() читает и проверяет pack.json установленного пакета и сообщает MODEL_LOAD_FAILED — runner превращает это
 // в предупреждение NER_FAILED {details: {reason: 'MODEL_LOAD_FAILED'}}, анализ правилами продолжается (NFR-13).
-// WP9 заменяет тело на ONNX-провайдер (onnxruntime-web + WordPiece) с тем же контрактом core/contracts/ner.js.
+// С WP9 воркер использует ONNX-провайдер (core/ner/onnx-provider.js); эта заглушка остаётся для tests/unit/ner/pack.spec.js.
 import { CoreError } from '../errors.js';
 import { PACK_MANIFEST, parsePackManifest } from './pack.js';
 

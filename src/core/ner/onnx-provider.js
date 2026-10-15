@@ -1,0 +1,251 @@
+// ONNX-провайдер NER (WP9, ТЗ §5.2 NLP, ступень 3): пакет модели из хранилища (WP8) → WordPiece → окна → батчи
+// onnxruntime (WASM SIMD, одна нить; модуль ort передаёт worker.js) → softmax → метка первого субтокена слова → BIO → спаны.
+// Модель и словарь читаются только из пакета (files.read) — сетевых запросов нет (NFR-01). Ошибки загрузки —
+// CoreError MODEL_LOAD_FAILED: runner превращает их в предупреждение NER_FAILED, анализ правилами продолжается (NFR-13).
+// В логах и сообщениях ошибок нет текста документа (NFR-14).
+import { CoreError } from '../errors.js';
+import { PACK_MANIFEST, parsePackManifest } from './pack.js';
+import { createWordPiece } from './wordpiece.js';
+import { makeWindows } from './windows.js';
+import { labelsToTags, decodeWord, bridgePunct, mergeBio, joinAdjacent, filterSpans, alignSpans } from './bio.js';
+
+const UPPER_RE = /\p{Lu}/u;
+const decoder = new TextDecoder('utf-8');
+
+/**
+ * @typedef {object} OnnxProviderDeps
+ * @property {{read: (path: string) => Promise<Uint8Array>}} files  файлы пакета (shared/model-store.js openModelFiles)
+ * @property {any} ort         модуль onnxruntime ({InferenceSession, Tensor}): onnxruntime-web в воркере, в тестах — тот же или node
+ * @property {string} modelId
+ * @property {number} [batchSize=8]            окон в одном вызове run
+ * @property {boolean} [skipLowercaseWindows=true]  пре-фильтр: окно без единого слова с заглавной буквой не считается (все O)
+ * @property {number} [maxLen]                 ограничить maxLen пакета (митигация скорости, NFR-03); больше пакетного нельзя
+ * @property {string[]} [executionProviders=['wasm']]
+ * @property {(p: {windows: number, done: number}) => void} [onProgress]
+ */
+
+/**
+ * @param {OnnxProviderDeps} deps
+ * @returns {import('../contracts/ner.js').NerProvider & {stats: object}}
+ */
+export function createOnnxNerProvider({
+  files,
+  ort,
+  modelId,
+  batchSize = 8,
+  skipLowercaseWindows = true,
+  maxLen: maxLenCap,
+  executionProviders = ['wasm'],
+  onProgress,
+}) {
+  /** @type {Promise<void> | null} */
+  let loading = null;
+  /** @type {any} */
+  let session = null;
+  /** @type {any} */
+  let model = null; // {wp, tags, manifest, maxLen, stride, inputs, output, indexType}
+  /** Счётчики для бенчмарка и тестов (без содержимого документа). */
+  const stats = { initMs: 0, windows: 0, skippedWindows: 0, tokens: 0, runMs: 0, runs: 0 };
+
+  async function load() {
+    const t0 = now();
+    try {
+      const parsed = parsePackManifest(await files.read(PACK_MANIFEST));
+      if (!parsed.ok) throw new Error(`pack.json: ${parsed.error}`);
+      const manifest = parsed.manifest;
+      const tk = manifest.tokenizer;
+      if (tk.type !== 'wordpiece') throw new Error(`токенизатор ${tk.type} не поддерживается`);
+      const wp = createWordPiece({
+        vocab: decoder.decode(await files.read(tk.vocab)),
+        lowercase: tk.lowercase,
+        stripAccents: tk.stripAccents,
+        cls: tk.cls,
+        sep: tk.sep,
+        pad: tk.pad,
+        unk: tk.unk,
+      });
+      const labels = await readLabels(files, manifest);
+      const tags = labelsToTags(labels);
+      if (!tags.some((t) => t.type)) throw new Error('в метках модели нет PER/ORG/LOC');
+
+      let bytes = await files.read(manifest.model.file);
+      const s = await ort.InferenceSession.create(bytes, { executionProviders, graphOptimizationLevel: 'all' });
+      bytes = null; // модель живёт в сессии; копию в JS не держим
+      const { inputs, output } = manifest.model;
+      const need = [inputs.ids, inputs.mask, ...(inputs.types ? [inputs.types] : [])];
+      const missing = need.filter((n) => !s.inputNames.includes(n));
+      if (missing.length) {
+        await s.release?.();
+        throw new Error(`у модели нет входов ${missing.join(', ')}`);
+      }
+      if (!s.outputNames.includes(output)) {
+        await s.release?.();
+        throw new Error(`у модели нет выхода ${output}`);
+      }
+      const maxLen = Math.min(tk.maxLen, maxLenCap || tk.maxLen);
+      session = s;
+      model = {
+        wp,
+        tags,
+        numLabels: labels.length,
+        maxLen,
+        stride: Math.min(tk.stride, Math.floor(maxLen / 2) - 1),
+        inputs,
+        output,
+        indexType: manifest.model.indexType,
+      };
+      stats.initMs = Math.round(now() - t0);
+    } catch (err) {
+      if (err instanceof CoreError) throw err;
+      throw new CoreError('MODEL_LOAD_FAILED', `Модель ${modelId} не загружена: ${/** @type {Error} */ (err)?.message || err}`, { modelId });
+    }
+  }
+
+  async function init() {
+    if (!loading) {
+      loading = load();
+      // сбой загрузки не кэшируется навсегда: следующий анализ попробует снова (файл могли переустановить)
+      loading.catch(() => {
+        loading = null;
+      });
+    }
+    return loading;
+  }
+
+  /**
+   * @param {string} text
+   * @returns {Promise<import('../contracts/ner.js').NerSpan[]>}
+   */
+  async function detect(text) {
+    await init();
+    const { wp, tags, maxLen, stride } = model;
+    const words = wp.pretokenize(text);
+    if (!words.length) return [];
+    const wordIds = wp.encodeWords(words);
+    const all = makeWindows(wordIds, { maxLen, stride, cls: wp.specials.cls, sep: wp.specials.sep });
+    const windows = skipLowercaseWindows ? all.filter((w) => hasUpper(words, w)) : all;
+    stats.windows += windows.length;
+    stats.skippedWindows += all.length - windows.length;
+
+    // Лучшее предсказание по словам: из окна, чей центр ближе к слову (края окна видят меньше контекста)
+    const C = model.numLabels;
+    const best = new Float64Array(words.length).fill(Infinity);
+    const probs = new Float32Array(words.length * C);
+    for (let b = 0; b < windows.length; b += batchSize) {
+      const batch = windows.slice(b, b + batchSize);
+      const logits = await runBatch(batch);
+      const L = Math.max(...batch.map((w) => w.ids.length));
+      batch.forEach((w, bi) => {
+        const center = (w.wordFrom + w.wordTo - 1) / 2;
+        for (let k = 0; k < w.wordStartIndex.length; k++) {
+          const t = w.wordStartIndex[k];
+          if (t < 0) continue;
+          const wi = w.wordFrom + k;
+          const dist = Math.abs(wi - center);
+          if (dist >= best[wi]) continue;
+          best[wi] = dist;
+          softmaxInto(logits, (bi * L + t) * C, C, probs, wi * C);
+        }
+      });
+      onProgress?.({ windows: windows.length, done: Math.min(windows.length, b + batchSize) });
+    }
+
+    // Слова → теги (маргинальные вероятности типов) → мостики через «-», «'», точку инициала → BIO → соседние спаны
+    // одного типа → подрезка краёв → границы по соглашениям каталога (ОПФ и кавычки у ORG, точка инициала у PER)
+    const preds = words.map((w, i) => {
+      const d = best[i] === Infinity ? { tag: 'O', type: null, prob: 1 } : decodeWord(probs.subarray(i * C, i * C + C), tags);
+      return { start: w.start, end: w.end, ...d };
+    });
+    const spans = joinAdjacent(mergeBio(/** @type {any} */ (bridgePunct(/** @type {any} */ (preds), text)), { withWords: true }), text);
+    return filterSpans(alignSpans(filterSpans(spans, text), text), text);
+  }
+
+  /** Один вызов модели на батч окон, дополненных [PAD] до самого длинного. @returns {Promise<Float32Array>} [B, L, C] */
+  async function runBatch(batch) {
+    const { inputs, output, indexType, wp } = model;
+    const B = batch.length;
+    const L = Math.max(...batch.map((w) => w.ids.length));
+    const big = indexType === 'int64';
+    const Arr = big ? BigInt64Array : Int32Array;
+    const ids = new Arr(B * L);
+    const mask = new Arr(B * L);
+    const pad = big ? BigInt(wp.specials.pad) : wp.specials.pad;
+    const one = big ? 1n : 1;
+    ids.fill(/** @type {any} */ (pad));
+    batch.forEach((w, bi) => {
+      const off = bi * L;
+      for (let j = 0; j < w.ids.length; j++) {
+        ids[off + j] = /** @type {any} */ (big ? BigInt(w.ids[j]) : w.ids[j]);
+        mask[off + j] = /** @type {any} */ (one);
+      }
+      stats.tokens += w.ids.length;
+    });
+    const feeds = {
+      [inputs.ids]: new ort.Tensor(indexType, ids, [B, L]),
+      [inputs.mask]: new ort.Tensor(indexType, mask, [B, L]),
+    };
+    if (inputs.types) feeds[inputs.types] = new ort.Tensor(indexType, new Arr(B * L), [B, L]);
+    const t0 = now();
+    const out = await session.run(feeds);
+    stats.runMs += now() - t0;
+    stats.runs++;
+    const t = out[output];
+    const dims = t.dims;
+    if (dims.length !== 3 || dims[0] !== B || dims[1] !== L || dims[2] !== model.numLabels) {
+      throw new Error(`выход модели [${dims.join(',')}] не совпадает с [${B},${L},${model.numLabels}]`);
+    }
+    return /** @type {Float32Array} */ (t.data);
+  }
+
+  return {
+    name: `onnx:${modelId}`,
+    init,
+    detect,
+    stats,
+    dispose() {
+      const s = session;
+      session = null;
+      model = null;
+      loading = null;
+      if (s) Promise.resolve(s.release?.()).catch(() => {});
+    },
+  };
+}
+
+/** Метки по индексам выхода: id2label из config.json, иначе labels манифеста. */
+async function readLabels(files, manifest) {
+  if (manifest.files.some((f) => f.path === 'config.json')) {
+    try {
+      const cfg = JSON.parse(decoder.decode(await files.read('config.json')));
+      const map = cfg?.id2label;
+      if (map && typeof map === 'object') {
+        const n = Object.keys(map).length;
+        const labels = Array.from({ length: n }, (_, i) => map[i] ?? map[String(i)]);
+        if (n > 1 && labels.every((l) => typeof l === 'string')) {
+          if (n !== manifest.labels.length) throw new Error('число меток config.json и pack.json различается');
+          return labels;
+        }
+      }
+    } catch (err) {
+      if (/** @type {Error} */ (err)?.message?.startsWith('число меток')) throw err;
+      // config.json без id2label или нечитаемый — берём метки манифеста
+    }
+  }
+  return manifest.labels;
+}
+
+function hasUpper(words, w) {
+  for (let k = w.wordFrom; k < w.wordTo; k++) if (UPPER_RE.test(words[k].text)) return true;
+  return false;
+}
+
+/** softmax строки логитов data[off .. off+C) → out[outOff .. outOff+C) */
+function softmaxInto(data, off, C, out, outOff) {
+  let max = -Infinity;
+  for (let c = 0; c < C; c++) if (data[off + c] > max) max = data[off + c];
+  let sum = 0;
+  for (let c = 0; c < C; c++) sum += out[outOff + c] = Math.exp(data[off + c] - max);
+  for (let c = 0; c < C; c++) out[outOff + c] /= sum;
+}
+
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());

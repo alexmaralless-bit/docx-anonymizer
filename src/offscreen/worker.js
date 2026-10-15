@@ -4,7 +4,7 @@
 import * as ort from 'onnxruntime-web/wasm';
 import { createHost } from './host.js';
 import { openModelFiles } from '../shared/model-store.js';
-import { createPendingNerProvider } from '../core/ner/pending-provider.js';
+import { createOnnxNerProvider } from '../core/ner/onnx-provider.js';
 
 // ONNX Runtime: только WASM SIMD в одну нить, без proxy-воркера (§5.2 NLP, концепция 0.2). Glue встроен в бандл
 // (ort.wasm.bundle.min.mjs), внешний только wasm-бинарь из vendor/ — грузится с chrome-extension://, сети нет (NFR-01).
@@ -15,8 +15,8 @@ ort.env.wasm.wasmPaths = { wasm: new URL('../vendor/ort-wasm-simd-threaded.wasm'
 const host = createHost({
   post: (clientId, msg) => self.postMessage({ clientId, msg }),
   toolVersion: typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0',
-  // Провайдер NER по пакету из OPFS (settings.nerModel); модель читается лениво в init(). WP9 заменит провайдер на ONNX.
-  createNerProvider: (s) => createPendingNerProvider({ files: openModelFiles(s.nerModel), modelId: s.nerModel, ort }),
+  // Провайдер NER по пакету из OPFS (settings.nerModel): WordPiece + onnxruntime-web (WP9); модель читается лениво в init().
+  createNerProvider: (s) => createOnnxNerProvider({ files: openModelFiles(s.nerModel), modelId: s.nerModel, ort }),
 });
 
 self.onmessage = (e) => {

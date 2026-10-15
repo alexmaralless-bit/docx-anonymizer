@@ -29,7 +29,9 @@ export function runPipeline(page, { name, bytes, origin = 'http://test.invalid' 
       const client = window.__docx.connectClient();
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
       const stages = [];
+      const t0 = performance.now();
       const ent = await client.analyzeFile({ name, bytes, origin, onProgress: (s) => stages.push(s) });
+      const analyzeMs = performance.now() - t0;
       const res = await client.apply({ docId: ent.docId, mode: 'placeholder', decisions: [] });
       let bin = '';
       for (let i = 0; i < res.bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, res.bytes.subarray(i, i + 0x8000));
@@ -40,8 +42,9 @@ export function runPipeline(page, { name, bytes, origin = 'http://test.invalid' 
           stats: ent.stats,
           language: ent.language,
           warnings: ent.warnings,
-          entities: ent.entities.map((e) => ({ id: e.id, category: e.category, value: e.value, placeholder: e.placeholder })),
+          entities: ent.entities.map((e) => ({ id: e.id, category: e.category, value: e.value, placeholder: e.placeholder, source: e.source })),
         },
+        analyzeMs,
         stages: [...new Set(stages)],
         resultName: res.name,
         mapping: res.mapping,

@@ -3,7 +3,7 @@
 import { BUILTIN_CATEGORIES } from './categories.js';
 
 export const SETTINGS_KEY = 'settings';
-export const SETTINGS_SCHEMA_VERSION = 1;
+export const SETTINGS_SCHEMA_VERSION = 2;
 
 export const DEFAULT_ALLOWLIST = Object.freeze([
   'https://chatgpt.com',
@@ -61,7 +61,8 @@ export function defaultSettings() {
     language: 'auto',
     placeholderLanguage: 'document',
     nerEnabled: true,
-    nerThreshold: 0.6,
+    // порог NER = recommendedThreshold пакета rubert-tiny2-ner-ruen (WP9, калибровка tools/ner-train/calibrate.py; docs/contracts.md §6.7)
+    nerThreshold: 0.7,
     nerModel: '',
     keepMetadata: false,
     stripEmbedded: false,
@@ -129,6 +130,9 @@ export const VALIDATORS = Object.freeze({
 export const MIGRATIONS = {
   // 0 → 1: исходная версия; объекты без schemaVersion считаются версией 0
   0: (s) => ({ ...s, schemaVersion: 1 }),
+  // 1 → 2 (0.2, WP9): порог NER по умолчанию 0.6 → 0.7. В 0.1 модели не было, поэтому 0.6 — это всегда прежний
+  // дефолт, а не выбор пользователя; другие значения не трогаем. Профили со своим порогом тоже не трогаем.
+  1: (s) => ({ ...s, schemaVersion: 2, ...(s.nerThreshold === 0.6 ? { nerThreshold: 0.7 } : {}) }),
 };
 
 /**

@@ -1,5 +1,5 @@
 // WP8 (К5, К6): пакет модели NER — импорт из файла в OPFS, проверка sha256, статус, проводка в воркер, удаление.
-// Пакет фейковый (модели в репозитории нет): воркер читает pack.json и сообщает MODEL_LOAD_FAILED → NER_FAILED,
+// Пакет фейковый (модели в репозитории нет): ONNX-провайдер (WP9) не может создать сессию из model.onnx → MODEL_LOAD_FAILED → NER_FAILED,
 // сущности правил на месте. За весь сценарий — ни одного http(s)-запроса.
 import { createHash } from 'node:crypto';
 import { zipSync, strToU8 } from 'fflate';
@@ -7,6 +7,7 @@ import { test, expect } from './fixtures.js';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
 import { buildFixtures } from '../../scripts/gen-fixtures.mjs';
 import { installClient, runPipeline } from './helpers/client.js';
+import { captureAllRequests, externalRequests, offscreenRequests } from './helpers/network.js';
 
 const ID = 'e2e-fake-ner';
 const VERSION = '0.0.1';
@@ -67,8 +68,8 @@ const opfsFiles = (page, id) =>
   }, id);
 
 test('импорт пакета модели → статус, OPFS, NER_FAILED в анализе; битый и чужой отклоняются; удаление; без сети', async ({ context, extensionId }) => {
-  const urls = [];
-  context.on('request', (r) => urls.push(r.url()));
+  // сеть всех целей браузера, включая offscreen-документ и его воркер (К6)
+  const net = await captureAllRequests(context);
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options/options.html`);
   await page.evaluate(() => chrome.storage.local.set({ settings: { uiLanguage: 'ru' } }));
@@ -107,7 +108,7 @@ test('импорт пакета модели → статус, OPFS, NER_FAILED 
   expect(files['installed.json']).toBeGreaterThan(0);
   expect(files['.installing']).toBeUndefined();
 
-  // Анализ: воркер берёт модель из OPFS (временный провайдер WP8 → MODEL_LOAD_FAILED), правила работают (NFR-13)
+  // Анализ: воркер берёт модель из OPFS (фейковый model.onnx → MODEL_LOAD_FAILED), правила работают (NFR-13)
   const ext = await context.newPage();
   await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
   await installClient(ext);
@@ -129,5 +130,12 @@ test('импорт пакета модели → статус, OPFS, NER_FAILED 
   const again = await runPipeline(ext, { name: 'ner2.docx', bytes: buildFixtures()[0].bytes });
   expect(again.ent.warnings.map((w) => w.code)).not.toContain('NER_FAILED');
 
-  expect(urls.filter((u) => /^https?:/i.test(u))).toEqual([]);
+  const urls = await net.stop();
+  expect(externalRequests(urls), 'NFR-01: http(s)-запросы').toEqual([]);
+  // запись действительно видит offscreen-документ и воркер: иначе проверка выше была бы пустой. wasm ONNX Runtime воркер
+  // запрашивает только в InferenceSession.create — после чтения pack.json, словаря и model.onnx из OPFS; значит,
+  // MODEL_LOAD_FAILED выше — сбой создания сессии из фейкового model.onnx, а не чтения пакета.
+  expect(offscreenRequests(urls)).toEqual(
+    expect.arrayContaining([expect.stringMatching(/\/offscreen\/worker\.js$/), expect.stringMatching(/\/vendor\/ort-wasm-simd-threaded\.wasm$/)]),
+  );
 });

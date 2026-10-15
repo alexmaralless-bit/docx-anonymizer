@@ -28,6 +28,15 @@ describe('settings', () => {
     expect(validateSettingsPatch({ mode: 'mask', nerThreshold: 0.5 })).toEqual([]);
     expect(validateSettingsPatch({ mode: 'x', allowlist: ['chatgpt.com'], unknown: 1 })).toEqual(['mode', 'allowlist', 'unknown']);
   });
+  it('nerThreshold (WP9): по умолчанию 0.7 = recommendedThreshold пакета; миграция 1 → 2 меняет только прежний дефолт 0.6', () => {
+    expect(defaultSettings().nerThreshold).toBe(0.7);
+    expect(SETTINGS_SCHEMA_VERSION).toBe(2);
+    expect(migrateSettings({ schemaVersion: 1, nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.7);
+    expect(migrateSettings({ schemaVersion: 1, nerThreshold: 0.45 }).settings.nerThreshold).toBe(0.45);
+    expect(migrateSettings({ nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.7); // v0 → 1 → 2
+    // текущая версия: 0.6 — выбор пользователя, не трогаем
+    expect(migrateSettings({ ...defaultSettings(), nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.6);
+  });
   it('nerModel (WP8): по умолчанию пусто, id пакета проверяется, в профили и экспорт конфига не попадает', async () => {
     expect(defaultSettings().nerModel).toBe('');
     expect(validateSettingsPatch({ nerModel: 'rubert-tiny2-ner-ruen' })).toEqual([]);

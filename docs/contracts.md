@@ -40,6 +40,7 @@ popup / content / options / restore ──port "docx"──► background (route
 | `src/core/detect/names/person-dict.js`, `names/dict/` | словарный детектор ФИО третьих лиц, словари (генерирует `scripts/make-dicts.mjs`) | 0.2, WP7 |
 | `src/core/hash.js` | `sha256Hex` (WebCrypto; `shared/protocol.js` реэкспортирует) | 0.2, WP8 |
 | `src/core/ner/pack.js`, `known-packs.js`, `pending-provider.js` | формат пакета модели NER: `parsePackManifest`, `verifyPackFiles`, `packZipName`; список проверенных пакетов; временный провайдер (до WP9) | 0.2, WP8 (§6) |
+| `src/core/ner/wordpiece.js`, `windows.js`, `bio.js`, `onnx-provider.js` | ONNX-провайдер NER: WordPiece с офсетами, окна, BIO и границы спанов, инференс через переданный `ort` | 0.2, WP9 (§6.7) |
 | `src/shared/model-store.js` | хранилище пакетов модели в OPFS: импорт, проверка, чтение из воркера, удаление | 0.2, WP8 (§6) |
 | `src/content/`, `src/ui/`, `src/popup/` | перехват, панель, popup | **WP3** |
 | `src/options/`, `src/restore/`, `src/core/detect/custom/` | настройки, свои категории, восстановление | **WP4** |
@@ -148,6 +149,9 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 - `findPersonsByDict(text, {toks?, skip?}) → PersonSpan[]` (`names/person-dict.js`): пары «Имя Фамилия»/«Фамилия Имя» (`parse.kind: 'pair'`), «Имя Отчество» (`'fm'`), латиница; `span.dict = true`, `parse.lemma = {surname?, first, patronymic?, gender}`. Спаны правил (`findPersons`) передаются в `skip` — словарь их не пересекает.
 - Вхождения словаря выдаются с `confidence: 'kb'`, `source: 'kb'` (проигрывают `labeled`/`validated` других категорий по FR-20) и **не делают лицо стороной** (`party: false`).
 - Записи базы лиц: `kind ∈ full | pair | initials | fm | other`. `fm` — «Имя Отчество» без фамилии: присоединяется к единственной записи с такими именем и отчеством (`full`), иначе своя запись с canonical `имя отчество`. `hits` — число присоединённых вхождений; записи (кроме `other`/`fm`) с `hits ≥ 2` ищутся по документу в двух- и трёхсловных формах, одиночная фамилия — только для сторон.
+- Названия фирм (ревью WP-N1): латинская пара не берётся перед хвостом названия (`ORG_TAIL_WORDS_EN` в `lexicon.js`: `International`, `LLP`, `Inc.`, `Bank`, `Partners`…, а также `&` и `and <хвост>`), после `<Слово> of` («Bank of America Merrill Lynch») и если сама «фамилия» — хвост («Morris International»); устойчивые названия из двух «имён» («Clifford Chance», «Майкл Корс») — в `NON_PERSON_PAIRS`. Это же действует для латинских пар правил, найденных только по курируемому имени (`span.nameOnly`, без лейбла и обращения). В `kb.js` словарная пара (или `nameOnly`), совпадающая с названием компании документа без ОПФ или с его началом из ≥ 2 слов, выдаётся как `COMPANY` (`confidence: 'kb'`, canonical этой компании), а не `PERSON`.
+- Пара правил «Имя Отчество» («Ольгой Петровной»: второе слово — отчество, согласованное с именем по роду и падежу) в `kb.js` разбирается как `fm`, поэтому падежные формы попадают в одну запись.
+- Измерения: фикстура `PERSON-dict.json` — 47 позитивов (39 `dictOnly`), 68 негативов; К4 (2 400 абзацев) — отношение времени со словарём к времени без него 1.07–1.17.
 - Словари (`names/dict/index.js`, ленивое декодирование при первом вызове): `getDicts()`, `bigFirstNameInfo(word)`, `surnameLemmas(word)`, `surnameSuffixInfo(word)`, `isEnFirst`, `isEnSurname`. Модули словарей — генерируемые (`npm run dicts`), вручную не правятся; попадают только в `offscreen/worker.js` (К15).
 
 ---
@@ -265,41 +269,53 @@ UI: popup — `siteState(settings, url, {granted})` даёт `needsAccess` (на
 }
 ```
 
-Правила: имя файла — `/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/` (без `/`, `..`, скрытых файлов; `LICENSE`/`NOTICE` — заглавными), не `pack.json`, без повторов;
-`model.file` и `tokenizer.vocab` ∈ `files`; каждая запись zip (кроме `pack.json`) есть в `files`, и наоборот; размер и sha256 совпадают.
+Правила: имя файла — `/^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/` (без `/`, `..`, скрытых файлов; `LICENSE`/`NOTICE` — заглавными), без повторов,
+не зарезервированное (`RESERVED_PACK_PATHS`, без учёта регистра: `pack.json`, `installed.json`, `.installing` — служебные файлы слота в хранилище, §6.2;
+`__proto__`, `constructor`, `prototype` — имена свойств прототипа; проверяет код, схема только описывает);
+`model.file` и `tokenizer.vocab` ∈ `files`; каждая запись zip, кроме `pack.json`, есть в `files`, и каждый файл из `files` есть в zip; размер и sha256 совпадают.
+Записи zip с одинаковым именем и записи с зарезервированными именами отвергаются при распаковке (§6.2). Размер zip-файла и сумма распакованных размеров
+записей по центральному каталогу — не больше 512 МБ (`MAX_PACK_BYTES`), иначе `TOO_LARGE`.
 `minExtensionVersion` больше версии расширения → пакет отклоняется (`INCOMPATIBLE`).
 Исходник пакета — `models-src/<id>/pack.src.json` (тот же объект **без** `files`) + файлы; `npm run pack:model -- --id=<id>` (`scripts/pack-model.mjs`, `buildModelPack({srcDir, outDir, now})`)
 считает `files`, проверяет `parsePackManifest`, пишет детерминированный zip (`FIXED_TIME`, `pack.json` первой записью, остальные по имени) в `release/` и печатает sha256.
 
-API ядра (`core/ner/pack.js`, без побочных эффектов, не бросает):
-- `parsePackManifest(jsonOrObjOrBytes, {extensionVersion?}) → {ok: true, manifest} | {ok: false, error}` — `error`: путь к первому неверному полю (`'tokenizer.stride'`, `'files[2].path'`, лишний ключ — его имя), `'json'` или `'minExtensionVersion'`;
-- `verifyPackFiles(manifest, entries, {digest?}) → {ok: true} | {ok: false, error: 'EXTRA_FILE'|'MISSING_FILE'|'SIZE_MISMATCH'|'HASH_MISMATCH', path}`;
+API ядра (`core/ner/pack.js`, без побочных эффектов; обе функции **не бросают** ни на каком входе — любой сбой возвращается как `{ok: false, error}`):
+- `parsePackManifest(jsonOrObjOrBytes, {extensionVersion?}) → {ok: true, manifest} | {ok: false, error}` — `error`: путь к первому неверному полю (`'tokenizer.stride'`, `'files[2].path'`, лишний ключ — его имя), `'json'`, `'minExtensionVersion'` или `'manifest'` (непредвиденная ошибка разбора);
+- `verifyPackFiles(manifest, entries, {digest?}) → {ok: true} | {ok: false, error: 'EXTRA_FILE'|'MISSING_FILE'|'SIZE_MISMATCH'|'HASH_MISMATCH'|'VERIFY_FAILED', path}` —
+  `entries`: `Map<string, Uint8Array>` или объект; у объекта читаются только собственные ключи (`Object.hasOwn`), значение не `Uint8Array` → `MISSING_FILE`;
+  `VERIFY_FAILED` — непредвиденный сбой (например, хеширования), `path` — файл, на котором он случился. Недоверенный zip передавайте как `Map` (в обычном объекте запись `__proto__` теряется);
+- `RESERVED_PACK_PATHS`, `isReservedPackPath(name)` — зарезервированные имена;
 - `core/ner/known-packs.js`: `KNOWN_PACKS = [{id, version, sha256}]` (sha256 **всего zip**; пополняет WP9 при публикации), `findKnownPack(sha256)`. Пакет из списка — «проверен», иначе установка только после подтверждения.
 
 ### 6.2. Хранилище (`src/shared/model-store.js`)
 
-OPFS (`navigator.storage.getDirectory()`), работает в окне и в dedicated worker. Раскладка: `models/<id>/{pack.json, <files>, installed.json}`;
-во время установки в каталоге лежит `.installing` (время начала) — такой каталог не считается установленным, брошенный (> 10 мин) удаляется в `listInstalled()`.
+OPFS (`navigator.storage.getDirectory()`), работает в окне и в dedicated worker. Раскладка: у пакета два слота — `models/<id>/` и `models/<id>.1/`,
+в каждом `{pack.json, <files>, installed.json}` (id без точки, поэтому слоты разных пакетов не пересекаются). Во время установки в слоте лежит `.installing`
+(время начала) — такой слот не считается установленным; брошенный (> 10 мин) удаляется в `listInstalled()`. **Активный слот** — завершённый (есть `installed.json`,
+нет `.installing`) с наибольшим `installedAt`; из него читают `readFile`/`getManifest`/`listInstalled`. Переустановка пишет в неактивный слот, переключение —
+снятие `.installing` (одна операция; `installedAt` новой версии строго больше прежней), прежний слот удаляется только после этого. Сбой записи на любом шаге
+оставляет прежнюю версию рабочей; не удалившийся устаревший слот дочищает `listInstalled()`. Переименовать каталог в OPFS нельзя, поэтому слоты, а не rename.
 
 | Функция | Что делает |
 |---|---|
 | `isAvailable()` | есть ли OPFS в контексте |
 | `listInstalled()` | `[{id, version, name, languages, bytes, installedAt, verified, packSha256, manifest}]` |
-| `inspectPack(bytes, {extensionVersion?})` | unzip (fflate, ≤ 512 МБ распакованного) + `parsePackManifest` + `verifyPackFiles`, без записи → `{manifest, packSha256, verified, bytes}` |
-| `install(bytes, {verified?, extensionVersion?})` | повторная проверка; удаляет прежний `models/<id>/`, пишет `.installing` → `pack.json` → файлы (`createWritable`) → `installed.json` → снимает `.installing`. `verified` вычисляется по `KNOWN_PACKS`, параметр его не поднимает |
-| `remove(id)` | удаляет каталог; отсутствующий — не ошибка |
+| `inspectPack(bytes, {extensionVersion?})` | zip ≤ `MAX_PACK_BYTES`; unzip (fflate) в `Map`, в `filter`: сумма распакованных размеров ≤ `MAX_PACK_BYTES` (`TOO_LARGE`), повтор имени → `BAD_MANIFEST {reason: 'DUPLICATE_ENTRY'}`, зарезервированное имя (кроме `pack.json`) → `BAD_MANIFEST {reason: 'EXTRA_FILE'}`; затем `parsePackManifest` + `verifyPackFiles`, без записи → `{manifest, packSha256, verified, bytes}` |
+| `install(bytes, {verified?, extensionVersion?})` | повторная проверка; очищает неактивный слот и пишет в него `.installing` → `pack.json` → файлы (`createWritable`) → `installed.json` → снимает `.installing`; затем удаляет прежний слот. `verified` вычисляется по `KNOWN_PACKS`, параметр его не поднимает |
+| `remove(id)` | удаляет оба слота; отсутствующий — не ошибка |
 | `getManifest(id)` | манифест или `null` |
-| `readFile(id, path)` | `Uint8Array`; путь проверяется (`PACK_PATH_RE`, без `/` и `..`) |
+| `readFile(id, path)` | `Uint8Array` из активного слота; путь проверяется (`PACK_PATH_RE`, без `/` и `..`); активного нет → `NOT_INSTALLED` |
 | `openModelFiles(id)` | `{modelId, read(path)}` — синхронно, без обращения к хранилищу до первого `read` (для фабрики провайдера) |
 
-Ошибки — `ModelStoreError {code}`; `MODEL_STORE_ERROR_CODES`: `UNAVAILABLE | BAD_ZIP | BAD_MANIFEST | INCOMPATIBLE | HASH_MISMATCH | QUOTA | IO | NOT_INSTALLED`
-(`SIZE_MISMATCH`/`HASH_MISMATCH` файла → `HASH_MISMATCH`; лишний/отсутствующий файл → `BAD_MANIFEST`; `QuotaExceededError` → `QUOTA`). Тексты — `ner_err_<CODE>` в `ui/i18n/options.js`.
+Ошибки — `ModelStoreError {code, details?}`; `MODEL_STORE_ERROR_CODES`: `UNAVAILABLE | BAD_ZIP | TOO_LARGE | BAD_MANIFEST | INCOMPATIBLE | HASH_MISMATCH | QUOTA | IO | NOT_INSTALLED`
+(`SIZE_MISMATCH`/`HASH_MISMATCH` файла → `HASH_MISMATCH`; лишний/отсутствующий/повторяющийся файл → `BAD_MANIFEST` с `details: {path, reason}`; `VERIFY_FAILED` → `IO`;
+больше `MAX_PACK_BYTES` → `TOO_LARGE`; `QuotaExceededError` → `QUOTA`). Тексты — `ner_err_<CODE>` в `ui/i18n/options.js`.
 
 ### 6.3. Страница настроек
 
 Карточка `#ner` («Модель NER», после «Обработки»): тумблер `ner-enabled` (`nerEnabled`), число `ner-threshold` (`nerThreshold`, 0–1, шаг 0.05), статус `ner-status`,
 `ner-import` + скрытый `ner-import-file` (`.zip`), `ner-remove`, сообщения `ner-msg` (role=status), ссылка `ner-releases-link` (обычный `<a target=_blank>`), подсказка о приватности.
-Импорт: `inspectPack` → не проверен → `confirmDialog` → `install` → прочие пакеты удаляются (одна модель) → `save({nerModel: id})` → `MODEL_CHANGED`.
+Импорт: `f.size > MAX_PACK_BYTES` → `TOO_LARGE` без чтения файла → `inspectPack` → не проверен → `confirmDialog` → `install` → прочие пакеты удаляются (одна модель) → `save({nerModel: id})` → `MODEL_CHANGED`.
 Удаление: подтверждение → `remove` всех установленных → `save({nerModel: ''})` → `MODEL_CHANGED`. Сбой установки, оставивший `nerModel` без файлов, сбрасывает `nerModel`.
 
 ### 6.4. Хост и воркер
@@ -308,8 +324,9 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
 Хост держит кэш `{modelId, provider}`: один провайдер на `nerModel`; смена `nerModel` или `MODEL_CHANGED` → `dispose?.()` и сброс. `env.nerProvider` (тесты) имеет приоритет.
 `providerFor(settings)` используется в `ANALYZE` и `ADD_ENTITY`; при `!nerEnabled || !nerModel || !createNerProvider` → провайдера нет.
 `worker.js` (ESM): `import * as ort from 'onnxruntime-web/wasm'`; `ort.env.wasm.numThreads = 1`, `proxy = false`, `wasmPaths = {wasm: new URL('../vendor/ort-wasm-simd-threaded.wasm', import.meta.url).href}`;
-фабрика — `createPendingNerProvider({files: openModelFiles(s.nerModel), modelId: s.nerModel, ort})` (`core/ner/pending-provider.js`): `init()` читает и проверяет `pack.json` и бросает
-`CoreError('MODEL_LOAD_FAILED')` → `NER_FAILED {reason: 'MODEL_LOAD_FAILED'}`. **WP9 заменяет тело провайдера** (ONNX + WordPiece) с тем же контрактом и той же фабрикой; `ort` уже передаётся.
+фабрика — `createOnnxNerProvider({files: openModelFiles(s.nerModel), modelId: s.nerModel, ort})` (`core/ner/onnx-provider.js`, WP9, §6.7). Любой сбой загрузки
+(нет файла, битый `pack.json`, словарь без спецтокенов, ORT не принял модель, нет нужных входов/выхода) → `CoreError('MODEL_LOAD_FAILED')` → `NER_FAILED {reason: 'MODEL_LOAD_FAILED'}`;
+так e2e `model-pack.spec.js` с фейковой моделью получает ту же причину. `core/ner/pending-provider.js` (заглушка WP8) воркером больше не используется — остаётся для `tests/unit/ner/pack.spec.js`.
 
 ### 6.5. Сборка и упаковка
 
@@ -317,6 +334,7 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
   В бандл попадает **`ort.wasm.bundle.min.mjs`** (glue встроен, без внешнего `.mjs`); в `dist/vendor/` — `ort-wasm-simd-threaded.wasm` (14 239 897 байт) и `onnxruntime-web.LICENSE`
   (в npm-пакете ORT файла лицензии нет — текст MIT лежит в `assets/licenses/`).
 - Размеры `offscreen/worker.js`: до WP8 (IIFE) 225 443 байт; после WP8 329 403 байт, из них ORT ≈ 102 400 (+ словари WP7: 719 209 байт на момент сдачи WP8, без ORT ≈ 616 400).
+  После WP9 (провайдер, токенизатор, BIO): 745 462 байт, из них ORT 102 795, без ORT 642 667 (≤ 700 КБ, К15).
   `tests/integration/pack.spec.js` проверяет «worker.js без ORT ≤ 700 КБ» (К15), считая ORT по секции бандла `// node_modules/onnxruntime-web/…`.
 - Архив релиза (`npm run pack`) с wasm: ≈ 4,2 МБ (wasm сжимается до ≈ 3,5 МБ).
 
@@ -327,3 +345,82 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
 | **S1** OPFS в dedicated worker offscreen-документа | **Работает.** Страница настроек записала `models/_probe/x.bin` через `navigator.storage.getDirectory()` + `createWritable()`; модульный воркер offscreen прочитал тот же файл (130 байт) — общий origin `chrome-extension://<id>`. В воркере `self.isSecureContext === true`, `self.location` = `chrome-extension://<id>/offscreen/worker.js`. Fallback на IndexedDB не нужен. |
 | **S2** квота | Запись 40 МБ одним файлом через `createWritable` прошла (даже без `unlimitedStorage`: `estimate().quota` ≈ 10,8 ГБ — квота считается от свободного места диска, `persisted() === false`). `unlimitedStorage` добавлен в манифест, чтобы квота не зависела от места на диске и вытеснения. `QuotaExceededError` → `ModelStoreError('QUOTA')` (код в `ioError`). |
 | **S3** модульный worker под CSP + ORT | `new Worker('worker.js', {type: 'module'})` из классического offscreen-скрипта работает под CSP `extension_pages` (`script-src 'self' 'wasm-unsafe-eval'`); все существующие e2e зелёные. `onnxruntime-web/wasm` → `ort.wasm.bundle.min.mjs`; `InferenceSession.create` на 1-оп модели (`mul_1.onnx`, Mul, opset 7) — 146 мс холодно, `run` дал верный результат `[1..6]`. `ort.env.wasm.numThreads` = 1 до и после создания сессии; `SharedArrayBuffer` в воркере есть, но нити не создаются; ни одного запроса, кроме `chrome-extension:` (нет `blob:`-воркеров, нет http(s)). wasm грузится через `fetch` ORT с `chrome-extension://…/vendor/…` — разрешено `connect-src 'self'`. |
+
+### 6.7. ONNX-провайдер NER (версия 0.2, WP9)
+
+`createOnnxNerProvider({files, ort, modelId, batchSize = 8, skipLowercaseWindows = true, maxLen?, executionProviders = ['wasm'], onProgress?})` → `NerProvider` (+ `stats`).
+Модуль `ort` передаётся снаружи (`{InferenceSession, Tensor}`): в воркере — `onnxruntime-web/wasm`, в Node-тестах — `onnxruntime-web` (сборка `ort.node.min.mjs`, тот же WASM).
+Ядро не импортирует ORT и не делает сетевых запросов: модель и словарь читаются только через `files.read` (NFR-01).
+
+**`init()`** — один общий промис (сбой не кэшируется: следующий анализ попробует снова): `pack.json` → `parsePackManifest` → `vocab.txt` → `createWordPiece`
+(спецтокены из манифеста обязательны) → метки: `config.json` `id2label` (число меток должно совпасть с `manifest.labels`), иначе `manifest.labels` →
+`ort.InferenceSession.create(bytes, {executionProviders: ['wasm'], graphOptimizationLevel: 'all'})` → проверка `session.inputNames` ⊇ `manifest.model.inputs`
+и `outputNames` ∋ `model.output`. Любая ошибка → `CoreError('MODEL_LOAD_FAILED')` (сессия при этом освобождается). `dispose()` → `session.release()`.
+
+**`detect(text)`** (конвейер):
+1. `wordpiece.pretokenize` — BERT basic tokenizer как в `BertTokenizerFast`: пробелы Unicode (`\p{White_Space}`) разделяют; пунктуация (ASCII-не-буквы и `\p{P}`) и
+   иероглифы CJK — отдельные слова; управляющие (`\p{C}`, кроме `\t\n\r`; NUL; U+FFFD) выбрасываются и слово не рвут (`и​нулевой` — одно слово); NFC/NFD
+   не применяются при `stripAccents: false`. Офсеты — индексы исходной JS-строки (UTF-16). `tokenizeWord` — жадный longest-match с `##`, неразобранный
+   остаток или слово длиннее `maxWordChars` (100) → один `[UNK]`; кэш слов (50 000). Эталон — `tests/fixtures/ner/wordpiece-cases.json` (40 случаев, 100 %).
+2. `makeWindows(wordIds, {maxLen, stride, cls, sep})` — окна из целых слов `[CLS] … [SEP]` длиной ≤ `maxLen`; следующее окно начинается за `stride` слов
+   до конца предыдущего (перекрытие ровно `stride` слов, если в окне их больше); слово длиннее `maxLen − 2` субтокенов усекается (метка — по первому).
+3. **Пре-фильтр** `skipLowercaseWindows` (по умолчанию вкл.): окно без единого слова с заглавной буквой (`\p{Lu}`) в модель не подаётся — все слова O.
+4. Батчи по `batchSize` окон, дополнение `[PAD]` до самого длинного в батче, `attention_mask`, `token_type_ids` = 0; тип индексов — `model.indexType` (int64/int32).
+5. softmax по меткам **первого субтокена** слова. Слово в перекрытии берёт предсказание окна, чей центр (по словам) ближе.
+6. `bio.decodeWord`: тип слова — argmax маргинальных вероятностей `P(X) = P(B-X) + P(I-X)` (метки вне PER/ORG/LOC, например MISC, считаются O); тег B/I — что больше;
+   `prob` = `P(X)`. Так «Пятунину» с `I-PER 0.41, B-PER 0.20, O 0.39` — PER, а не O.
+7. `bridgePunct`: знак между двумя словами одного типа становится частью сущности — дефис/апостроф без пробелов («Римский-Корсаков», «О'Коннор»), точка после
+   однобуквенного инициала («И.С. Пятунину»).
+8. `mergeBio` (B открывает, I продолжает спан того же типа, I без B начинает, O и смена типа закрывают; `score` — средняя `prob` слов) →
+   `joinAdjacent` (соседние спаны одного типа через одни пробелы — один спан: модель ставит B на каждое слово ФИО).
+9. `filterSpans` → `alignSpans` → `filterSpans`: подрезка пунктуации по краям (парные кавычки внутри и точка инициала/«Ltd.» остаются, объемлющие скобки снимаются);
+   границы по соглашениям каталога (FR-18): ORG — с кавычками и ОПФ перед названием (`PREFIX_FORMS`, `FULL_FORMS_RE_SRC`) и латинской ОПФ после
+   (`SUFFIX_FORMS_RE_SRC`), спан из одной ОПФ дотягивается до названия в кавычках (голая ОПФ выбрасывается); PER — без обращения (Mr., г-н). Выбрасываются спаны
+   короче 2 символов, без букв, без заглавной буквы, PER/ORG из одних шаблонных слов договора (`isStopWord`, `ROLE_WORDS` WP2 + должности/названия реквизитов)
+   и короткие сокращения с точкой, за которыми не начинается предложение («Стр. 1»).
+
+Порог: runner отбрасывает `score < settings.nerThreshold`. Дефолт **0.7** = `recommendedThreshold` пакета (было 0.6; миграция настроек 1 → 2 меняет только
+прежний дефолт 0.6). `score` — средняя маргинальная вероятность типа, поэтому он выше, чем вероятность отдельной метки при калибровке T1: на корпусе
+`eval-ru` span-F1 почти не меняется в диапазоне 0.4–0.7 (PER 0.91–0.92, ORG 0.70–0.76) и падает выше 0.75 (ORG 0.62 при 0.75, 0.54 при 0.8).
+
+**Корпус оценки** — `scripts/gen-ner-eval.mjs` (сид 20261015, вымышленные данные: ФИО из словарей WP7 со склонением `names/morph.js`, придуманные компании,
+общеупотребительные топонимы) → `tests/fixtures/ner/eval-ru.json` (240 предложений договорного стиля: PER 169, ORG 94, LOC 88 спанов; 8 шаблонов без сущностей)
+и `eval-en.json` (120: PER 80, ORG 42, LOC 58). Соглашение о gold: PER — ФИО как написано (с точкой последнего инициала), ORG — с ОПФ и кавычками, LOC — топоним
+без родового слова («Ленина» в «ул. Ленина»). Метрика — span-F1 с точным совпадением границ и метки (`scoreSpans` в `scripts/bench-ner.mjs`).
+
+**Результаты** (`rubert-tiny2-ner-ruen` 1.0.0, int8, `model.onnx` sha256 `a3a062b1…c1b3` — модель из опубликованного zip `c4541a38…e691`; `maxLen` 128, `stride` 16, порог 0.7; `tests/integration/ner-provider.spec.js`, `npm run bench-ner`). При переэкспорте модели числа, zip и `KNOWN_PACKS` обновляются вместе:
+
+| Корпус | PER P / R / F1 | ORG P / R / F1 | LOC P / R / F1 | Гейт |
+|---|---|---|---|---|
+| eval-ru (240) | 0.979 / 0.846 / **0.908** | 0.859 / 0.585 / **0.696** | 0.948 / 0.830 / 0.885 | PER ≥ 0.80 ✓, ORG ≥ 0.65 ✓ |
+| eval-en (120) | 0.908 / 0.738 / **0.814** | 0.764 / 1.000 / 0.866 | 0.921 / 0.603 / 0.729 | PER ≥ 0.75 ✓ |
+
+Без постобработки шагов 6–9 (argmax метки, строгий BIO, только подрезка пунктуации по краям, тот же порог 0.7) на тех же корпусах: ru PER 0.711 / ORG 0.145 / LOC 0.877,
+en PER 0.671 / ORG 0.460 / LOC 0.796 — модель ставит B на каждое слово ФИО,
+делит массу между B и I, не включает ОПФ и кавычки в ORG. Основные оставшиеся ошибки модели (для T1): ORG с ОПФ и кавычками часто не находится вовсе
+(«АО «Березка»», «ООО «Ромашка»» — 38 из 94 пропущены), названия без ОПФ («Промтехснаб»), фамилия перед именем в им. падеже («Кадров Антон Сергеевич» → только
+«Антон Сергеевич»), инициалы перед фамилией в en («C. Toth»), голая фамилия после обращения («Mr. Stanfill»), «Mr. Campa» → ORG.
+
+**Бенчмарк** (AMD Ryzen 9 7945HX, одна нить WASM SIMD; в Node — `npm run bench-ner`, в Chromium — спайк S6 и e2e `ner.spec.js`):
+
+| Замер | Node 22 (onnxruntime-web) | Chromium (расширение) |
+|---|---|---|
+| Холодная `init()` (чтение файлов + словарь 83 828 токенов + сессия) | 270–470 мс | `create` 271 мс + чтение 103 мс; холодный `analyzeFile` образца — 0,6–0,9 с |
+| Окно 128 токенов, батч 1 / батч 8 | 13,6 / 13,8 мс на окно | 13,2 / 14,2 мс на окно |
+| Окно 256 токенов, батч 1 / батч 8 | — | 32,2 / 37,0 мс на окно |
+| Токены/с (длинный поток, окна по 128) | ≈ 9 000 | — |
+| eval-ru, 240 предложений (по потоку на предложение) | 0,5 с, ≈ 9 600 токенов/с | — |
+| «20 страниц» ≈ 9 000 слов, 286 абзацев | NER 1,6 с (пре-фильтр пропустил 0 окон: в каждом абзаце есть заглавные) | `analyzeFile` целиком (правила + NER) 2,0 с |
+| Тёплый `analyzeFile` образца | — | 0,12–0,14 с |
+| «300 страниц» ≈ 150 000 слов, 4 764 абзаца | NER 23,2 с (282 282 токена) | — |
+
+Батч 8 не быстрее батча 1 в одной нити (≈ одинаковое время на окно), но и не медленнее; в документах батч собирается только внутри потока (абзаца), поэтому
+короткие абзацы идут по одному окну. 20 страниц укладываются в 15 с с большим запасом — митигации (`maxLen` 128 уже в пакете, батч 8, пре-фильтр) включены по
+умолчанию, до/после не потребовались. Холодная загрузка ≤ 5 с (К7, NFR-06) — с запасом более 10×.
+
+**Спайки:**
+
+| Спайк | Результат |
+|---|---|
+| **S5** `onnxruntime-web` под vitest/Node | **Работает без `onnxruntime-node`.** `import 'onnxruntime-web'` в Node разрешается в `dist/ort.node.min.mjs` (WASM-бэкенд, wasm из пакета); `InferenceSession.create(Uint8Array)` на `model.onnx` (int8, 31,9 МБ) — 0,3–0,4 с, `inputNames` = `input_ids, attention_mask, token_type_ids`, выход `logits` float32 `[B, L, 7]`. ESM-импорт подпути `onnxruntime-web/wasm` (тот же, что в воркере) в Node тоже работает; CJS-вход (`require.resolve` → `ort.wasm.min.js`) при `import()` кладёт API в `default`. Тесты и бенчмарк берут основной ESM-вход (`loadOrt()` в `scripts/bench-ner.mjs`), `onnxruntime-node` не нужен. |
+| **S6** int8-модель в ORT WASM (браузер и Node) | **Исполняется** в обоих: квантованные MatMul/Gather поддерживает WASM EP; одна нить (`numThreads = 1`), без proxy. Числа — в таблице бенчмарка. Браузерный замер — отдельная страница в копии `dist-e2e` (ESM-бандл `ort.wasm.bundle.min.mjs`, модель с `chrome-extension://`), Chromium из Playwright 1.63, headless. |

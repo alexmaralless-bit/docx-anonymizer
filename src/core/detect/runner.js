@@ -134,7 +134,7 @@ export async function analyze(doc, settings, opts = {}) {
         const s = live[i];
         const spans = await opts.nerProvider.detect(s.text, { language });
         for (const sp of spans) {
-          if (sp.score < (settings.nerThreshold ?? 0.6)) continue;
+          if (sp.score < (settings.nerThreshold ?? 0.7)) continue;
           const cat = NER_LABEL_TO_CATEGORY[sp.label];
           if (cat) accept({ start: sp.start, end: sp.end, confidence: 'ner', source: 'ner', score: sp.score }, cat, s, 'ner');
         }

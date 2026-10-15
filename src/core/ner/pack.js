@@ -10,6 +10,15 @@ export const PACK_MANIFEST = 'pack.json';
 export const PACK_ID_RE = /^[a-z0-9][a-z0-9-]{1,40}$/;
 /** Имя файла пакета: плоское (без каталогов), без «..» и скрытых файлов. LICENSE/NOTICE — заглавными, поэтому A–Z допустимы. */
 export const PACK_PATH_RE = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/;
+/**
+ * Имена, которые нельзя объявлять в files[].path (без учёта регистра): служебные файлы каталога пакета в хранилище
+ * (pack.json, installed.json, маркер .installing — src/shared/model-store.js) и имена свойств прототипа объектов,
+ * под которыми записи zip теряются или подменяются при разборе в обычный объект.
+ */
+export const RESERVED_PACK_PATHS = Object.freeze(['pack.json', 'installed.json', '.installing', '__proto__', 'constructor', 'prototype']);
+const RESERVED = new Set(RESERVED_PACK_PATHS);
+/** Зарезервированное имя файла пакета (см. RESERVED_PACK_PATHS). */
+export const isReservedPackPath = (name) => typeof name === 'string' && RESERVED.has(name.toLowerCase());
 export const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const SHA_RE = /^[0-9a-f]{64}$/;
 const LABEL_RE = /^(O|[BI]-[A-Z][A-Z0-9_]*)$/;
@@ -94,7 +103,8 @@ export function compareVersions(a, b) {
  * @param {string|Uint8Array|object} jsonOrObj  текст JSON, его байты (UTF-8) или уже разобранный объект
  * @param {{extensionVersion?: string}} [opts]  версия расширения — для проверки minExtensionVersion
  * @returns {{ok: true, manifest: PackManifest} | {ok: false, error: string}}
- *   error — путь к первому неверному полю ('tokenizer.stride', 'files[2].path'), 'json' или 'minExtensionVersion'
+ *   error — путь к первому неверному полю ('tokenizer.stride', 'files[2].path'), 'json', 'minExtensionVersion'
+ *   или 'manifest' (непредвиденная ошибка разбора)
  */
 export function parsePackManifest(jsonOrObj, opts = {}) {
   let m = jsonOrObj;
@@ -106,12 +116,12 @@ export function parsePackManifest(jsonOrObj, opts = {}) {
   }
   try {
     checkManifest(m);
+    if (opts.extensionVersion && SEMVER_RE.test(opts.extensionVersion) && compareVersions(opts.extensionVersion, m.minExtensionVersion) < 0) {
+      return { ok: false, error: 'minExtensionVersion' };
+    }
   } catch (e) {
-    if (e instanceof Bad) return { ok: false, error: e.field };
-    throw e;
-  }
-  if (opts.extensionVersion && SEMVER_RE.test(opts.extensionVersion) && compareVersions(opts.extensionVersion, m.minExtensionVersion) < 0) {
-    return { ok: false, error: 'minExtensionVersion' };
+    // непредвиденное (например, объект с геттерами вместо JSON) — тоже отказ, а не исключение
+    return { ok: false, error: e instanceof Bad ? e.field : 'manifest' };
   }
   return { ok: true, manifest: /** @type {PackManifest} */ (m) };
 }
@@ -156,7 +166,7 @@ function checkManifest(m) {
   m.files.forEach((f, i) => {
     const at = `files[${i}]`;
     keys(f, ['path', 'sha256', 'size'], at);
-    if (typeof f.path !== 'string' || !PACK_PATH_RE.test(f.path) || f.path === PACK_MANIFEST || seen.has(f.path)) throw new Bad(`${at}.path`);
+    if (typeof f.path !== 'string' || !PACK_PATH_RE.test(f.path) || isReservedPackPath(f.path) || seen.has(f.path)) throw new Bad(`${at}.path`);
     if (typeof f.sha256 !== 'string' || !SHA_RE.test(f.sha256)) throw new Bad(`${at}.sha256`);
     if (!Number.isSafeInteger(f.size) || f.size < 0) throw new Bad(`${at}.size`);
     seen.add(f.path);
@@ -176,25 +186,41 @@ function checkManifest(m) {
   }
 }
 
+const isBytes = (b) => b instanceof Uint8Array || Object.prototype.toString.call(b) === '[object Uint8Array]';
+
 /**
- * Сверяет записи zip с манифестом: каждый файл из `files` есть с тем же размером и SHA-256, лишних записей нет.
+ * Сверяет записи zip с манифестом: каждый файл из `files` есть в записях с тем же размером и SHA-256, и каждая запись,
+ * кроме pack.json, объявлена в `files` (лишних нет). Никогда не бросает.
+ * Записи — Map или объект; ключи объекта читаются только собственные (Object.hasOwn), поэтому имена свойств прототипа
+ * (toString, hasOwnProperty…) не находятся «сами собой». Запись `__proto__` в обычном объекте теряется ещё при разборе
+ * zip — недоверенный архив передавайте как Map или объект без прототипа (так делает src/shared/model-store.js).
  * @param {PackManifest} manifest  уже проверенный parsePackManifest
- * @param {Record<string, Uint8Array>} entries  записи архива (pack.json допускается и игнорируется)
+ * @param {Map<string, Uint8Array> | Record<string, Uint8Array>} entries  записи архива (pack.json допускается и игнорируется)
  * @param {{digest?: (bytes: Uint8Array) => Promise<string>}} [opts]
- * @returns {Promise<{ok: true} | {ok: false, error: 'EXTRA_FILE'|'MISSING_FILE'|'SIZE_MISMATCH'|'HASH_MISMATCH', path: string}>}
+ * @returns {Promise<{ok: true} | {ok: false, error: 'EXTRA_FILE'|'MISSING_FILE'|'SIZE_MISMATCH'|'HASH_MISMATCH'|'VERIFY_FAILED', path: string}>}
+ *   VERIFY_FAILED — непредвиденный сбой проверки (например, хеширования); path — файл, на котором он случился, или ''
  */
 export async function verifyPackFiles(manifest, entries, { digest = sha256Hex } = {}) {
-  const declared = new Map(manifest.files.map((f) => [f.path, f]));
-  for (const name of Object.keys(entries).sort()) {
-    if (name !== PACK_MANIFEST && !declared.has(name)) return { ok: false, error: 'EXTRA_FILE', path: name };
+  let at = '';
+  try {
+    const isMap = entries instanceof Map;
+    const names = isMap ? [...entries.keys()] : Object.keys(entries);
+    const get = (p) => (isMap ? entries.get(p) : Object.hasOwn(entries, p) ? entries[p] : undefined);
+    const declared = new Set(manifest.files.map((f) => f.path));
+    for (const name of names.sort()) {
+      if (name !== PACK_MANIFEST && !declared.has(name)) return { ok: false, error: 'EXTRA_FILE', path: String(name) };
+    }
+    for (const f of manifest.files) {
+      at = f.path;
+      const bytes = get(f.path);
+      if (!isBytes(bytes)) return { ok: false, error: 'MISSING_FILE', path: f.path };
+      if (bytes.length !== f.size) return { ok: false, error: 'SIZE_MISMATCH', path: f.path };
+      if ((await digest(bytes)) !== f.sha256) return { ok: false, error: 'HASH_MISMATCH', path: f.path };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'VERIFY_FAILED', path: at };
   }
-  for (const f of manifest.files) {
-    const bytes = entries[f.path];
-    if (!bytes) return { ok: false, error: 'MISSING_FILE', path: f.path };
-    if (bytes.length !== f.size) return { ok: false, error: 'SIZE_MISMATCH', path: f.path };
-    if ((await digest(bytes)) !== f.sha256) return { ok: false, error: 'HASH_MISMATCH', path: f.path };
-  }
-  return { ok: true };
 }
 
 /** Имя zip-файла пакета: docx-anonymizer-ner-<id>-<version>.zip */

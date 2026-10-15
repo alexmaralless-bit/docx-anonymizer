@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { FIXED_TIME } from './pack.mjs';
-import { PACK_MANIFEST, PACK_PATH_RE, packZipName, parsePackManifest } from '../src/core/ner/pack.js';
+import { PACK_MANIFEST, PACK_PATH_RE, isReservedPackPath, packZipName, parsePackManifest } from '../src/core/ner/pack.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_MANIFEST = 'pack.src.json';
@@ -40,7 +40,7 @@ export function buildModelPack({ srcDir, outDir = join(root, 'release'), now = F
   for (const name of names) {
     const p = join(src, name);
     if (!statSync(p).isFile()) throw new Error(`Пакет плоский: ${name} — каталог`);
-    if (!PACK_PATH_RE.test(name) || name === PACK_MANIFEST) throw new Error(`Недопустимое имя файла пакета: ${name}`);
+    if (!PACK_PATH_RE.test(name) || isReservedPackPath(name)) throw new Error(`Недопустимое имя файла пакета: ${name}`);
     const bytes = new Uint8Array(readFileSync(p));
     files.push({ path: name, sha256: sha256(bytes), size: bytes.length });
     entries[name] = bytes;

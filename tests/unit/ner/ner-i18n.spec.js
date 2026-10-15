@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { OPTIONS_DICT } from '../../../src/ui/i18n/options.js';
 import { panel } from '../../../src/ui/i18n/panel.js';
 import { HELP_DICT } from '../../../src/ui/i18n/help.js';
-import { MODEL_STORE_ERROR_CODES as STORE_CODES } from '../../../src/shared/model-store.js';
+import { MAX_PACK_BYTES, MODEL_STORE_ERROR_CODES as STORE_CODES } from '../../../src/shared/model-store.js';
 
 describe('i18n: модель NER', () => {
   it('словари настроек и панели: ключи ru и en совпадают, строки не пусты', () => {
@@ -22,6 +22,16 @@ describe('i18n: модель NER', () => {
       expect(OPTIONS_DICT.ru[`ner_err_${c}`], c).toBeTruthy();
       expect(OPTIONS_DICT.en[`ner_err_${c}`], c).toBeTruthy();
     }
+  });
+
+  it('TOO_LARGE: код объявлен, тексты ru/en есть и называют тот же предел, что MAX_PACK_BYTES', () => {
+    expect(STORE_CODES).toContain('TOO_LARGE');
+    const mb = String(MAX_PACK_BYTES / (1024 * 1024));
+    const unit = { ru: 'МБ', en: 'MB' };
+    for (const lang of ['ru', 'en']) expect(OPTIONS_DICT[lang].ner_err_TOO_LARGE, lang).toContain(`${mb} ${unit[lang]}`);
+    // страница настроек проверяет размер файла до чтения в память
+    const opts = readFileSync(new URL('../../../src/options/options.js', import.meta.url), 'utf8');
+    expect(opts).toMatch(/f\.size > MAX_PACK_BYTES[\s\S]{0,200}f\.arrayBuffer\(\)/);
   });
 
   it('статус «не проверен», подсказка о приватности, предупреждение панели с причиной', () => {

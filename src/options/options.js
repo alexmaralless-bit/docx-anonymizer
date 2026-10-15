@@ -14,7 +14,9 @@ import { madeByLine, helpLink } from '../ui/brand.js';
 import { guardRegex } from './regex-guard.js';
 import { CATEGORIES_KIND, CONFIG_KIND, NOT_EXPORTED, parseCategoriesFile, parseConfigFile } from './config-io.js';
 import {
+  MAX_PACK_BYTES,
   MODEL_STORE_ERROR_CODES,
+  ModelStoreError,
   inspectPack,
   install,
   isAvailable as modelStoreAvailable,
@@ -397,6 +399,8 @@ function nerSection() {
       importBtn.disabled = true;
       say(t('ner_importing'));
       try {
+        // заведомо слишком большой файл не читаем в память целиком (К5)
+        if (f.size > MAX_PACK_BYTES) throw new ModelStoreError('TOO_LARGE');
         const bytes = new Uint8Array(await f.arrayBuffer());
         const info = await inspectPack(bytes, { extensionVersion: EXT_VERSION });
         const l = label(info.manifest);

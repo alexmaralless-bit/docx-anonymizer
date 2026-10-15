@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const DIST = resolve('dist-e2e');
+/** Каталог профиля каждого контекста: в нём Chromium пишет DevToolsActivePort (helpers/network.js, К6). */
+export const profileDirs = new WeakMap();
 
 export const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
@@ -18,8 +20,10 @@ export const test = base.extend({
     const context = await chromium.launchPersistentContext(userDataDir, {
       channel: 'chromium',
       headless: !process.env.E2E_HEADED,
-      args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`],
+      // порт CDP на 127.0.0.1 (случайный): helpers/network.js слушает через него сеть offscreen-документа и воркеров
+      args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`, '--remote-debugging-port=0'],
     });
+    profileDirs.set(context, userDataDir);
     await use(context);
     await context.close();
   },

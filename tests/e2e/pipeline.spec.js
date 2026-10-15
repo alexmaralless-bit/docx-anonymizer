@@ -4,14 +4,13 @@ import { test, expect } from './fixtures.js';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
 import { installClient, runPipeline } from './helpers/client.js';
 import { parseDocx } from '../../src/core/index.js';
+import { captureAllRequests, externalRequests, offscreenRequests } from './helpers/network.js';
 
 test('файл проходит ANALYZE → APPLY, результат — .anon.docx без адресов, сети нет', async ({ context, extensionId }) => {
   const { bytes, gold } = buildSampleDocx();
 
-  const external = [];
-  context.on('request', (req) => {
-    if (!/^(chrome-extension|data|blob):/.test(req.url())) external.push(req.url());
-  });
+  // все цели браузера: страница, service worker, offscreen-документ и его воркер (К6)
+  const net = await captureAllRequests(context);
 
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
@@ -34,7 +33,13 @@ test('файл проходит ANALYZE → APPLY, результат — .anon.
   const stored = await page.evaluate(() => chrome.storage.local.get(null));
   expect(JSON.stringify(stored)).not.toContain(gold.email1);
 
-  expect(external, 'NFR-01: сетевые запросы из расширения').toEqual([]);
+  const urls = await net.stop();
+  expect(externalRequests(urls), 'NFR-01: сетевые запросы из расширения').toEqual([]);
+  expect(
+    urls.filter((u) => !/^(chrome-extension|chrome|data|blob|about):/.test(u)),
+    'NFR-01: прочие схемы',
+  ).toEqual([]);
+  expect(offscreenRequests(urls)).toEqual(expect.arrayContaining([expect.stringMatching(/\/offscreen\/worker\.js$/)]));
 });
 
 test('не-docx отклоняется с кодом NOT_DOCX', async ({ context, extensionId }) => {

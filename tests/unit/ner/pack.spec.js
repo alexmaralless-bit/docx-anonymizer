@@ -1,7 +1,15 @@
 // Пакет модели NER (WP8, К5): разбор pack.json, сверка файлов с хешами, схема schemas/model-pack.schema.json.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parsePackManifest, verifyPackFiles, packZipName, compareVersions, PACK_ID_RE } from '../../../src/core/ner/pack.js';
+import {
+  parsePackManifest,
+  verifyPackFiles,
+  packZipName,
+  compareVersions,
+  PACK_ID_RE,
+  RESERVED_PACK_PATHS,
+  isReservedPackPath,
+} from '../../../src/core/ner/pack.js';
 import { KNOWN_PACKS, findKnownPack } from '../../../src/core/ner/known-packs.js';
 import { createPendingNerProvider } from '../../../src/core/ner/pending-provider.js';
 import { sha256Hex } from '../../../src/core/hash.js';
@@ -96,6 +104,31 @@ describe('parsePackManifest', () => {
     }
   });
 
+  it('зарезервированные имена в files[].path отклоняются без учёта регистра; похожие обычные — нет', () => {
+    for (const path of [...RESERVED_PACK_PATHS, 'INSTALLED.JSON', 'Pack.Json', 'Constructor']) {
+      const m = clone();
+      m.files.push({ path, sha256: '0'.repeat(64), size: 0 });
+      expect(parsePackManifest(m), path).toEqual({ ok: false, error: `files[${valid.files.length}].path` });
+    }
+    for (const path of ['installed.json.bak', 'toString', 'proto', 'MODEL.ONNX']) {
+      expect(isReservedPackPath(path), path).toBe(false);
+      const m = clone();
+      m.files.push({ path, sha256: '0'.repeat(64), size: 0 });
+      expect(parsePackManifest(m).ok, path).toBe(true);
+    }
+  });
+
+  it('непредвиденная ошибка разбора — отказ, а не исключение', () => {
+    const m = clone();
+    Object.defineProperty(m, 'files', {
+      enumerable: true,
+      get() {
+        throw new Error('getter');
+      },
+    });
+    expect(parsePackManifest(m)).toEqual({ ok: false, error: 'manifest' });
+  });
+
   it('source допускает массивы строк (датасеты)', () => {
     const m = clone();
     m.source.data = ['unimelb-nlp/wikiann:ru', 'unimelb-nlp/wikiann:en'];
@@ -133,6 +166,30 @@ describe('verifyPackFiles', () => {
     expect(await verifyPackFiles(valid, { ...FILES, 'dir/': new Uint8Array() })).toEqual({ ok: false, error: 'EXTRA_FILE', path: 'dir/' });
     expect(await verifyPackFiles(valid, { ...FILES, 'model.onnx': enc('fake-onnx!') })).toEqual({ ok: false, error: 'SIZE_MISMATCH', path: 'model.onnx' });
     expect(await verifyPackFiles(valid, { ...FILES, 'model.onnx': enc('FAKE-ONNX') })).toEqual({ ok: false, error: 'HASH_MISMATCH', path: 'model.onnx' });
+  });
+  it('объявленный файл с именем свойства прототипа, которого нет в записях → MISSING_FILE, без исключения', async () => {
+    for (const path of ['hasOwnProperty', 'toString', 'valueOf', '__defineGetter__']) {
+      const m = clone();
+      m.files.push({ path, sha256: '0'.repeat(64), size: 1 });
+      expect(await verifyPackFiles(m, { ...FILES }), path).toEqual({ ok: false, error: 'MISSING_FILE', path });
+      expect(await verifyPackFiles(m, new Map(Object.entries(FILES))), path).toEqual({ ok: false, error: 'MISSING_FILE', path });
+    }
+  });
+  it('запись __proto__ (Map или объект без прототипа) → EXTRA_FILE; не байты → MISSING_FILE', async () => {
+    const map = new Map(Object.entries(FILES)).set('__proto__', enc('x'));
+    expect(await verifyPackFiles(valid, map)).toEqual({ ok: false, error: 'EXTRA_FILE', path: '__proto__' });
+    const bare = Object.assign(Object.create(null), FILES);
+    bare['__proto__'] = enc('x');
+    expect(await verifyPackFiles(valid, bare)).toEqual({ ok: false, error: 'EXTRA_FILE', path: '__proto__' });
+    expect(await verifyPackFiles(valid, { ...FILES, NOTICE: 'fake notice' })).toEqual({ ok: false, error: 'MISSING_FILE', path: 'NOTICE' });
+    expect(await verifyPackFiles(valid, new Map(Object.entries(FILES)))).toEqual({ ok: true });
+  });
+  it('сбой хеширования → VERIFY_FAILED с путём файла, без исключения', async () => {
+    const digest = async () => {
+      throw new TypeError('digest');
+    };
+    expect(await verifyPackFiles(valid, FILES, { digest })).toEqual({ ok: false, error: 'VERIFY_FAILED', path: valid.files[0].path });
+    expect(await verifyPackFiles(null, FILES)).toEqual({ ok: false, error: 'VERIFY_FAILED', path: '' });
   });
   it('принимает свою функцию хеширования', async () => {
     const seen = [];

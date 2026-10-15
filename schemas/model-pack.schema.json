@@ -104,7 +104,7 @@
     "path": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
-      "description": "Плоское имя файла: без '/', без '..' и скрытых файлов; не pack.json."
+      "description": "Плоское имя файла: без '/', без '..' и скрытых файлов. Зарезервированные имена (без учёта регистра) — pack.json, installed.json, .installing, __proto__, constructor, prototype — запрещены; это проверяет код (src/core/ner/pack.js), не схема."
     },
     "token": { "type": "string", "minLength": 1, "maxLength": 32 },
     "tensorName": { "type": "string", "minLength": 1, "maxLength": 64 }

@@ -1,0 +1,77 @@
+# CI версии 0.2 (К12, docs/concept-0.2.md): lint + unit/integration + сборка + архив релиза, затем e2e в Chromium.
+# Сети расширение не использует; сеть здесь нужна только для npm ci и загрузки Chromium Playwright.
+#
+# Гейтовые тесты реальной модели NER в CI пропускаются — так задумано: модель в git не хранится (пакет — в GitHub Releases).
+#   NER_MODEL_DIR — tests/integration/ner-provider.spec.js (К7, К8), NER_PACK — tests/e2e/ner.spec.js; запускаются локально.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: lint, test, build, pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # xmllint — проверка XML результата в tests/integration/{sample,fixtures-docs}.spec.js (без него эти проверки пропускаются)
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run: npm ci
+      - run: npm run lint
+      - name: npm test
+        run: npm test
+        env:
+          # LibreOffice в раннере нет; проверка «открывается без восстановления» — локально
+          SKIP_LIBREOFFICE: '1'
+          CI: '1'
+      - run: npm run build
+      - run: npm run pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: release/*.zip
+          if-no-files-found: error
+
+  e2e:
+    name: e2e (Chromium, headless)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      # Новый headless Chromium поддерживает расширения: xvfb не нужен (tests/e2e/fixtures.js, headless по умолчанию).
+      # npm run e2e собирает dist-e2e/ (host_permissions для Playwright) и запускает tests/e2e/*.spec.js.
+      - name: npm run e2e
+        run: npm run e2e
+        env:
+          SKIP_LIBREOFFICE: '1'
+          CI: '1'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-test-output
+          path: test-output/
+          if-no-files-found: ignore

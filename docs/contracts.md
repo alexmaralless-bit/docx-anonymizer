@@ -388,7 +388,7 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
 и `eval-en.json` (120: PER 80, ORG 42, LOC 58). Соглашение о gold: PER — ФИО как написано (с точкой последнего инициала), ORG — с ОПФ и кавычками, LOC — топоним
 без родового слова («Ленина» в «ул. Ленина»). Метрика — span-F1 с точным совпадением границ и метки (`scoreSpans` в `scripts/bench-ner.mjs`).
 
-**Результаты** (`rubert-tiny2-ner-ruen` 1.0.0, int8, `model.onnx` sha256 `a3a062b1…c1b3` — модель из опубликованного zip `c4541a38…e691`; `maxLen` 128, `stride` 16, порог 0.7; `tests/integration/ner-provider.spec.js`, `npm run bench-ner`). При переэкспорте модели числа, zip и `KNOWN_PACKS` обновляются вместе:
+**Результаты** (`rubert-tiny2-ner-ruen` 1.0.0, int8, `model.onnx` sha256 `0ab310c0…cd01` — финальная модель T1 (дистилляция + 10 % синтетики), опубликованный zip `ca023f16…318f`; `maxLen` 128, `stride` 16, порог 0.7; `tests/integration/ner-provider.spec.js`, `npm run bench-ner`). При переэкспорте модели числа, zip и `KNOWN_PACKS` обновляются вместе:
 
 | Корпус | PER P / R / F1 | ORG P / R / F1 | LOC P / R / F1 | Гейт |
 |---|---|---|---|---|

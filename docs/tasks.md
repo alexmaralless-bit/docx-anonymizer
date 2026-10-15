@@ -1,4 +1,6 @@
-# Рабочие пакеты MVP
+# Рабочие пакеты
+
+Пакеты WP1–WP5 — MVP (версия 0.1). Пакеты WP6–WP9 — версия 0.2, цели и критерии в `docs/concept-0.2.md`.
 
 Фундамент готов: каркас MV3, ядро DOCX, контракты, протокол, конвейер popup → offscreen → worker (см. `docs/contracts.md`).
 Оставшаяся работа MVP (`docs/mvp-scope.md`) разбита на 5 независимых пакетов. Пакеты работают параллельно:
@@ -19,6 +21,10 @@
 `src/core/{apply,mapping,placeholders,settings,sites,search,text-view,errors,index}.js`, `src/shared/**`,
 `src/offscreen/**`, `src/background/{index,router,offscreen-manager}.js`.
 Исключение: `src/core/categories.js` — WP1/WP2 могут дополнять **данные** (лейблы) своих категорий, не меняя структуру.
+
+После MVP (версия 0.2) заморозка снята для файлов, которые меняют пакеты WP6–WP9: `manifest.json`, `scripts/build.mjs`,
+`src/core/contracts/ner.js`, `src/core/detect/runner.js`, `src/core/{settings,deanon}.js`, `src/shared/**`, `src/offscreen/**`,
+`src/background/index.js`. Правило прежнее: минимальное аддитивное изменение, с тестом, в рамках своего WP.
 
 ---
 
@@ -90,3 +96,59 @@
 - JSON-схемы `schemas/mapping.schema.json`, `schemas/protocol.schema.json` и тест валидации маппинга и сообщений хоста.
 
 **Приёмка:** `npm test` и `npm run e2e` зелёные без дисплея (headless); каждое gold-значение проверено на утечку; результат детерминирован (SHA-256 двух прогонов совпадает).
+
+---
+
+## WP6 — разрешения по сайтам, версия, склонение при восстановлении (версия 0.2)
+
+**Файлы:** `manifest.json`, `scripts/build.mjs` (флаг `--e2e`), `scripts/pack.mjs`, `src/shared/permissions.js`, `src/background/{site-access,index}.js`,
+`src/content/content.js`, `src/popup/popup.js`, `src/ui/components/site-state.js`, `src/options/options.js` (раздел «Перехват»),
+`src/core/{deanon,deanon-morph}.js`, `src/restore/**`, `src/ui/deanon/index.js`, `src/offscreen/host.js` (DEANON), `schemas/protocol.schema.json`,
+`src/ui/i18n/{popup,options,help,restore}.js`, `tests/unit/{site-access,deanon-morph}.spec.js`, `tests/unit/ui/site-state.spec.js`,
+`tests/unit/custom/deanon-decline-fixture.spec.js`, `tests/fixtures/deanon-decline.json`, `tests/integration/manifest.spec.js`, `tests/e2e/{site-access,restore}.spec.js`, `tests/e2e/fixtures.js`.
+
+**Сделать:**
+- Разрешения: `optional_host_permissions: ["<all_urls>"]`, `permissions` += `scripting`, `activeTab`; удалить `host_permissions` и статический `content_scripts`. Content script регистрируется через `chrome.scripting.registerContentScripts` для выданных origin (источник истины — `chrome.permissions.getAll().origins`), синхронизация на `onInstalled`/`onStartup`/`permissions.onAdded|onRemoved`; по `onAdded` — `executeScript` в открытые вкладки. Popup и настройки запрашивают доступ синхронно в обработчике клика; состояние `needsAccess` в popup. Сборка `--e2e` → `dist-e2e/` с `host_permissions` для Playwright (нативный диалог не автоматизируется — ручной чек-лист в README).
+- Версия: `manifest.json` репозитория = package.json (тест); комментарий о DOS-времени в `pack.mjs`, тест на независимость от TZ.
+- Склонение (FR-37 в новой редакции): `deanonymize(text, mapping, {decline})` подбирает падеж ФИО по приклеенному окончанию (`[ФИО_1]у`) или предлогу перед меткой; `в/на/за/под` и незнакомые окончания — именительный; лемма и род выводятся из `value`/`variants`, карта замен не меняется; склонённые подстановки подсвечиваются и считаются; чекбокс на странице восстановления.
+
+**Приёмка:** К9, К10, К11 из `docs/concept-0.2.md`; `deanon.json` (30 случаев) не тронута; `npm run e2e` зелёный на `dist-e2e`.
+
+## WP7 — словарный детектор ФИО (NER, ступень 1)
+
+**Файлы:** `scripts/make-dicts.mjs`, `src/core/detect/names/dict/**` (генерируемые модули + `NOTICE.md`), `src/core/detect/names/{person-dict,kb,person,lexicon,morph}.js`,
+`src/core/settings.js` (`dictNames`), `src/options/options.js` (тумблер), `src/ui/i18n/options.js`, `scripts/gen-fixtures.mjs` (документ `third-persons`),
+`tests/unit/names/{person-dict,person-dict-morph,dict-codec,person-dict.perf}.spec.js`, `tests/fixtures/categories/PERSON-dict.json`, `tests/fixtures/docs/third-persons.*`, `tests/integration/{fixtures-docs,pack}.spec.js`.
+
+**Сделать:**
+- Словари: datacoon/russiannames (BSD-3) — RU фамилии (50 000 лемм) и имена (≈ 6 000, с родом); natasha (MIT) — неоднозначные имена; US Census (public domain) — EN имена/фамилии. Генератор `npm run dicts` (`--check`), front-coding, `NOTICE.md`.
+- Детектор `findPersonsByDict`: пары `[Имя][Фамилия]`/`[Фамилия][Имя]`, `[Имя][Отчество]` (вид `fm`), латиница; правило «два признака из трёх» с согласованием падежа и рода; guards (топонимы, стоп-слова, нарицательные, госорганы, кавычки, начало предложения, заголовки, `NON_PERSON_PAIRS`). Вхождения — уровень `kb`, `party:false`; поиск вариантов по документу для записей с ≥ 2 попаданиями (одиночная фамилия — только для сторон).
+- Настройка `dictNames` (по умолчанию вкл.), тумблер в «Обработка».
+
+**Приёмка:** К1, К2, К3, К4, К15.
+
+## WP8 — модельный пакет NER (ступень 2)
+
+**Файлы:** `schemas/model-pack.schema.json`, `src/core/{hash}.js`, `src/core/ner/{pack,known-packs}.js`, `src/shared/model-store.js`, `src/core/settings.js` (`nerModel`), `src/options/{options,config-io}.js` (карточка «NER»),
+`src/ui/i18n/{options,help,panel}.js`, `src/help/help.js`, `src/shared/protocol.js` (`MODEL_CHANGED`), `schemas/protocol.schema.json`, `src/offscreen/{host,worker,offscreen}.js`, `src/core/contracts/ner.js` (`dispose`), `src/core/detect/runner.js` (`NER_FAILED.details`),
+`scripts/{build,pack-model}.mjs`, `manifest.json` (`unlimitedStorage`), `tests/unit/ner/pack.spec.js`, `tests/integration/{pack-model,host,schemas,pack}.spec.js`, `tests/e2e/model-pack.spec.js`, `tests/fixtures/ner/pack.valid.json`.
+
+**Сделать:**
+- Формат пакета `docx-anonymizer-ner-<id>-<ver>.zip` с `pack.json` (манифест, хеши файлов), `model.onnx`, `vocab.txt`, `config.json`, `LICENSE`, `NOTICE`; валидация и проверка хешей в ядре; список известных пакетов для пометки «проверен».
+- Хранилище OPFS `models/<id>/` (запись из настроек, чтение из worker); `unlimitedStorage`; импорт/удаление/статус в настройках; `MODEL_CHANGED` сбрасывает кэш провайдера в хосте; фабрика провайдера `env.createNerProvider(settings)`.
+- Сборка: worker как ES-модуль (отдельный вызов esbuild `format:'esm'`), `onnxruntime-web` wasm в `dist/vendor/`.
+- `npm run pack:model -- --id=<id>`: детерминированный zip из `models-src/<id>/` в `release/`.
+
+**Приёмка:** К5, К6, К3; спайки S1–S3 (OPFS в worker offscreen, квота, модульный worker под CSP) зафиксированы в `docs/contracts.md`.
+
+## WP9 — ONNX-провайдер и обучение модели (ступень 3)
+
+**Файлы:** `src/core/ner/{wordpiece,windows,bio,onnx-provider}.js`, `src/offscreen/worker.js`, `scripts/{bench-ner,gen-ner-eval}.mjs`, `tools/ner-train/**`,
+`tests/unit/ner/{wordpiece,windows,bio}.spec.js`, `tests/integration/ner-provider.spec.js`, `tests/e2e/ner.spec.js`, `tests/fixtures/ner/{wordpiece-cases,eval-ru,eval-en}.json`, `src/core/ner/known-packs.js` (sha256 пакета).
+
+**Сделать:**
+- Провайдер: `onnxruntime-web` (WASM SIMD, одна нить) + собственный WordPiece с офсетами; окна `maxLen`/`stride` по словам; батчи; метка первого субтокена; слияние BIO; `score` — средняя вероятность; ошибки загрузки → `MODEL_LOAD_FAILED` → предупреждение `NER_FAILED` (NFR-13).
+- Обучение (`tools/ner-train`, uv, GPU): `cointegrated/rubert-tiny2` на WikiANN ru+en → ONNX opset 17 → int8 (`quantize_dynamic`, включая `Gather`) → проверка argmax ≥ 99 % → калибровка `nerThreshold` → `models-src/<id>/` → `npm run pack:model`.
+- Модель в git не попадает; zip выкладывается в GitHub Releases, sha256 — в `known-packs.js` и README.
+
+**Приёмка:** К6, К7, К8; результаты бенчмарка (мс/окно, холодная загрузка) — в `docs/contracts.md`.

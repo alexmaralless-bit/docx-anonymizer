@@ -3,8 +3,8 @@
 // после лейбла («в лице [должность]», «ФИО:», «represented by», «Mr.», подпись «____ / … /»).
 
 import { tokenize, gapOk, labelBeforeRe, hasLabelBefore, pickNonOverlapping } from './text.js';
-import { isStopWord, lowerE, POSITION_RE_SRC, AMBIGUOUS_NAMES_RU, FIRST_NAMES_EN } from './lexicon.js';
-import { patronymicInfo, firstNameInfo } from './morph.js';
+import { isStopWord, lowerE, POSITION_RE_SRC, AMBIGUOUS_NAMES_RU, FIRST_NAMES_EN, NON_PERSON_PAIRS } from './lexicon.js';
+import { patronymicInfo, firstNameInfo, lemmaCandidates } from './morph.js';
 
 // prettier-ignore
 export const PERSON_LABELS_RU = [
@@ -20,20 +20,21 @@ export const PERSON_LABELS_EN = [
 const HONORIFIC_RE = /(?<![\p{L}])(?:mr|mrs|ms|miss|dr|prof|sir)\.?[ \u00A0]+$/iu;
 const SIGNATURE_RE = /_{2,}[ \u00A0]*\/[ \u00A0]*$/u;
 // «ул. Академика Королёва», «им. Ивана Франко», «г. Николаев» — часть адреса/названия, не лицо
-const TOPONYM_BEFORE_RE =
+export const TOPONYM_BEFORE_RE =
   /(?:(?<![\p{L}])(?:ул|пр|просп|пер|пл|наб|б-р|бул|ш|им|г|гор|пос|с|д|дер|мкр|р-н|обл|ст)\.|(?<![\p{L}])(?:улица|улицы|проспект|переулок|площадь|имени|набережная|бульвар|шоссе|пр-т|город|села|деревня|станция|street|avenue|road))[ \u00A0]*$/iu;
 
 const DEFAULT_LABEL_RE = labelBeforeRe([...PERSON_LABELS_RU, ...PERSON_LABELS_EN], POSITION_RE_SRC);
 
 /**
  * @typedef {object} PersonParse
- * @property {'full'|'pair'|'initials'|'other'} kind
+ * @property {'full'|'pair'|'initials'|'fm'|'other'} kind   fm — «Имя Отчество» (словарный детектор)
  * @property {'cyr'|'lat'} script
  * @property {string} [surname]
  * @property {string} [first]
  * @property {string} [patronymic]
  * @property {string} [initials]   буквы инициалов в нижнем регистре: «пс»
  * @property {string[]} words
+ * @property {{surname?: string, first: string, patronymic?: string, gender: 'm'|'f'}} [lemma]  леммы (словарный детектор)
  */
 
 /**
@@ -42,20 +43,37 @@ const DEFAULT_LABEL_RE = labelBeforeRe([...PERSON_LABELS_RU, ...PERSON_LABELS_EN
  * @property {number} end
  * @property {boolean} labeled
  * @property {PersonParse} parse
+ * @property {boolean} [dict]   найдено словарным детектором (person-dict.js, WP7) — уровень kb
  */
 
 const isFirstRu = (w) => firstNameInfo(w).length > 0 && !AMBIGUOUS_NAMES_RU.has(lowerE(w));
 const isFirstEn = (w) => FIRST_NAMES_EN.has(lowerE(w));
+
+/** «Иван Купала», «Ивана Купалы», «Лада Веста» — устойчивые сочетания, не лица (WP7, NON_PERSON_PAIRS). */
+function nonPersonPair(span) {
+  const p = span.parse;
+  if (span.labeled || p.kind !== 'pair' || !p.first || !p.surname) return false;
+  const f = lowerE(p.first);
+  const s = lowerE(p.surname);
+  if (NON_PERSON_PAIRS.has(lowerE(p.words.join(' ')))) return true;
+  if (p.script !== 'cyr') return false;
+  for (const fi of firstNameInfo(f)) {
+    for (const sl of [s, ...lemmaCandidates(s, 'surname', fi.gender, fi.cases).slice(0, 2)]) {
+      if (NON_PERSON_PAIRS.has(`${fi.lemma} ${sl}`) || NON_PERSON_PAIRS.has(`${sl} ${fi.lemma}`)) return true;
+    }
+  }
+  return false;
+}
 const okWord = (tok) => tok.t === 'W' && !isStopWord(tok.text) && tok.text.length >= 2;
 
 /**
  * @param {string} text
- * @param {{labelRe?: RegExp}} [opts]
+ * @param {{labelRe?: RegExp, toks?: import('./text.js').Token[]}} [opts] `toks` — готовая токенизация `text` (WP7: общая со словарным детектором)
  * @returns {PersonSpan[]}
  */
 export function findPersons(text, opts = {}) {
   const labelRe = opts.labelRe || DEFAULT_LABEL_RE;
-  const toks = tokenize(text);
+  const toks = opts.toks || tokenize(text);
   /** @type {PersonSpan[]} */
   const spans = [];
   const seq = (i, n) => {
@@ -150,5 +168,7 @@ export function findPersons(text, opts = {}) {
     }
   }
   // Пересечения внутри PERSON: размеченные лейблом и более длинные — сильнее
-  return pickNonOverlapping(spans, (s) => (s.labeled ? 1 : 0)).filter((s) => !TOPONYM_BEFORE_RE.test(text.slice(Math.max(0, s.start - 14), s.start)));
+  return pickNonOverlapping(spans, (s) => (s.labeled ? 1 : 0)).filter(
+    (s) => !TOPONYM_BEFORE_RE.test(text.slice(Math.max(0, s.start - 14), s.start)) && !nonPersonPair(s),
+  );
 }

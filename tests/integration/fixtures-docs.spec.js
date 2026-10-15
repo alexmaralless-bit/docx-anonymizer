@@ -20,7 +20,7 @@ beforeAll(() => {
 });
 
 describe('набор договоров: «файл → файл»', () => {
-  for (const name of ['ip-contract', 'two-companies', 'english-contract', 'structures']) {
+  for (const name of ['ip-contract', 'two-companies', 'english-contract', 'structures', 'third-persons']) {
     describe(name, () => {
       const get = () => fixtures.find((f) => f.name === name);
 

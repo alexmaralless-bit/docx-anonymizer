@@ -194,3 +194,18 @@ export const COMMON_NOUNS = new Set(
     'alpha', 'delta', 'omega', 'atlas', 'titan', 'unity', 'union', 'alliance', 'partner', 'partners', 'group', 'holding', 'center', 'centre',
   ].map(lowerE),
 );
+
+/* ---------- устойчивые сочетания «как ФИО», которые не являются лицами (WP7, словарный детектор) ---------- */
+
+/** Пары в нижнем регистре, «ё» → «е»: сравниваются и с написанием, и с леммами («Ивана Купалы» → «иван купала»). */
+// prettier-ignore
+export const NON_PERSON_PAIRS = new Set(
+  [
+    'иван купала', 'иван-чай', 'дед мороз', 'лада веста', 'лада гранта', 'лада калина', 'лада приора', 'лада нива', 'виктория сикрет',
+    'анна каренина', 'маша медведь', 'кузьма минин', 'иван грозный', 'петр великий', 'екатерина великая', 'илья муромец', 'добрыня никитич',
+    'алеша попович', 'никола угодник', 'василий блаженный', 'сергий радонежский', 'серафим саровский', 'александр невский', 'дмитрий донской',
+    'мать тереза', 'баба яга', 'кощей бессмертный', 'снегурочка мороз', 'тойота камри', 'морган стэнли', 'голдман сакс', 'джонсон контролс',
+    'morgan stanley', 'goldman sachs', 'johnson controls', 'dean witter', 'victoria secret', 'louis vuitton', 'calvin klein', 'tommy hilfiger',
+    'ralph lauren', 'marc jacobs', 'hugo boss', 'ronald mcdonald', 'santa claus', 'uncle sam', 'jack daniels', 'johnnie walker', 'jim beam',
+  ].map(lowerE),
+);

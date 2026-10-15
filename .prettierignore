@@ -3,3 +3,5 @@ node_modules
 test-output
 docs
 dist-e2e
+src/core/detect/names/dict/ru-*.js
+src/core/detect/names/dict/en-*.js

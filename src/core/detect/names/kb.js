@@ -14,12 +14,26 @@
 //    к полному ФИО по формам фамилии и инициалам. Записи о компаниях — по названию без ОПФ.
 // 4. Вхождения правил получают canonical своей записи; для сторон (запись встречена в зоне)
 //    ищутся варианты по всему документу — уровень kb.
+// WP7: на шаге 1 к правилам добавляется словарный детектор (person-dict.js, настройка dictNames):
+//    пары «Имя Фамилия» и «Имя Отчество» (fm) третьих лиц — уровень kb, не стороны; записи с ≥ 2 попаданиями
+//    тоже ищутся по документу (без одиночной фамилии — она только для сторон).
 
 import { findPersons } from './person.js';
+import { findPersonsByDict } from './person-dict.js';
 import { findCompanies } from './company.js';
 import { tokenize, tokenSeq, escapeRe, pickNonOverlapping, overlaps } from './text.js';
 import { lowerE, COMMON_NOUNS, isStopWord } from './lexicon.js';
-import { lemmatizeFullName, lemmatizeNamePair, declineSurname, declineFirstName, declinePatronymic, surnameFormsAnyGender, firstNameInfo } from './morph.js';
+import {
+  lemmatizeFullName,
+  lemmatizeNamePair,
+  declineSurname,
+  declineFirstName,
+  declinePatronymic,
+  surnameFormsAnyGender,
+  firstNameInfo,
+  patronymicInfo,
+} from './morph.js';
+import { bigFirstNameInfo, firstNameForms } from './dict/index.js';
 import { skeleton, skeletonWeight, isCyrillic, crossScriptMatch } from './translit.js';
 
 const MAIN = 'word/document.xml';
@@ -108,7 +122,7 @@ export function findPartyZones(doc) {
 
 /**
  * @typedef {object} PersonRec
- * @property {'full'|'pair'|'initials'|'other'} kind
+ * @property {'full'|'pair'|'initials'|'fm'|'other'} kind   fm — «Имя Отчество» без фамилии (WP7)
  * @property {string} canonical
  * @property {boolean} latin
  * @property {string} surname     лемма (или форма как написано)
@@ -119,12 +133,31 @@ export function findPartyZones(doc) {
  * @property {Set<string>} firstForms
  * @property {Set<string>} patrForms
  * @property {boolean} party
+ * @property {number} [hits]  сколько вхождений правил/словаря присоединено к записи
  */
 
+/**
+ * Лемма редкого имени по большому словарю (WP7): правило «ФИО по отчеству» лемматизирует имя по курируемому
+ * списку и для «Зульфие» может выбрать неверный именительный; словарь даёт точный, если род и падеж согласуются.
+ */
+function dictFirstLemma(first, gender, cases, fallback) {
+  if (firstNameInfo(first).length) return fallback;
+  const hits = bigFirstNameInfo(first).filter((x) => x.gender === gender && x.cases.some((c) => cases.includes(c)));
+  if (!hits.length || hits.some((x) => x.lemma === fallback)) return fallback;
+  return hits[0].lemma;
+}
+
 class PersonBase {
-  constructor() {
+  /** @param {boolean} [useDict] уточнять леммы имён по большому словарю (WP7, dictNames) */
+  constructor(useDict = false) {
     /** @type {PersonRec[]} */
     this.recs = [];
+    this.useDict = useDict;
+  }
+
+  /** Формы имени: со словарём — с вариантами («Зульфие»). */
+  firstForms(lemma, g) {
+    return new Set(this.useDict ? firstNameForms(lemma, g) : declineFirstName(lemma, g));
   }
 
   byCanonical(c) {
@@ -149,7 +182,7 @@ class PersonBase {
       patronymic: l.patronymic,
       initials: l.first[0] + l.patronymic[0],
       surnameForms: new Set(declineSurname(l.surname, l.gender)),
-      firstForms: new Set(declineFirstName(l.first, l.gender)),
+      firstForms: this.firstForms(l.first, l.gender),
       patrForms: new Set(declinePatronymic(l.patronymic, l.gender)),
       party: false,
     });
@@ -168,7 +201,20 @@ class PersonBase {
         first: /** @type {string} */ (p.first),
         patronymic: /** @type {string} */ (p.patronymic),
       });
-      if (l) return this.fullRec(l);
+      if (l) {
+        const pi = patronymicInfo(/** @type {string} */ (p.patronymic));
+        const first = this.useDict && pi ? dictFirstLemma(/** @type {string} */ (p.first), l.gender, pi.cases, l.first) : l.first;
+        if (this.useDict) {
+          // «Гене Сноповой Глебовне»: дат./предл. падеж неоднозначен (Гена/Геня) — сначала ищем запись, в формах которой
+          // есть все три слова (именительный обрабатывается первым, см. сортировку personOcc)
+          const sf = lowerE(/** @type {string} */ (p.surname));
+          const ff = lowerE(/** @type {string} */ (p.first));
+          const pf = lowerE(/** @type {string} */ (p.patronymic));
+          const same = this.recs.filter((r) => r.kind === 'full' && !r.latin && r.surnameForms.has(sf) && r.firstForms.has(ff) && r.patrForms.has(pf));
+          if (same.length === 1) return same[0];
+        }
+        return this.fullRec({ ...l, first });
+      }
     }
     if (p.kind === 'pair' && p.surname && p.first) {
       const s = lowerE(p.surname);
@@ -189,7 +235,7 @@ class PersonBase {
           party: false,
         });
       }
-      const lp = lemmatizeNamePair(p.surname, p.first);
+      const lp = p.lemma?.surname ? /** @type {{surname: string, first: string, gender: 'm'|'f'}} */ (p.lemma) : lemmatizeNamePair(p.surname, p.first);
       if (lp) {
         return this.add({
           kind: 'pair',
@@ -199,7 +245,7 @@ class PersonBase {
           first: lp.first,
           initials: lp.first[0],
           surnameForms: new Set(declineSurname(lp.surname, lp.gender)),
-          firstForms: new Set(declineFirstName(lp.first, lp.gender)),
+          firstForms: this.firstForms(lp.first, lp.gender),
           patrForms: new Set(),
           party: false,
         });
@@ -230,6 +276,27 @@ class PersonBase {
         party: false,
       });
     }
+    if (p.kind === 'fm' && p.first && p.patronymic && p.lemma) {
+      // «Пётр Сергеевич» — к единственной записи с такими именем и отчеством, иначе своя запись
+      const f = lowerE(p.first);
+      const m = lowerE(p.patronymic);
+      const hits = this.recs.filter((r) => !r.latin && r.first && r.patronymic && r.firstForms.has(f) && r.patrForms.has(m));
+      if (hits.length === 1) return hits[0];
+      const l = p.lemma;
+      return this.add({
+        kind: 'fm',
+        canonical: `${l.first} ${l.patronymic}`,
+        latin: false,
+        surname: '',
+        first: l.first,
+        patronymic: l.patronymic,
+        initials: l.first[0] + /** @type {string} */ (l.patronymic)[0],
+        surnameForms: new Set(),
+        firstForms: this.firstForms(l.first, l.gender),
+        patrForms: new Set(declinePatronymic(/** @type {string} */ (l.patronymic), l.gender)),
+        party: false,
+      });
+    }
     if (p.words.length === 1) {
       // «Mr. Smith» — одиночная фамилия после обращения: к единственной записи с такой фамилией
       const w = lowerE(p.words[0]);
@@ -251,7 +318,7 @@ class PersonBase {
   }
 }
 
-const KIND_ORDER = { full: 0, pair: 1, initials: 2, other: 3 };
+const KIND_ORDER = { full: 0, pair: 1, initials: 2, fm: 3, other: 4 };
 
 /* ---------------- поиск вариантов ---------------- */
 
@@ -267,8 +334,9 @@ function surnameAloneOk(rec) {
  * @param {PersonRec} r
  * @param {import('./text.js').Token[]} a
  * @param {string} text
+ * @param {boolean} [allowSingle] одиночная фамилия — только для сторон (WP7)
  */
-function personMatches(r, a, text) {
+function personMatches(r, a, text, allowSingle = r.party) {
   const low = a.map((t) => lowerE(t.text));
   const isW = a.map((t) => t.t === 'W');
   const S = (k) => isW[k] && r.surnameForms.has(low[k]);
@@ -287,7 +355,7 @@ function personMatches(r, a, text) {
     return false;
   }
   if (a.length === 1 && S(0)) {
-    if (r.kind === 'other') return false;
+    if (r.kind === 'other' || !allowSingle) return false;
     const honor = HONORIFIC_BEFORE.test(text.slice(Math.max(0, a[0].start - 8), a[0].start));
     return honor || surnameAloneOk(r);
   }
@@ -360,6 +428,7 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
   const wantC = isEnabled('COMPANY');
   if (!wantP && !wantC) return [];
   const govEntities = ctx.settings?.govEntities !== false;
+  const dictOn = ctx.settings?.dictNames !== false && wantP;
 
   const streams = doc.streams.filter(scannable);
   const { block, preamble } = findPartyZones(doc);
@@ -368,15 +437,23 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
   // 1. Правила
   /** @type {Map<string, {companies: import('./company.js').CompanySpan[], persons: import('./person.js').PersonSpan[]}>} */
   const found = new Map();
+  /** @type {Map<string, import('./text.js').Token[]>} токенизация потока — общая для шагов 1 и 4б */
+  const tokCache = new Map();
   for (const s of streams) {
     if (!s.text || !/[\p{Lu}]/u.test(s.text)) continue;
     const companies = findCompanies(s.text, { govEntities });
-    const persons = findPersons(s.text).filter((p) => !companies.some((c) => overlaps(c, p)));
+    const toks = tokenize(s.text);
+    tokCache.set(s.id, toks);
+    const rule = findPersons(s.text, { toks });
+    const dict = dictOn ? findPersonsByDict(s.text, { toks, skip: rule }) : [];
+    const persons = (dict.length ? pickNonOverlapping([...rule, ...dict], (p) => (p.dict ? 0 : 1)) : rule).filter(
+      (p) => !companies.some((c) => overlaps(c, p)),
+    );
     if (companies.length || persons.length) found.set(s.id, { companies, persons });
   }
 
   // 2–3. Записи
-  const people = new PersonBase();
+  const people = new PersonBase(dictOn);
   /** @type {Map<string, CompanyRec>} */
   const companies = new Map();
   /** @type {{stream: any, span: any, parse: any, party: boolean}[]} */
@@ -403,13 +480,16 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
         });
       }
     }
-    for (const p of f.persons) personOcc.push({ stream: s, span: p, parse: p.parse, party: zone });
+    for (const p of f.persons) personOcc.push({ stream: s, span: p, parse: p.parse, party: p.dict ? false : zone });
   }
-  personOcc.sort((a, b) => KIND_ORDER[a.parse.kind] - KIND_ORDER[b.parse.kind]);
+  // со словарём полные ФИО в именительном падеже — первыми: их лемматизация однозначна (WP7)
+  const nomRank = (o) => (dictOn && o.parse.kind === 'full' && o.parse.patronymic && patronymicInfo(o.parse.patronymic)?.cases.includes(0) ? 0 : 1);
+  personOcc.sort((a, b) => KIND_ORDER[a.parse.kind] - KIND_ORDER[b.parse.kind] || nomRank(a) - nomRank(b));
   const recOf = new Map();
   for (const o of personOcc) {
     const rec = people.link(o.parse);
     if (o.party) rec.party = true;
+    rec.hits = (rec.hits || 0) + 1;
     recOf.set(o, rec);
   }
 
@@ -462,15 +542,15 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
       category: 'PERSON',
       start: o.span.start,
       end: o.span.end,
-      confidence: 'labeled',
-      source: o.span.labeled ? 'label' : 'rule',
+      confidence: o.span.dict ? 'kb' : 'labeled',
+      source: o.span.dict ? 'kb' : o.span.labeled ? 'label' : 'rule',
       ...(rec.canonical !== t ? { canonical: rec.canonical } : {}),
     });
     occupy(o.stream.id, o.span);
   }
 
-  // 4б. Варианты сторон по всему документу (уровень kb)
-  const partyPeople = people.recs.filter((r) => r.party && r.kind !== 'other');
+  // 4б. Варианты сторон (и, со словарём, лиц с ≥ 2 попаданиями) по всему документу (уровень kb)
+  const partyPeople = people.recs.filter((r) => r.kind !== 'other' && r.kind !== 'fm' && (r.party || (dictOn && (r.hits || 0) >= 2)));
   const partyCompanies = [...companies.values()].filter((r) => r.party && r.kind === 'org');
   const bareRes = partyCompanies.map((r) => ({
     rec: r,
@@ -484,6 +564,7 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
     abbrRe: r.abbr ? new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(r.abbr)}(?![\\p{L}\\p{N}])`, 'gu') : null,
   }));
 
+  const anyForm = new Set(partyPeople.flatMap((r) => [...r.surnameForms, ...r.firstForms]));
   if (partyPeople.length || partyCompanies.length) {
     for (const s of streams) {
       const t = s.text;
@@ -494,8 +575,10 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
       const free = (sp) => !busy.some((b) => overlaps(b, sp));
 
       if (partyPeople.length) {
-        const toks = tokenize(t);
+        const toks = tokCache.get(s.id) || tokenize(t);
         for (let i = 0; i < toks.length; i++) {
+          // каждый шаблон начинается с фамилии, имени или инициала: слово вне форм записей пропускаем сразу
+          if (toks[i].t === 'W' && !anyForm.has(lowerE(toks[i].text))) continue;
           for (const n of [3, 2, 1]) {
             const a = tokenSeq(t, toks, i, n);
             if (!a) continue;

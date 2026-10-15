@@ -183,7 +183,10 @@ test.describe('главный сценарий', () => {
   });
 
   wp3Test('detached input (не добавлен в DOM) тоже перехватывается', async ({ context, extensionId, site }) => {
-    test.skip(!process.env.E2E_WP3_DETACHED, 'включить E2E_WP3_DETACHED=1, если WP3 поддерживает такие input');
+    test.skip(
+      !process.env.E2E_WP3_DETACHED,
+      'известное ограничение: input вне DOM не перехватывается (README «Ограничения»); E2E_WP3_DETACHED=1 — для проверки, когда поддержка появится',
+    );
     await enableIntercept(context, extensionId, site);
     const page = await openChat(context, site);
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#detached-btn')]);

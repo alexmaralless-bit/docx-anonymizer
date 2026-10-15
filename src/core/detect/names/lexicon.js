@@ -207,5 +207,27 @@ export const NON_PERSON_PAIRS = new Set(
     'мать тереза', 'баба яга', 'кощей бессмертный', 'снегурочка мороз', 'тойота камри', 'морган стэнли', 'голдман сакс', 'джонсон контролс',
     'morgan stanley', 'goldman sachs', 'johnson controls', 'dean witter', 'victoria secret', 'louis vuitton', 'calvin klein', 'tommy hilfiger',
     'ralph lauren', 'marc jacobs', 'hugo boss', 'ronald mcdonald', 'santa claus', 'uncle sam', 'jack daniels', 'johnnie walker', 'jim beam',
+    // латинские названия фирм и брендов из двух «имён» (юридические, аудиторские, инвестиционные, модные дома; ревью WP-N1)
+    'clifford chance', 'herbert smith', 'davis polk', 'merrill lynch', 'arthur andersen', 'allen overy', 'philip morris', 'harley davidson',
+    'fred perry', 'ann taylor', 'tom ford', 'vera wang', 'jimmy choo', 'john deere', 'raymond james', 'edward jones', 'johnson johnson',
+    'procter gamble', 'marks spencer', 'ernst young', 'baker mckenzie', 'hogan lovells', 'latham watkins', 'freshfields bruckhaus',
+    'dolce gabbana', 'giorgio armani', 'michael kors', 'harvey nichols', 'charles schwab', 'wells fargo', 'franklin templeton',
+    'lehman brothers', 'dow jones', 'standard poors', 'hewlett packard', 'rolls royce', 'aston martin', 'mercedes benz', 'dun bradstreet',
+    'carolina herrera', 'tory burch', 'kate spade', 'ted baker', 'estee lauder', 'christian dior', 'sullivan cromwell', 'simpson thacher',
+    // те же названия кириллицей
+    'майкл корс', 'том форд', 'филип моррис', 'харли дэвидсон', 'клиффорд чанс', 'херберт смит', 'меррилл линч', 'артур андерсен',
+    'кельвин кляйн', 'хьюго босс', 'луи виттон', 'ральф лорен', 'томми хилфигер', 'джорджио армани', 'дольче габбана', 'мерседес бенц',
+    'роллс ройс', 'астон мартин', 'джон дир', 'вера вонг', 'джимми чу', 'фред перри', 'эрнст янг', 'бейкер макензи', 'ив роше',
   ].map(lowerE),
 );
+
+/**
+ * Слова после латинской пары «First Last», которые делают её названием организации («Merrill Lynch International»,
+ * «Herbert Smith Freehills», «Morgan Stanley & Co.»), в нижнем регистре без точки (WP7, ревью WP-N1).
+ */
+// prettier-ignore
+export const ORG_TAIL_WORDS_EN = new Set([
+  'international', 'inc', 'llp', 'llc', 'ltd', 'limited', 'plc', 'group', 'bank', 'capital', 'partners', 'holdings', 'holding', 'freehills',
+  'company', 'co', 'corp', 'corporation', 'trust', 'securities', 'advisors', 'advisers', 'consulting', 'associates', 'brothers', 'bros',
+  'motors', 'industries', 'systems', 'technologies', 'foundation', 'institute', 'sons', 'gmbh', 'ag', 'sa', 'nv', 'bv',
+]);

@@ -17,6 +17,9 @@
 // WP7: на шаге 1 к правилам добавляется словарный детектор (person-dict.js, настройка dictNames):
 //    пары «Имя Фамилия» и «Имя Отчество» (fm) третьих лиц — уровень kb, не стороны; записи с ≥ 2 попаданиями
 //    тоже ищутся по документу (без одиночной фамилии — она только для сторон).
+//    Словарные пары (и латинские пары правил только по имени), совпадающие с названием компании документа без ОПФ
+//    или с его началом из ≥ 2 слов («Clifford Chance» при «Clifford Chance LLP»), — не лица, а вхождения компании.
+//    Пара правил «Имя Отчество» («Ольгой Петровной») разбирается как fm, чтобы падежные формы попали в одну запись.
 
 import { findPersons } from './person.js';
 import { findPersonsByDict } from './person-dict.js';
@@ -119,6 +122,25 @@ export function findPartyZones(doc) {
 }
 
 /* ---------------- записи о лицах ---------------- */
+
+/**
+ * Пара правил «Ольга Петровна» / «Петровна Ольга»: второе слово — отчество, согласованное с именем по роду
+ * и падежу → разбор fm (имя + отчество без фамилии), иначе исходный разбор (FR-23, ревью WP-N1).
+ * @param {import('./person.js').PersonParse} p
+ * @param {boolean} useDict  уточнять имя по большому словарю (dictNames)
+ * @returns {import('./person.js').PersonParse}
+ */
+function pairAsFm(p, useDict) {
+  if (p.kind !== 'pair' || p.script !== 'cyr' || !p.first || !p.surname) return p;
+  const pi = patronymicInfo(p.surname);
+  if (!pi) return p;
+  const agrees = (x) => x.gender === pi.gender && x.cases.some((c) => pi.cases.includes(c));
+  const fi = firstNameInfo(p.first).find(agrees) || (useDict ? bigFirstNameInfo(p.first).find(agrees) : undefined);
+  if (!fi) return p;
+  const fm = { ...p, kind: /** @type {const} */ ('fm'), patronymic: p.surname, lemma: { first: fi.lemma, patronymic: pi.lemma, gender: pi.gender } };
+  delete fm.surname;
+  return fm;
+}
 
 /**
  * @typedef {object} PersonRec
@@ -449,7 +471,27 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
     const persons = (dict.length ? pickNonOverlapping([...rule, ...dict], (p) => (p.dict ? 0 : 1)) : rule).filter(
       (p) => !companies.some((c) => overlaps(c, p)),
     );
-    if (companies.length || persons.length) found.set(s.id, { companies, persons });
+    if (companies.length || persons.length) found.set(s.id, { companies, persons, asCompany: [] });
+  }
+
+  // 1а. Пары, совпадающие с названием компании документа (без ОПФ) или с его началом из ≥ 2 слов, — вхождения компании
+  const coreKeys = new Set([...found.values()].flatMap((f) => f.companies.map((c) => norm(c.core))));
+  if (coreKeys.size) {
+    const companyKeyOf = (t) => {
+      if (coreKeys.has(t)) return t;
+      if (t.split(' ').length < 2) return null;
+      for (const k of coreKeys) if (k.startsWith(`${t} `)) return k;
+      return null;
+    };
+    for (const [sid, f] of found) {
+      const s = /** @type {any} */ (doc.streamById.get(sid));
+      f.persons = f.persons.filter((p) => {
+        if (!p.dict && !p.nameOnly) return true;
+        const key = companyKeyOf(norm(text(s, p.start, p.end)));
+        if (key) f.asCompany.push({ start: p.start, end: p.end, key });
+        return !key;
+      });
+    }
   }
 
   // 2–3. Записи
@@ -480,7 +522,7 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
         });
       }
     }
-    for (const p of f.persons) personOcc.push({ stream: s, span: p, parse: p.parse, party: p.dict ? false : zone });
+    for (const p of f.persons) personOcc.push({ stream: s, span: p, parse: pairAsFm(p.parse, dictOn), party: p.dict ? false : zone });
   }
   // со словарём полные ФИО в именительном падеже — первыми: их лемматизация однозначна (WP7)
   const nomRank = (o) => (dictOn && o.parse.kind === 'full' && o.parse.patronymic && patronymicInfo(o.parse.patronymic)?.cases.includes(0) ? 0 : 1);
@@ -530,6 +572,11 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
         source: 'rule',
         ...(canonical !== norm(c.core) ? { canonical } : {}),
       });
+      occupy(s.id, c);
+    }
+    for (const c of f.asCompany) {
+      const rec = /** @type {CompanyRec} */ (companies.get(c.key));
+      out.push({ streamId: s.id, category: 'COMPANY', start: c.start, end: c.end, confidence: 'kb', source: 'kb', canonical: companyCanonical(rec) });
       occupy(s.id, c);
     }
   }

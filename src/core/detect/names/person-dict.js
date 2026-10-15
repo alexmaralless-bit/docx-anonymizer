@@ -1,14 +1,15 @@
 // Словарный детектор ФИО (WP7, FR-23, ступень 1 NER): имена третьих лиц без лейблов.
 // Правило «два признака из трёх»: имя из словаря (F) в любом падеже, отчество по суффиксу (P),
 // фамилия по словарю или по суффиксу (S). Шаблоны: «Имя Фамилия» / «Фамилия Имя», «Имя Отчество» (вид fm),
-// ALL CAPS-пара (только со словарной фамилией), латиница «First Last», «First I. Last».
+// ALL CAPS-пара (только со словарной фамилией), латиница «First Last», «First I. Last» (не перед хвостом названия
+// фирмы «International»/«LLP»/«&» и не после «<Слово> of»; см. latinOrgContext).
 // Полные ФИО и инициалы — забота правил (person.js); их спаны передаются в `opts.skip`.
 // Вхождения получают уровень kb (kb.js), поэтому проигрывают правилам и лейблам других категорий (FR-20).
 
 import { tokenize, gapOk, pickNonOverlapping, overlaps } from './text.js';
-import { isStopWord, lowerE, COMMON_NOUNS, ROLE_WORDS, GOV_ENTITIES, STOP_EXACT, NON_PERSON_PAIRS } from './lexicon.js';
+import { isStopWord, lowerE, COMMON_NOUNS, ROLE_WORDS, GOV_ENTITIES, STOP_EXACT, NON_PERSON_PAIRS, ORG_TAIL_WORDS_EN } from './lexicon.js';
 import { patronymicInfo } from './morph.js';
-import { TOPONYM_BEFORE_RE } from './person.js';
+import { TOPONYM_BEFORE_RE, latinOrgContext } from './person.js';
 import { bigFirstNameInfo, surnameLemmas, surnameSuffixInfo, isEnFirst, isEnSurname } from './dict/index.js';
 
 /** @typedef {import('./text.js').Token} Token */
@@ -157,7 +158,7 @@ export function findPersonsByDict(text, opts = {}) {
       const tryLast = (arr, last) => {
         if (!seqOk(arr) || !okWord(last)) return;
         const ll = last.text.toLowerCase();
-        if (COMMON_NOUNS.has(ll)) return;
+        if (COMMON_NOUNS.has(ll) || ORG_TAIL_WORDS_EN.has(ll)) return; // «Morris International»
         if (isEnFirst(ll) && !isEnSurname(ll)) return; // два имени подряд
         const dictLast = isEnSurname(ll);
         if ((last.caps || a.caps) && !dictLast) return;
@@ -165,6 +166,8 @@ export function findPersonsByDict(text, opts = {}) {
         const start = a.start;
         const end = last.end;
         if (!guards(start, end) || nonPerson(`${la} ${ll}`)) return;
+        // «Merrill Lynch International», «Herbert Smith Freehills», «Bank of America Merrill Lynch» — название фирмы
+        if (latinOrgContext(text, start, end)) return;
         spans.push({
           start,
           end,

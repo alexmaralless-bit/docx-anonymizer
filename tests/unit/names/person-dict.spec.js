@@ -125,3 +125,70 @@ describe('документ third-persons (К8): третьи лица без л�
     expect(offTexts).not.toContain('Brenda Collins');
   });
 });
+
+describe('латинские названия фирм — не лица (ревью WP-N1)', () => {
+  beforeEach(() => registerNames());
+  const texts = (t) => findPersonsByDict(t).map((s) => t.slice(s.start, s.end));
+  const fill = (n) => Array.from({ length: n }, (_, i) => `${i + 1}. Стороны соблюдают условия пункта ${i + 1}.`);
+  const pc = (r) => r.entities.filter((e) => e.category === 'PERSON' || e.category === 'COMPANY').map((e) => `${e.category}:${e.text}`);
+
+  it('хвост названия после пары и «<Слово> of» перед ней', () => {
+    expect(texts('The Guarantor is Brenda Collins Holdings.')).toEqual([]);
+    expect(texts('Advisory services by Wesley Barnes & Co. are excluded.')).toEqual([]);
+    expect(texts('Fees are paid to Wesley Barnes, LLP within ten days.')).toEqual([]);
+    expect(texts('Fees are paid to Wesley Barnes and Partners within ten days.')).toEqual([]);
+    expect(texts('The Fund of Brenda Collins is the Lender.')).toEqual([]);
+    expect(texts('The Lender is Oliver International.')).toEqual([]);
+    // перечисление лиц и хвост без заглавной — лица
+    expect(texts('Copies to Wesley Barnes and Brenda Collins.')).toEqual(['Wesley Barnes', 'Brenda Collins']);
+    expect(texts('Signed on behalf of Brenda Collins by the agent.')).toEqual(['Brenda Collins']);
+  });
+
+  it('«Clifford Chance» при «Clifford Chance LLP» в другом абзаце — COMPANY, не PERSON', async () => {
+    const r = await analyzeParagraphs(
+      ['Legal counsel to the Lenders: Clifford Chance LLP.', 'The opinion was issued by Clifford Chance on the Closing Date.'],
+      allOnSettings(),
+    );
+    expect(pc(r)).toEqual(['COMPANY:Clifford Chance LLP', 'COMPANY:Clifford Chance']);
+    expect(r.groups.filter((g) => g.category === 'COMPANY')).toHaveLength(1);
+  });
+
+  it('пара, совпадающая с названием компании без ОПФ или его началом, — вхождение компании (и не сторона)', async () => {
+    for (const [company, mention] of [
+      ['Brenda Collins LLP', 'Brenda Collins'],
+      ['Wesley Barnes Legal LLP', 'Wesley Barnes'],
+      ['ООО «Зульфия Хасанова»', 'Зульфия Хасанова'],
+    ]) {
+      // компания в середине документа — не в зоне сторон
+      const r = await analyzeParagraphs([...fill(5), `Консультант: ${company}.`, `Заключение подготовила ${mention} в срок.`, ...fill(8)], allOnSettings());
+      expect(pc(r), mention).toEqual([`COMPANY:${company}`, `COMPANY:${mention}`]);
+      const g = r.groups.filter((x) => x.category === 'COMPANY');
+      expect(g, mention).toHaveLength(1);
+    }
+  });
+
+  it('пара правил после настоящего лейбла остаётся лицом', async () => {
+    const r = await analyzeParagraphs([...fill(5), 'Counsel: Oliver Hart LLP.', 'Signed by Oliver Hart.', ...fill(8)], allOnSettings());
+    expect(pc(r)).toEqual(['COMPANY:Oliver Hart LLP', 'PERSON:Oliver Hart']);
+  });
+});
+
+describe('«Имя Отчество» правил — запись fm (ревью WP-N1)', () => {
+  beforeEach(() => registerNames());
+
+  it.each([true, false])('три падежные формы «Ольга Петровна» — одна группа (dictNames: %s)', async (dictNames) => {
+    const r = await analyzeParagraphs(
+      ['Вопросы решать с Ольгой Петровной в рабочее время.', 'Ольга Петровна подтвердила получение.', 'Акт передан Ольге Петровне лично.'],
+      allOnSettings({ dictNames }),
+    );
+    const groups = r.groups.filter((g) => g.category === 'PERSON');
+    expect(groups).toHaveLength(1);
+    expect(groups[0].occurrences.map((o) => o.text)).toEqual(['Ольгой Петровной', 'Ольга Петровна', 'Ольге Петровне']);
+  });
+
+  it('несогласованное по роду «отчество» остаётся парой «Имя Фамилия»', async () => {
+    const r = await analyzeParagraphs(['Акт подписала Анна Петрович.'], allOnSettings());
+    const p = r.entities.filter((e) => e.category === 'PERSON');
+    expect(p.map((e) => e.text)).toEqual(['Анна Петрович']);
+  });
+});

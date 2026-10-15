@@ -1,6 +1,6 @@
 {
   "category": "PERSON",
-  "comment": "WP7 (К1): словарный детектор ФИО. Позитивы — точный список найденных PERSON по порядку; dictOnly — находится только словарём (при dictNames:false — нет). Негативы — ни одного PERSON. Данные вымышленные.",
+  "comment": "WP7 (К1): словарный детектор ФИО. Позитивы — точный список найденных PERSON по порядку; dictOnly — находится только словарём (при dictNames:false — нет). Негативы — ни одного PERSON. Лица вымышленные; в негативах — реальные названия фирм и брендов латиницей (ревью WP-N1), это не персональные данные.",
   "positive": [
     {
       "text": "Отчёт подготовила Зульфия Хасанова.",
@@ -211,6 +211,23 @@
       "text": "Отчёт подготовила Зульфия Хасанова, проверил Анвар Юсупов.",
       "expect": ["Зульфия Хасанова", "Анвар Юсупов"],
       "dictOnly": true
+    },
+    {
+      "text": "The schedule was agreed by Michael Brown on behalf of the Buyer.",
+      "expect": ["Michael Brown"]
+    },
+    {
+      "text": "The amendment was signed by Jennifer Wilson and Michael Brown.",
+      "expect": ["Jennifer Wilson", "Michael Brown"]
+    },
+    {
+      "text": "Please contact Mr. Thomas Anderson regarding delivery.",
+      "expect": ["Thomas Anderson"]
+    },
+    {
+      "text": "The notice was copied to Wesley Barnes, Legal Department.",
+      "expect": ["Wesley Barnes"],
+      "dictOnly": true
     }
   ],
   "negative": [
@@ -263,6 +280,24 @@
     "Goldman Sachs",
     "Christian Dior",
     "Генеральная Ассамблея",
-    "info@zulfiya.example, Хасанова.Зульфия"
+    "info@zulfiya.example, Хасанова.Зульфия",
+    "The Borrower was advised by Clifford Chance and Herbert Smith Freehills.",
+    "The Arranger is Merrill Lynch International.",
+    "Counsel: Allen & Overy; auditors: Arthur Andersen.",
+    "Банк-организатор — Merrill Lynch International, консультант — Davis Polk.",
+    "Юридический консультант — Clifford Chance, аудитор — Grant Thornton.",
+    "Сделку сопровождает Bank of America Merrill Lynch, а также Wells Fargo.",
+    "Products are shipped via Jack Daniels Distillery and Philip Morris International.",
+    "The Seller shall deliver Harley Davidson motorcycles.",
+    "The goods include Fred Perry and Ann Taylor products, as agreed.",
+    "The goods include Tom Ford, Vera Wang and Jimmy Choo products.",
+    "The goods include Carolina Herrera and Tory Burch products.",
+    "Одежда бренда Том Форд и Майкл Корс поставляется по заказу.",
+    "Equipment by John Deere shall be leased.",
+    "Accounts at Raymond James and Edward Jones are pledged.",
+    "Payments are cleared by Charles Schwab and Wells Fargo.",
+    "Финансовым агентом является Morgan Stanley & Co.",
+    "The Guarantor is Brenda Collins Holdings.",
+    "The Lender is Oliver Hart International."
   ]
 }

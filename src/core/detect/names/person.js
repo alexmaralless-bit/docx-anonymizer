@@ -3,7 +3,7 @@
 // после лейбла («в лице [должность]», «ФИО:», «represented by», «Mr.», подпись «____ / … /»).
 
 import { tokenize, gapOk, labelBeforeRe, hasLabelBefore, pickNonOverlapping } from './text.js';
-import { isStopWord, lowerE, POSITION_RE_SRC, AMBIGUOUS_NAMES_RU, FIRST_NAMES_EN, NON_PERSON_PAIRS } from './lexicon.js';
+import { isStopWord, lowerE, POSITION_RE_SRC, AMBIGUOUS_NAMES_RU, FIRST_NAMES_EN, NON_PERSON_PAIRS, ORG_TAIL_WORDS_EN } from './lexicon.js';
 import { patronymicInfo, firstNameInfo, lemmaCandidates } from './morph.js';
 
 // prettier-ignore
@@ -25,6 +25,27 @@ export const TOPONYM_BEFORE_RE =
 
 const DEFAULT_LABEL_RE = labelBeforeRe([...PERSON_LABELS_RU, ...PERSON_LABELS_EN], POSITION_RE_SRC);
 
+// Хвост названия после латинской пары: «… International», «…, Inc.», «… & Co.», «… and Partners» (слово — с заглавной)
+const ORG_TAIL_RE = /^(?:,?[ \u00A0]{1,2}([A-Z][A-Za-z]*)(?![\p{L}\p{N}-])|[ \u00A0]*&|[ \u00A0]{1,2}and[ \u00A0]{1,2}([A-Z][A-Za-z]*)(?![\p{L}\p{N}-]))/u;
+// «Bank of America Merrill Lynch», «University of …» — «of» после слова с заглавной: пара — часть названия
+const OF_BEFORE_RE = /(?<![\p{L}])\p{Lu}[\p{L}'’-]*[ \u00A0]+of[ \u00A0]+$/u;
+
+/**
+ * Латинская пара «First Last» — часть названия организации (FR-23, ревью WP-N1): за ней идёт слово из
+ * ORG_TAIL_WORDS_EN или «&», либо перед ней «<Слово> of».
+ * @param {string} text
+ * @param {number} start
+ * @param {number} end
+ */
+export function latinOrgContext(text, start, end) {
+  const m = ORG_TAIL_RE.exec(text.slice(end, end + 40));
+  if (m) {
+    const w = m[1] || m[2];
+    if (!w || ORG_TAIL_WORDS_EN.has(w.toLowerCase())) return true;
+  }
+  return OF_BEFORE_RE.test(text.slice(Math.max(0, start - 40), start));
+}
+
 /**
  * @typedef {object} PersonParse
  * @property {'full'|'pair'|'initials'|'fm'|'other'} kind   fm — «Имя Отчество» (словарный детектор)
@@ -44,6 +65,7 @@ const DEFAULT_LABEL_RE = labelBeforeRe([...PERSON_LABELS_RU, ...PERSON_LABELS_EN
  * @property {boolean} labeled
  * @property {PersonParse} parse
  * @property {boolean} [dict]   найдено словарным детектором (person-dict.js, WP7) — уровень kb
+ * @property {boolean} [nameOnly] латинская пара найдена только по курируемому имени («Jack Daniels»), без лейбла и обращения
  */
 
 const isFirstRu = (w) => firstNameInfo(w).length > 0 && !AMBIGUOUS_NAMES_RU.has(lowerE(w));
@@ -52,7 +74,7 @@ const isFirstEn = (w) => FIRST_NAMES_EN.has(lowerE(w));
 /** «Иван Купала», «Ивана Купалы», «Лада Веста» — устойчивые сочетания, не лица (WP7, NON_PERSON_PAIRS). */
 function nonPersonPair(span) {
   const p = span.parse;
-  if (span.labeled || p.kind !== 'pair' || !p.first || !p.surname) return false;
+  if ((span.labeled && !span.nameOnly) || p.kind !== 'pair' || !p.first || !p.surname) return false;
   const f = lowerE(p.first);
   const s = lowerE(p.surname);
   if (NON_PERSON_PAIRS.has(lowerE(p.words.join(' ')))) return true;
@@ -84,8 +106,14 @@ export function findPersons(text, opts = {}) {
     if (arr.some((t) => t.script !== script)) return null;
     return arr;
   };
-  const push = (arr, labeled, parse) =>
-    spans.push({ start: arr[0].start, end: arr[arr.length - 1].end, labeled, parse: { ...parse, script: arr[0].script, words: arr.map((t) => t.text) } });
+  const push = (arr, labeled, parse, extra = {}) =>
+    spans.push({
+      start: arr[0].start,
+      end: arr[arr.length - 1].end,
+      labeled,
+      ...extra,
+      parse: { ...parse, script: arr[0].script, words: arr.map((t) => t.text) },
+    });
 
   for (let i = 0; i < toks.length; i++) {
     const t0 = toks[i];
@@ -143,7 +171,9 @@ export function findPersons(text, opts = {}) {
         }
       } else {
         if (isFirstEn(a.text) || labeled || honorific) {
-          push(w2, labeled || honorific || isFirstEn(a.text), { kind: 'pair', first: a.text, surname: b.text });
+          const nameOnly = !labeled && !honorific;
+          if (nameOnly && ORG_TAIL_WORDS_EN.has(b.text.toLowerCase())) continue; // «Charles International»
+          push(w2, true, { kind: 'pair', first: a.text, surname: b.text }, nameOnly ? { nameOnly } : {});
           i += 1;
           continue;
         }
@@ -168,7 +198,9 @@ export function findPersons(text, opts = {}) {
     }
   }
   // Пересечения внутри PERSON: размеченные лейблом и более длинные — сильнее
+  // латинская пара только по имени — не часть названия фирмы («Raymond James Financial» нет в списке, но «… & Co.» — да)
   return pickNonOverlapping(spans, (s) => (s.labeled ? 1 : 0)).filter(
-    (s) => !TOPONYM_BEFORE_RE.test(text.slice(Math.max(0, s.start - 14), s.start)) && !nonPersonPair(s),
+    (s) =>
+      !TOPONYM_BEFORE_RE.test(text.slice(Math.max(0, s.start - 14), s.start)) && !nonPersonPair(s) && !(s.nameOnly && latinOrgContext(text, s.start, s.end)),
   );
 }

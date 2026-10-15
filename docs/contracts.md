@@ -264,7 +264,7 @@ UI: popup — `siteState(settings, url, {granted})` даёт `needsAccess` (на
 14. CI (`.github/workflows/ci.yml`, К12): push и pull request в `main`; задание `test` — `npm ci`, `lint`, `npm test` (`SKIP_LIBREOFFICE=1`, xmllint из `libxml2-utils`),
     `build`, `pack`, архив — артефакт; задание `e2e` — `npx playwright install --with-deps chromium`, `npm run e2e` (headless, без xvfb), `test-output/` — артефакт при сбое.
     Гейтовые тесты реальной модели (`NER_MODEL_DIR` — `tests/integration/ner-provider.spec.js`, `NER_PACK` — `tests/e2e/ner.spec.js`) в CI пропускаются: модели в git нет.
-    Главный сценарий `tests/e2e/chat.spec.js` (12 тестов) по-прежнему за флагом `E2E_WP3=1` (флаг времён параллельной работы WP3/WP5): CI его выставляет, локальный `npm run e2e` без флага их пропускает.
+    Главный сценарий `tests/e2e/chat.spec.js` (12 тестов) с версии 0.2 идёт всегда; флаг `E2E_WP3` времён параллельной работы WP3/WP5 снят.
 
 ---
 

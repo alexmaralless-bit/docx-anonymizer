@@ -1,8 +1,8 @@
 // Сквозные сценарии на тестовой странице-чате (tests/e2e/pages/chat.html): страница записывает, какой файл она реально получила.
 //
 // Часть 1 — «страница и расширение по умолчанию»: перехват выключен → файл доходит как есть, панели нет (FR-07). Работает на фундаменте.
-// Часть 2 — главный сценарий (выбор / drop / paste → панель → анонимизировать | оригинал | отмена). Зависит от панели WP3:
-//   тесты помечены wp3Test и включаются переменной E2E_WP3=1 после слияния WP3 (контракт DOM панели — helpers/chat.js).
+// Часть 2 — главный сценарий (выбор / drop / paste → панель → анонимизировать | оригинал | отмена); контракт DOM панели — helpers/chat.js.
+//   До версии 0.2 эти тесты включались флагом E2E_WP3=1; теперь они идут всегда.
 import { test, expect } from './fixtures.js';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
 import { parseDocx } from '../../src/core/index.js';
@@ -22,8 +22,7 @@ import {
   PANEL_HOST,
 } from './helpers/chat.js';
 
-const WP3 = process.env.E2E_WP3 === '1';
-const wp3Test = WP3 ? test : test.skip;
+const wp3Test = test;
 const { bytes: DOCX, gold } = buildSampleDocx();
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 const hasRoot = (page) => page.evaluate((h) => document.querySelector(h) !== null, PANEL_HOST);
@@ -91,7 +90,7 @@ test.describe('тестовая страница-чат, перехват вык
   });
 });
 
-test.describe('главный сценарий (нужна панель WP3: E2E_WP3=1)', () => {
+test.describe('главный сценарий', () => {
   /** Содержимое принятого файла не содержит исходных адресов и содержит плейсхолдеры. */
   async function expectAnonymized(page, index) {
     const doc = parseDocx(await receivedBytes(page, index));

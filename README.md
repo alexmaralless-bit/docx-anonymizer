@@ -142,7 +142,6 @@ CI (`.github/workflows/ci.yml`) запускается при push и pull reque
 
 Проект делался по спецификации: рамки первой версии — [`docs/mvp-scope.md`](docs/mvp-scope.md), цели и критерии версии 0.2 — [`docs/concept-0.2.md`](docs/concept-0.2.md), полное ТЗ — [`docs/spec-full.md`](docs/spec-full.md), контракты модулей — [`docs/contracts.md`](docs/contracts.md), рабочие пакеты — [`docs/tasks.md`](docs/tasks.md).
 
-Главный сценарий перехвата на тестовой странице чата (`tests/e2e/chat.spec.js`) включается флагом: `E2E_WP3=1 npm run e2e` (в CI флаг выставлен).
 
 **Тесты на реальной модели NER** модель в git не хранят и включаются переменными окружения (в CI пропускаются):
 

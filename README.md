@@ -4,6 +4,25 @@
 
 ![Панель перехвата над страницей чата](docs/screenshots/panel-intercept.png)
 
+<details>
+<summary><b>English summary</b></summary>
+
+**DOCX Anonymizer** is a Chrome/Edge extension that intercepts a `.docx` file the moment you attach it to ChatGPT, Claude or another AI chat, finds personal and commercial data in it **locally**, and uploads an anonymized copy instead. Formatting, tables, footnotes and headers are preserved; file metadata is wiped. The AI's answer can be de-anonymized back on the "Restore text" page using a replacement map that never leaves your computer.
+
+**What it finds.** 21 categories with checksum validation where one exists: Russian tax and registration numbers (INN, KPP, OGRN, BIK, bank accounts), IBAN/SWIFT, card numbers (Luhn), passports, SNILS/SSN, dates of birth, phones, e-mails, URLs, postal addresses, company names (Russian and Western legal forms), contract numbers and amounts, plus your own dictionaries, label+pattern rules and regular expressions. Person names are found three ways: by labels and the parties' details block, by dictionaries of first names and surnames with Russian morphology (any case, initials, transliteration), and optionally by a local NER model.
+
+**Optional NER model.** A compact `rubert-tiny2` fine-tuned on WikiANN ru+en, exported to ONNX int8 (30 MB) and run by onnxruntime-web (WASM) inside the extension's worker. The model ships as a separate package from [GitHub Releases](https://github.com/alexmaralless-bit/docx-anonymizer/releases): download it, import it on the settings page, done. WikiANN ru test F1: PER 0.92, ORG 0.76, LOC 0.86; cold start ≈ 0.3 s, a 20-page contract ≈ 2 s.
+
+**Privacy.** Zero network requests: the manifest's CSP is `connect-src 'self'`, ESLint forbids `fetch`/`XMLHttpRequest`/`WebSocket` in the source, and an end-to-end test captures traffic of every browser target (pages, service worker, offscreen document and its worker) to prove nothing leaves the machine. Document contents and the replacement map live only in memory. Site access is granted per site on request (`optional_host_permissions`); nothing is injected elsewhere.
+
+**Install.** Node.js 22+, `npm install`, `npm run build`, then load `dist/` as an unpacked extension at `chrome://extensions`. Or take `docx-anonymizer-<version>.zip` from Releases. Enable interception for a site from the extension menu and accept Chrome's access prompt.
+
+**Limits.** `.docx`/`.docm` only (no PDF or scans yet); embedded OLE objects are not anonymized (warned about or removed); single surnames of third parties without a label are found only by the NER model; Russian case restoration skips ambiguous prepositions. The UI is Russian-first with full English localization.
+
+**Development.** `npm test` (Vitest, ~1 450 tests), `npm run e2e` (Playwright, Chromium with the extension), `npm run lint`, `npm run pack` (reproducible release archive), `npm run pack:model`, `tools/ner-train` (Python/uv training pipeline). MIT license; dictionaries and the model carry their own permissive notices.
+
+</details>
+
 ## Зачем
 
 Договор — это реквизиты, ФИО подписантов, паспортные данные, счета, адреса. Загружать такое в облачную нейросеть нельзя или опасно, но разобрать договор с помощью ИИ хочется. Расширение убирает эту дилемму: ИИ видит структуру и условия, а реальные данные не покидают ваш компьютер.

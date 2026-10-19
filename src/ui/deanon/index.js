@@ -66,6 +66,35 @@ export function countUnresolved(unresolved) {
   return [...m].map(([text, count]) => ({ text, count }));
 }
 
+/** Категории, у которых варианты — формы одного значения (падежи ФИО, «ООО «X»» / «X»): предупреждение не нужно. */
+const FORM_CATEGORIES = new Set(['PERSON', 'COMPANY']);
+/** Для сравнения значений: без регистра, «ё», пробелов и знаков («+7 900 …» и «8(900)…» различаются, «45 05» и «4505» — нет). */
+const normValue = (v) =>
+  String(v ?? '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}]/gu, '');
+
+/**
+ * Метки, под которыми в исходном документе были разные значения (FR-36а): при восстановлении все места получат одно
+ * значение `value`. Пример с 0.2 — паспорт: `[ПАСПОРТ_1]` = серия и номер, а в `variants` — орган выдачи и код
+ * подразделения. PERSON и COMPANY пропускаются: их варианты — формы того же значения.
+ * @param {{entries?: {token: string, category: string, value?: string, original?: string, variants?: string[]}[]}} mapping
+ * @param {Iterable<string>} [tokens] только эти метки (найденные в восстанавливаемом тексте); не задано — все
+ * @returns {{token: string, n: number}[]} n — число других значений
+ */
+export function mixedValueWarnings(mapping, tokens) {
+  const only = tokens ? new Set(tokens) : null;
+  const out = [];
+  for (const e of mapping?.entries || []) {
+    if (FORM_CATEGORIES.has(e.category) || (only && !only.has(e.token))) continue;
+    const same = new Set([normValue(e.value), normValue(e.original)]);
+    const other = new Set((e.variants || []).map(normValue).filter((v) => v && !same.has(v)));
+    if (other.size) out.push({ token: e.token, n: other.size });
+  }
+  return out;
+}
+
 /* ---------- Файл от ИИ (WP10-B, FR-36а) ---------- */
 
 /**
@@ -80,15 +109,27 @@ export function aiFileKind(name) {
   return null;
 }
 
+/** Суффикс анонимизированного файла по умолчанию (настройка outputSuffix). */
+const DEFAULT_SUFFIX = '.anon';
+
 /**
  * Имя восстановленного файла: «договор.anon.docx» → «договор.restored.docx», «answer.md» → «answer.restored.md».
+ * Снимаются хвост повторного скачивания « (n)» («договор.anon (1).docx») и суффикс анонимизации — пользовательский
+ * (настройка outputSuffix) или «.anon» по умолчанию, если суффикс с тех пор меняли.
  * @param {string} name
  * @param {string} [suffix='.anon'] суффикс анонимизированного файла (настройка outputSuffix), снимается перед «.restored»
  */
-export function restoredName(name, suffix = '.anon') {
+export function restoredName(name, suffix = DEFAULT_SUFFIX) {
   const ext = extOf(name);
   let base = ext ? name.slice(0, -ext.length) : name;
-  if (suffix && base.toLowerCase().endsWith(suffix.toLowerCase()) && base.length > suffix.length) base = base.slice(0, -suffix.length);
+  const noCopy = base.replace(/ \(\d+\)$/u, '');
+  if (noCopy) base = noCopy;
+  for (const sfx of new Set([suffix, DEFAULT_SUFFIX])) {
+    if (sfx && base.toLowerCase().endsWith(sfx.toLowerCase()) && base.length > sfx.length) {
+      base = base.slice(0, -sfx.length);
+      break;
+    }
+  }
   return `${base}.restored${ext}`;
 }
 

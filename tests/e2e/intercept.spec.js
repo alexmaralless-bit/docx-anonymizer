@@ -287,6 +287,7 @@ test.describe('экран «готово»: меню «Ещё» и подска�
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('more-menu')).toBeHidden();
     await expect(page.getByTestId('done-title')).toBeVisible();
+    await expect(page.getByTestId('btn-more')).toBeFocused(); // фокус возвращается на кнопку меню
     await page.getByTestId('btn-more').click();
     await expect(page.getByTestId('more-menu')).toBeVisible();
     await page.getByTestId('done-title').click();
@@ -310,6 +311,22 @@ test.describe('экран «готово»: меню «Ещё» и подска�
     await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
     await expect(page.getByTestId('mapping-hint')).toHaveCount(0);
   });
+
+  // «×» и Esc на экране «готово» ведут себя как «Закрыть»: подсказка не обходится
+  for (const [how, close] of [
+    ['Esc', (page) => page.keyboard.press('Escape')],
+    ['«×»', (page) => page.getByTestId('panel-close').click()],
+  ]) {
+    test(`${how} на экране «готово» без сохранения ключа → подсказка; повторно — закрывает панель`, async ({ context, extensionId }) => {
+      const page = await setup(context, extensionId);
+      await anonymizeOnce(page);
+      await close(page);
+      await expect(page.getByTestId('mapping-hint')).toBeVisible();
+      await expect(page.locator('docx-anonymizer-root')).toHaveCount(1);
+      await close(page);
+      await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+    });
+  }
 });
 
 test('popup: тумблер перехвата сохраняется в настройках, статус сайта (FR-42)', async ({ context, extensionId }) => {

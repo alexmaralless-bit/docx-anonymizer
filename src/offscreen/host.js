@@ -90,7 +90,7 @@ export function createHost(env) {
         case MSG.DEANON: {
           const ref = msg.mappingRef;
           const mapping = typeof ref === 'string' ? getSession(ref).lastMapping : ref;
-          if (!mapping) throw new CoreError('INTERNAL', 'Маппинг не найден: сначала примените замены');
+          if (!mapping) throw noMapping();
           // FR-37: склонение ФИО по контексту — только по явной просьбе клиента
           const r = deanonymize(msg.text || '', mapping, { decline: msg.decline === true });
           post({ type: MSG.DEANON_RESULT, requestId, text: r.text, unresolved: r.unresolved, replaced: r.replaced, declined: r.declined });
@@ -99,7 +99,7 @@ export function createHost(env) {
         case MSG.GET_MAPPING: {
           // WP10-B (FR-36а): страница восстановления берёт карту сессии и восстанавливает файл у себя
           const mapping = getSession(msg.docId).lastMapping;
-          if (!mapping) throw new CoreError('INTERNAL', 'Маппинг не найден: сначала примените замены');
+          if (!mapping) throw noMapping();
           post({ type: MSG.MAPPING, requestId, docId: msg.docId, mapping });
           return;
         }
@@ -316,8 +316,14 @@ export function createHost(env) {
 
   function getSession(docId) {
     const s = sessions.get(docId);
-    if (!s) throw new CoreError('INTERNAL', 'Сессия документа не найдена — загрузите файл заново');
+    // reason — для клиента (страница восстановления различает случаи по нему, а не по тексту сообщения)
+    if (!s) throw Object.assign(new CoreError('INTERNAL', 'Сессия документа не найдена — загрузите файл заново'), { reason: 'NO_SESSION' });
     return s;
+  }
+
+  /** Сессия есть, но APPLY ещё не было — карты нет. */
+  function noMapping() {
+    return Object.assign(new CoreError('INTERNAL', 'Маппинг не найден: сначала примените замены'), { reason: 'NO_MAPPING' });
   }
 
   function entitiesMessage(requestId, s, restored) {

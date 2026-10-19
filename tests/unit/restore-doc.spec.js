@@ -43,6 +43,15 @@ const textOf = (bytes) =>
 const docXml = (bytes) => unzipText(bytes)['word/document.xml'];
 
 describe('restoreDocx: форматирование и потоки', () => {
+  it('строгое распознавание (FR-36а): «Компания 1», «ФИО 1» из текста документа не заменяются, ФИО_1 и [фио 1] — да', () => {
+    const bytes = makeDocx(para(run('Компания 1 и ФИО 1 в таблице; ФИО_1 подписал, [фио 1] согласовал')));
+    const r = restoreDocx(bytes, MAPPING);
+    expect(r.replaced).toBe(2);
+    expect(parseDocx(r.bytes).streams.find((s) => s.type === 'live').text).toBe(`Компания 1 и ФИО 1 в таблице; ${FIO} подписал, ${FIO} согласовал`);
+    // текст (.md/.txt, вставленный ответ) — либерально, как в FR-36
+    expect(restoreText('Компания 1 и ФИО 1', MAPPING).replaced).toBe(2);
+  });
+
   it('плейсхолдер, разбитый на 3 рана: значение в первом ране, остальные пусты, rPr на месте', () => {
     const bytes = makeDocx(para(run('Подписал [Ф', '<w:b/>') + run('ИО_1', '<w:i/>') + run('] и всё', '<w:u w:val="single"/>')));
     const r = restoreDocx(bytes, MAPPING);
@@ -257,20 +266,20 @@ describe('restoreDocx: круговой прогон на образце дог�
     }
   });
 
-  it('с decline: true абзац «в лице генерального директора …» восстановлен, ФИО — в форме по правилам FR-37', () => {
+  it('с decline: true абзац «в лице генерального директора …» восстановлен в родительном падеже (FR-37)', () => {
     const r = restoreDocx(anon.docxBytes, anon.mapping, { decline: true });
     expect(r.unresolved).toEqual([]);
-    const pre = (doc) => doc.streams.find((s) => s.type === 'live' && s.text.includes('в лице генерального директора')).text;
-    const want = pre(parseDocx(sample));
-    const got = pre(parseDocx(r.bytes));
-    // «в лице генерального директора [ФИО_n]»: предлог «в» дальше окна в 3 слова (FR-37) — падеж не определён,
-    // подставляется именительный; это и видно в списке склонённых. Вне ФИО абзац совпадает с исходным.
-    const names = [goldMap.person1Gen, goldMap.person2Gen];
-    const declined = r.declined.filter((d) => names.includes(d.original));
-    expect(declined.map((d) => d.case)).toEqual(['nom', 'nom']);
-    let expected = want;
-    for (const d of declined) expected = expected.replace(d.original, d.text);
-    expect(got).toBe(expected);
+    const find = (doc) => doc.streams.find((s) => s.type === 'live' && s.text.includes('в лице генерального директора'));
+    const want = find(parseDocx(sample)).text;
+    const got = find(parseDocx(r.bytes)).text;
+    // «в лице генерального директора [ФИО_n]»: должность — мостик, окно до 6 слов (FR-37) → родительный (раньше —
+    // именительный). Значение, записанное в карте в родительном, подставляется как есть (без записи в declined),
+    // записанное в именительном — склоняется в родительный; абзац восстановлен как был.
+    const id = find(parseDocx(anon.docxBytes)).id;
+    const inPara = r.declined.filter((d) => d.streamId === id);
+    expect(inPara.map((d) => d.case).every((c) => c === 'gen')).toBe(true);
+    expect(r.declined.filter((d) => [goldMap.person1Gen, goldMap.person2Gen].includes(d.original))).toEqual([]);
+    expect(got).toBe(want);
     for (const d of r.declined) expect(d.part).toBe('word/document.xml');
   });
 });

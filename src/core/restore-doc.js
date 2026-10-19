@@ -17,12 +17,15 @@ const ANON_URL_RE = /^https:\/\/anonymized\.invalid\/(.+)$/;
  *   склонённые ФИО (FR-37): координаты — в тексте потока до восстановления
  * @property {{streamId: string, part: string, reason: 'container'}[]} skipped  метки, пересекающие встроенный объект (не трогаются)
  * @property {string[]} changedParts
+ * @property {string[]} tokens  метки карты, найденные в документе, без повторов (`[ПАСПОРТ_1]`)
  */
 
 /**
  * Обратная замена во всех потоках DOCX: тело, таблицы, колонтитулы, сноски, комментарии, авторы правок,
  * поля, alt-тексты, внешние ссылки и docProps (метаданные сохраняются: keepMetadata).
  * Склонение ФИО (decline) — только в тексте документа (live/deleted); в атрибутах и метаданных — исходная форма.
+ * Распознавание строгое (FR-36а): без скобок — только точный текст метки («ФИО_1»), чтобы «Счет 1» или «Договор 1»
+ * из обычного текста документа не заменялись значениями из карты.
  * @param {Uint8Array} bytes  .docx / .docm
  * @param {import('./mapping.js').Mapping} mapping
  * @param {{decline?: boolean}} [opts]
@@ -38,6 +41,8 @@ export function restoreDocx(bytes, mapping, { decline = false } = {}) {
   const declined = [];
   /** @type {RestoreDocxResult['skipped']} */
   const skipped = [];
+  /** @type {Set<string>} */
+  const used = new Set();
 
   for (const s of doc.streams) {
     if (s.attrKind === 'rel-target') {
@@ -47,7 +52,8 @@ export function restoreDocx(bytes, mapping, { decline = false } = {}) {
         continue;
       }
     }
-    const spans = deanonymizeSpans(s.text, mapping, { decline: decline && (s.type === 'live' || s.type === 'deleted') });
+    // used: метки, встреченные в документе (в т.ч. не тронутые у встроенных объектов) — для предупреждений страницы
+    const spans = deanonymizeSpans(s.text, mapping, { decline: decline && (s.type === 'live' || s.type === 'deleted'), strict: true, used });
     const kept = [];
     for (const sp of spans) {
       if (crossesContainer(s, sp.start, sp.end)) {
@@ -64,7 +70,7 @@ export function restoreDocx(bytes, mapping, { decline = false } = {}) {
   }
 
   const { bytes: out, changedParts } = serializeDocx(doc, edits, { keepMetadata: true, stripEmbedded: false });
-  return { bytes: out, replaced: edits.length, unresolved, declined, skipped, changedParts };
+  return { bytes: out, replaced: edits.length, unresolved, declined, skipped, changedParts, tokens: [...used] };
 }
 
 /** Восстановление текста (.md/.txt и вставленный ответ) — то же, что deanonymize (FR-36). */
@@ -85,7 +91,7 @@ function restoreAnonUrl(text, mapping) {
     /* битая %-последовательность — только как есть */
   }
   for (const tail of tails) {
-    const spans = deanonymizeSpans(tail, mapping);
+    const spans = deanonymizeSpans(tail, mapping, { strict: true });
     if (spans.length === 1 && spans[0].start === 0 && spans[0].end === tail.length) return spans[0].newText;
   }
   return null;

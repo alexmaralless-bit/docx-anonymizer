@@ -124,6 +124,24 @@ describe('protocol: GET_MAPPING / MAPPING (WP10-B)', () => {
   });
 });
 
+describe('protocol: ERROR.reason (WP10-B)', () => {
+  it('errorMessage переносит известный reason, ProtocolError его получает; поле есть в схеме', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { errorMessage, ERROR_REASONS } = await import('../../src/shared/protocol.js');
+    expect(errorMessage('r1', Object.assign(new Error('нет'), { code: 'INTERNAL', reason: 'NO_SESSION' }))).toMatchObject({ reason: 'NO_SESSION' });
+    expect(errorMessage('r1', Object.assign(new Error('нет'), { code: 'INTERNAL', reason: 'чужое' }))).not.toHaveProperty('reason');
+    expect(errorMessage('r1', new Error('нет'))).not.toHaveProperty('reason');
+    const [clientPort, serverPort] = portPair();
+    serverPort.onMessage.addListener((m) =>
+      serverPort.postMessage({ type: MSG.ERROR, requestId: m.requestId, code: 'INTERNAL', message: 'нет карты', reason: 'NO_MAPPING' }),
+    );
+    const client = createClient(clientPort);
+    await expect(client.request(MSG.GET_MAPPING, { docId: 'd1' })).rejects.toMatchObject({ code: 'INTERNAL', reason: 'NO_MAPPING' });
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/protocol.schema.json', import.meta.url), 'utf8'));
+    expect(schema.$defs.ERROR.properties.reason.enum).toEqual([...ERROR_REASONS]);
+  });
+});
+
 describe('protocol: MODEL_CHANGED (WP8)', () => {
   it('тип есть в MSG и в схеме протокола; ответ — терминальный ACK', async () => {
     const { readFileSync } = await import('node:fs');

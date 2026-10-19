@@ -1,6 +1,6 @@
 // WP10-B: логика страницы «Восстановить» без DOM — файл от ИИ (FR-36а), предвыбор сессии по ?docId=, словарь ru/en.
 import { describe, it, expect } from 'vitest';
-import { aiFileKind, restoredName, pickSession, mimeFor } from '../../../src/ui/deanon/index.js';
+import { aiFileKind, restoredName, pickSession, mimeFor, mixedValueWarnings } from '../../../src/ui/deanon/index.js';
 import { RESTORE_DICT } from '../../../src/ui/i18n/restore.js';
 
 describe('aiFileKind', () => {
@@ -25,6 +25,43 @@ describe('restoredName', () => {
     expect(restoredName('a.x.txt', '.x')).toBe('a.restored.txt');
     expect(restoredName('README')).toBe('README.restored');
     expect(restoredName('.anon.md')).toBe('.anon.restored.md'); // имя из одного суффикса не обнуляется
+  });
+
+  it('снимает и пользовательский суффикс, и .anon; хвост повторного скачивания « (n)» убирается', () => {
+    expect(restoredName('договор.обезл.docx', '.обезл')).toBe('договор.restored.docx');
+    expect(restoredName('договор.anon.docx', '.обезл')).toBe('договор.restored.docx'); // суффикс поменяли после анонимизации
+    expect(restoredName('договор.anon (1).docx')).toBe('договор.restored.docx');
+    expect(restoredName('договор.обезл (12).md', '.обезл')).toBe('договор.restored.md');
+    expect(restoredName('ответ (2).txt')).toBe('ответ.restored.txt');
+    expect(restoredName('договор.anon.x.docx', '.x')).toBe('договор.anon.restored.docx'); // снимается один суффикс
+    expect(restoredName('(1).docx')).toBe('(1).restored.docx');
+  });
+});
+
+describe('mixedValueWarnings (FR-36а)', () => {
+  // вымышленная карта: паспорт с органом выдачи и кодом подразделения под одной меткой (поведение с 0.2)
+  const mapping = {
+    entries: [
+      { token: '[ПАСПОРТ_1]', category: 'PASSPORT', value: '45 05 123456', variants: ['ОВД района Лесной г. Энска', '770-001'] },
+      { token: '[ФИО_1]', category: 'PERSON', value: 'Иванов Пётр Сергеевич', variants: ['Иванова П.С.', 'Петров'] },
+      { token: '[КОМПАНИЯ_1]', category: 'COMPANY', original: 'ООО «Ромашка»', value: 'Ромашка', variants: ['Ромашка Плюс'] },
+      { token: '[ТЕЛ_1]', category: 'PHONE', value: '+7 900 000-00-01', variants: ['+7 (900) 000 00 01', '+79000000001'] },
+      { token: '[ИНН_1]', category: 'INN', value: '7700000001', variants: [] },
+      { token: '[EMAIL_1]', category: 'EMAIL', value: 'a@example.com', variants: ['A@Example.com', 'b@example.com'] },
+    ],
+  };
+
+  it('другие значения под меткой — предупреждение; формы того же значения и PERSON/COMPANY — нет', () => {
+    expect(mixedValueWarnings(mapping)).toEqual([
+      { token: '[ПАСПОРТ_1]', n: 2 },
+      { token: '[EMAIL_1]', n: 1 },
+    ]);
+  });
+
+  it('только метки, найденные в восстанавливаемом тексте', () => {
+    expect(mixedValueWarnings(mapping, ['[ПАСПОРТ_1]', '[ФИО_1]'])).toEqual([{ token: '[ПАСПОРТ_1]', n: 2 }]);
+    expect(mixedValueWarnings(mapping, [])).toEqual([]);
+    expect(mixedValueWarnings(null)).toEqual([]);
   });
 });
 

@@ -372,7 +372,8 @@
         "requestId": { "$ref": "#/$defs/requestId" },
         "code": { "$ref": "#/$defs/errorCode" },
         "message": { "type": "string", "minLength": 1 },
-        "details": {}
+        "details": {},
+        "reason": { "enum": ["NO_SESSION", "NO_MAPPING"] }
       }
     },
     "SESSIONS": {

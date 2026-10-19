@@ -105,7 +105,7 @@ describe('host: протокол §5.4 в воркере', () => {
     const ent = (await upload('r1', bytes)).find((m) => m.type === MSG.ENTITIES);
     await send({ type: MSG.GET_MAPPING, requestId: 'g1', docId: ent.docId });
     const before = out.find((m) => m.requestId === 'g1');
-    expect(before).toMatchObject({ type: MSG.ERROR, code: 'INTERNAL' });
+    expect(before).toMatchObject({ type: MSG.ERROR, code: 'INTERNAL', reason: 'NO_MAPPING' });
     expect(before.message).toMatch(/Маппинг не найден/);
     await send({ type: MSG.APPLY, requestId: 'r2', docId: ent.docId, decisions: [] });
     const end = out.find((m) => m.requestId === 'r2' && m.type === MSG.RESULT_END);
@@ -115,7 +115,9 @@ describe('host: протокол §5.4 в воркере', () => {
     expect(got.docId).toBe(ent.docId);
     expect(got.mapping).toEqual(end.mapping);
     await send({ type: MSG.GET_MAPPING, requestId: 'g3', docId: 'нет-такой' });
-    expect(out.find((m) => m.requestId === 'g3')).toMatchObject({ type: MSG.ERROR, code: 'INTERNAL' });
+    expect(out.find((m) => m.requestId === 'g3')).toMatchObject({ type: MSG.ERROR, code: 'INTERNAL', reason: 'NO_SESSION' });
+    await send({ type: MSG.DEANON, requestId: 'g4', mappingRef: 'нет-такой', text: '[ФИО_1]' });
+    expect(out.find((m) => m.requestId === 'g4')).toMatchObject({ type: MSG.ERROR, reason: 'NO_SESSION' });
   });
 
   it('makeResultName', () => {

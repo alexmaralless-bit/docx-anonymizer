@@ -112,6 +112,14 @@ test('файл от ИИ .md + карта из файла → answer.restored.md
   expect(text).toContain('Ромашка-Трейд');
   expect(text).toContain('Иванову Петру Сергеевичу');
   expect(text.startsWith('# Итог')).toBe(true);
+  // новый файл от ИИ — прежний результат больше не скачивается, пока не нажать «Восстановить»
+  await page.getByTestId('ai-file').setInputFiles(writeTemp('answer2.txt', 'Подписал [ФИО_2].'));
+  await expect(page.getByTestId('restore-download')).toBeDisabled();
+  await page.getByTestId('restore-run').click();
+  await expect(page.getByTestId('restore-download')).toBeEnabled();
+  // смена режима склонения или источника карты тоже сбрасывает результат
+  await page.getByTestId('restore-decline').uncheck();
+  await expect(page.getByTestId('restore-download')).toBeDisabled();
 });
 
 test('.anon.docx из конвейера + сессия по ?docId= → договор.restored.docx без плейсхолдеров', async ({ context, extensionId }) => {
@@ -136,6 +144,9 @@ test('.anon.docx из конвейера + сессия по ?docId= → дог�
   await expect(page.getByTestId('restore-stat')).toHaveText(new RegExp(`^Заменено: ${n}(\\s|$)`));
   await expect(page.getByTestId('restore-unresolved')).toContainText('Все метки восстановлены');
   await expect(page.getByTestId('restore-copy')).toBeDisabled();
+  // паспорт: под [ПАСПОРТ_1] в исходнике были ещё орган выдачи и код подразделения — предупреждение (FR-36а)
+  await expect(page.getByTestId('restore-warning')).toHaveCount(1);
+  await expect(page.getByTestId('restore-warning')).toContainText('[ПАСПОРТ_1]');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('restore-download').click()]);
   expect(dl.suggestedFilename()).toBe('договор.restored.docx');
   const restored = parseDocx(readFileSync(await dl.path()));
@@ -160,4 +171,34 @@ test('?docId= неизвестной сессии → выбрана самая 
   await page.getByTestId('restore-input').fill('Ответ: [EMAIL_1].');
   await page.getByTestId('restore-run').click();
   await expect(page.getByTestId('restore-output')).toHaveText('Ответ: second.person@example.org.');
+});
+
+test('сессия без карты и исчезнувшая сессия — разные сообщения (ERROR.reason)', async ({ context, extensionId }) => {
+  const ext = await context.newPage();
+  await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await installClient(ext);
+  // только ANALYZE, без APPLY: сессия есть, карты нет
+  const docId = await ext.evaluate(
+    async (b64) => {
+      const client = window.__docx.connectClient();
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const ent = await client.analyzeFile({ name: 'черновик.docx', bytes, origin: 'http://test.invalid' });
+      client.port.disconnect();
+      return ent.docId;
+    },
+    Buffer.from(makeDocx(para(wrun('Пишите на draft.person@example.com')))).toString('base64'),
+  );
+  const page = await openRestore(context, extensionId, `?docId=${encodeURIComponent(docId)}`);
+  await page.getByTestId('restore-input').fill('Ответ: [EMAIL_1].');
+  await page.getByTestId('restore-run').click();
+  await expect(page.getByTestId('restore-error')).toContainText('ещё нет карты замен');
+  // сессию убрали (DISCARD) — «обработка больше недоступна»
+  await ext.evaluate(async (id) => {
+    const client = window.__docx.connectClient();
+    await client.request(window.__docx.MSG.DISCARD, { docId: id });
+    client.port.disconnect();
+  }, docId);
+  await ext.close();
+  await page.getByTestId('restore-run').click();
+  await expect(page.getByTestId('restore-error')).toContainText('больше недоступна');
 });

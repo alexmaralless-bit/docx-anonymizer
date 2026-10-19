@@ -69,6 +69,12 @@ export const ERROR_CODES = Object.freeze([
   'INTERNAL',
 ]);
 
+/**
+ * Необязательное уточнение `ERROR.reason` (0.3, WP10-B, FR-36а): `NO_SESSION` — сессии документа нет (вкладку закрыли,
+ * расширение перезапущено), `NO_MAPPING` — сессия есть, но замены ещё не применялись. Код ошибки при этом `INTERNAL`.
+ */
+export const ERROR_REASONS = Object.freeze(['NO_SESSION', 'NO_MAPPING']);
+
 /** Сообщения, завершающие запрос (на них резолвится client.request). */
 export const TERMINAL = Object.freeze(
   new Set(['ENTITIES', 'TEXT', 'RESULT_END', 'SESSIONS', 'DEANON_RESULT', 'MAPPING', 'MODEL_INSTALLED', 'BATCH_DONE', 'ACK', 'ERROR']),
@@ -79,12 +85,16 @@ export const TARGET = Object.freeze({ OFFSCREEN: 'offscreen', BACKGROUND: 'backg
 
 /** Ошибка протокола на стороне клиента. */
 export class ProtocolError extends Error {
-  /** @param {string} code @param {string} message @param {any} [details] */
-  constructor(code, message, details) {
+  /**
+   * @param {string} code @param {string} message @param {any} [details]
+   * @param {string} [reason] уточнение ошибки для клиента (`NO_MAPPING` / `NO_SESSION`): страницы различают случаи по нему, не по тексту
+   */
+  constructor(code, message, details, reason) {
     super(message);
     this.name = 'ProtocolError';
     this.code = code;
     this.details = details;
+    if (reason) this.reason = reason;
   }
 }
 
@@ -250,7 +260,7 @@ export function createClient(port) {
         return;
       case MSG.ERROR:
         pending.delete(msg.requestId);
-        p.reject(new ProtocolError(msg.code, msg.message, msg.details));
+        p.reject(new ProtocolError(msg.code, msg.message, msg.details, msg.reason));
         return;
       case MSG.RESULT_END:
         pending.delete(msg.requestId);
@@ -333,5 +343,6 @@ export function createClient(port) {
 /** Сериализуемое сообщение об ошибке для отправки клиенту (без текста документа). */
 export function errorMessage(requestId, err) {
   const code = err && ERROR_CODES.includes(err.code) ? err.code : 'INTERNAL';
-  return { type: MSG.ERROR, requestId, code, message: (err && err.message) || 'Внутренняя ошибка', details: err?.details };
+  const reason = typeof err?.reason === 'string' && ERROR_REASONS.includes(err.reason) ? { reason: err.reason } : {};
+  return { type: MSG.ERROR, requestId, code, message: (err && err.message) || 'Внутренняя ошибка', details: err?.details, ...reason };
 }

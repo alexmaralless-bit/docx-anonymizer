@@ -9,7 +9,7 @@ import { connectClient } from '../shared/port-client.js';
 import { loadSettings } from '../shared/settings-store.js';
 import { createT, resolveUiLanguage } from '../ui/i18n/index.js';
 import { RESTORE_DICT } from '../ui/i18n/restore.js';
-import { aiFileKind, countUnresolved, mimeFor, parseMappingFiles, pickSession, restoredName, toSegments } from '../ui/deanon/index.js';
+import { aiFileKind, countUnresolved, mimeFor, mixedValueWarnings, parseMappingFiles, pickSession, restoredName, toSegments } from '../ui/deanon/index.js';
 import { downloadBlob, h } from '../ui/deanon/dom.js';
 import { madeByLine, helpLink } from '../ui/brand.js';
 
@@ -75,7 +75,15 @@ function render(lang) {
   const declineBox = h(
     'label',
     { class: 'check' },
-    h('input', { type: 'checkbox', checked: decline, dataset: { testid: 'restore-decline' }, onchange: (e) => (decline = e.target.checked) }),
+    h('input', {
+      type: 'checkbox',
+      checked: decline,
+      dataset: { testid: 'restore-decline' },
+      onchange: (e) => {
+        decline = e.target.checked;
+        invalidate(); // прежний файл собран с другим режимом склонения
+      },
+    }),
     t('decline_label'),
   );
   const copyBtn = h('button', { type: 'button', class: 'btn', disabled: true, dataset: { testid: 'restore-copy' } }, t('copy'));
@@ -83,6 +91,12 @@ function render(lang) {
   let lastText = '';
   /** @type {{name: string, blob: Blob} | null} */
   let lastDownload = null;
+  const warn = h('div', { dataset: { testid: 'restore-warnings' } });
+  /** Входные данные поменялись (файл от ИИ, карта, источник, обработка): прежний результат больше не скачивается. */
+  const invalidate = () => {
+    lastDownload = null;
+    downloadBtn.disabled = true;
+  };
 
   /* ---------- 1. Ответ ИИ: текст или файл ---------- */
   const inputBox = h('div', { class: 'input-box' });
@@ -95,6 +109,7 @@ function render(lang) {
     onchange: async () => {
       const f = aiInput.files?.[0];
       aiFile = null;
+      invalidate();
       fileInfo.className = 'err';
       if (!f) return (fileInfo.textContent = '');
       const kind = aiFileKind(f.name);
@@ -124,6 +139,7 @@ function render(lang) {
       mode,
       (v) => {
         mode = v;
+        invalidate();
         drawInput();
       },
       'restore-mode-',
@@ -145,6 +161,7 @@ function render(lang) {
       source,
       (v) => {
         source = v;
+        invalidate();
         drawSource();
       },
       'source-',
@@ -165,7 +182,10 @@ function render(lang) {
                   value: s.docId,
                   checked: s.docId === sessionId,
                   dataset: { testid: 'session-radio' },
-                  onchange: () => (sessionId = s.docId),
+                  onchange: () => {
+                    sessionId = s.docId;
+                    invalidate();
+                  },
                 }),
                 t('session_item', { name: s.name, time: new Date(s.createdAt).toLocaleString(lang), n: s.entities }),
               ),
@@ -182,6 +202,7 @@ function render(lang) {
         dataset: { testid: 'mapping-file' },
         'aria-label': t('file_pick'),
         onchange: async () => {
+          invalidate();
           const texts = await Promise.all([...file.files].map((f) => f.text()));
           const r = parseMappingFiles(texts);
           if (r.error) {
@@ -232,6 +253,26 @@ function render(lang) {
             ),
           )
         : h('div', { class: 'good' }, t('unresolved_none')),
+    );
+  };
+  /** Метки, под которыми в документе были разные значения (паспорт: серия/номер, орган, код) — проверить вручную. */
+  const showWarnings = (mapping, tokens) => {
+    const list = mixedValueWarnings(mapping, tokens);
+    warn.replaceChildren(
+      ...(list.length
+        ? [
+            h(
+              'div',
+              { class: 'mixed' },
+              h('strong', {}, t('mixed_h')),
+              h(
+                'ul',
+                {},
+                list.map((w) => h('li', { dataset: { testid: 'restore-warning' } }, t('mixed_item', { token: w.token, n: w.n }))),
+              ),
+            ),
+          ]
+        : []),
     );
   };
   const statLine = (replaced, declinedN) => t('stat', { n: replaced }) + (declinedN ? ` · ${t('declined_stat', { n: declinedN })}` : '');
@@ -287,8 +328,8 @@ function render(lang) {
 
   const run = async () => {
     msg.textContent = '';
-    lastDownload = null;
-    downloadBtn.disabled = true;
+    invalidate();
+    warn.replaceChildren();
     const file = mode === 'file' ? aiFile : null;
     if (mode === 'text' && !input.value.trim()) {
       msg.textContent = t('need_text');
@@ -302,8 +343,10 @@ function render(lang) {
     try {
       mapping = await getMapping();
     } catch (err) {
-      const m = String(err?.message || err);
-      msg.textContent = /Маппинг не найден/.test(m) ? t('session_missing') : t('error', { msg: m });
+      // различаем по ERROR.reason, а не по тексту сообщения (тексты хоста могут меняться)
+      if (err?.reason === 'NO_MAPPING') msg.textContent = t('session_missing');
+      else if (err?.reason === 'NO_SESSION') msg.textContent = t('session_gone');
+      else msg.textContent = t('error', { msg: String(err?.message || err) });
       return;
     }
     if (!mapping) return;
@@ -319,10 +362,12 @@ function render(lang) {
         return;
       }
       showDocx(r);
+      showWarnings(mapping, r.tokens);
       lastDownload = { name, blob: new Blob([r.bytes], { type: mimeFor(name) }) };
     } else {
       const r = restoreText(file ? /** @type {string} */ (file.text) : input.value, mapping, { decline });
       showText(r);
+      showWarnings(mapping, r.tokens);
       if (file) lastDownload = { name, blob: new Blob([r.text], { type: mimeFor(name) }) };
     }
     downloadBtn.disabled = !lastDownload;
@@ -367,6 +412,7 @@ function render(lang) {
           out,
           h('div', { class: 'row between', style: 'margin-top:10px' }, stat, h('div', { class: 'row' }, copyBtn, downloadBtn)),
           unres,
+          warn,
           h('p', { class: 'hint' }, t('declension_hint')),
         ),
         h('div', { class: 'row between' }, helpLink(lang), madeByLine(lang)),

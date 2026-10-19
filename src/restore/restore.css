@@ -75,3 +75,15 @@ mark.declined {
   display: grid;
   gap: 4px;
 }
+
+/* Метка с несколькими значениями в документе (FR-36а): проверить вручную */
+.mixed {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--warn-bg);
+}
+.mixed ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}

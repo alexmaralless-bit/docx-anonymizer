@@ -62,6 +62,12 @@ describe('deanonymizeSpans: координаты входа', () => {
     expect(spans.map((s) => s.declined?.case)).toEqual(['gen', 'gen']);
   });
 
+  it('«в лице генерального директора [ФИО_1] и [ФИО_2]» → оба в родительном (должность — мостик)', () => {
+    const spans = deanonymizeSpans('в лице генерального директора [ФИО_1] и [ФИО_2]', declineFx.mapping, { decline: true });
+    expect(spans.map((s) => s.declined?.case)).toEqual(['gen', 'gen']);
+    expect(spans[0].newText).toBe('Иванова Петра Сергеевича');
+  });
+
   it('decline: false — без declined и без поглощения окончаний', () => {
     const text = 'Письмо [ФИО_1]у.';
     const spans = deanonymizeSpans(text, declineFx.mapping);
@@ -72,6 +78,44 @@ describe('deanonymizeSpans: координаты входа', () => {
     expect(deanonymizeSpans('[ФИО_1]', { entries: [] })).toEqual([]);
     expect(deanonymizeSpans('[ФИО_1]', null)).toEqual([]);
     expect(deanonymizeSpans('XXXX', { entries: [{ token: 'XXXX', value: 'a', category: 'INN' }] })).toEqual([]);
+  });
+});
+
+describe('deanonymizeSpans: строгий режим для файлов (FR-36а)', () => {
+  const map = {
+    entries: ['[ФИО_1]', '[СЧЕТ_1]', '[ДОГОВОР_1]', '[АДРЕС_1]', '[ДАТА_РОЖД_1]', '[PERSON_1]', '[COMPANY_1]'].map((token) => ({
+      token,
+      value: 'Значение',
+      category: 'X',
+    })),
+  };
+  const count = (t, strict) => deanonymizeSpans(t, map, { strict }).length;
+
+  it.each([
+    'Счет 1 выставлен',
+    'Договор 1 от 01.01',
+    'см. договор-1',
+    'Адрес 1 (юридический)',
+    'Person 1 shall',
+    'Company 1',
+    'счет_1',
+    'ФИО 1',
+    'дата рожд 1',
+  ])('без скобок не точная метка «%s»: в strict — 0, в обычном — найдена', (t) => {
+    expect(count(t, true)).toBe(0);
+    expect(count(t, false)).toBe(1);
+  });
+
+  it.each(['ФИО_1', 'СЧЕТ_1', 'ДАТА_РОЖД_1', '[счет 1]', '**[ФИО_1]**', '[ ФИО_1 ]', '[дата рожд-1]', 'подпись: ФИО_1.'])(
+    '«%s» распознаётся и в strict',
+    (t) => {
+      expect(count(t, true)).toBe(1);
+    },
+  );
+
+  it('strict не влияет на склонение в скобках', () => {
+    const spans = deanonymizeSpans('от [ФИО_1]', declineFx.mapping, { decline: true, strict: true });
+    expect(spans[0].declined?.case).toBe('gen');
   });
 });
 

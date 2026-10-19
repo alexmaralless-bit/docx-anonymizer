@@ -149,8 +149,35 @@ describe('detectCase: предлоги', () => {
     expect(detectCase({ before: 'в адрес г-на ', gender: 'm' })).toMatchObject({ idx: 1 });
   });
 
-  it('окно: не дальше 3 слов, не через запятую и посторонние слова; кавычки и Markdown не мешают', () => {
-    expect(detectCase({ before: 'от уважаемого господина директора ', gender: 'm' })).toBeNull();
+  it('должности — мостики: «в лице генерального директора», «председателя правления» → родительный', () => {
+    for (const b of [
+      'в лице генерального директора ',
+      'в лице Генерального директора ',
+      'в лице исполнительного директора ',
+      'в лице заместителя генерального директора ',
+      'в лице председателя правления ',
+      'от имени генерального директора ',
+      'в лице главного бухгалтера ',
+      'в лице управляющего ',
+      'от первого заместителя ',
+    ]) {
+      expect(detectCase({ before: `Общество, ${b}`, gender: 'f' }), b).toMatchObject({ idx: 1, source: 'prep' });
+    }
+    expect(detectCase({ before: 'от уважаемого господина директора ', gender: 'm' })).toMatchObject({ idx: 1 });
+  });
+
+  it('консервативно: слова после должности не мостики, без предлога — именительный', () => {
+    expect(detectCase({ before: 'в лице представителя по доверенности ', gender: 'm' })).toBeNull();
+    expect(detectCase({ before: 'в отношении главного бухгалтера ', gender: 'f' })).toBeNull();
+    expect(detectCase({ before: 'в лице директора по развитию ', gender: 'm' })).toBeNull();
+    expect(detectCase({ before: 'Договор заключён в суде, генеральный директор ', gender: 'm' })).toBeNull();
+    expect(detectCase({ before: 'в главной роли ', gender: 'm' })).toBeNull();
+  });
+
+  it('окно: не дальше 6 слов, не через запятую и посторонние слова; кавычки и Markdown не мешают', () => {
+    // предлог седьмым словом — вне окна
+    expect(detectCase({ before: 'от г-на уважаемого господина заместителя генерального директора ', gender: 'm' })).toBeNull();
+    expect(detectCase({ before: 'от уважаемого господина заместителя генерального директора ', gender: 'm' })).toMatchObject({ idx: 1 });
     expect(detectCase({ before: 'с ООО «Ромашка» подписал ', gender: 'm' })).toBeNull();
     expect(detectCase({ before: 'от, ', gender: 'm' })).toBeNull();
     expect(detectCase({ before: 'отказано. ', gender: 'm' })).toBeNull();

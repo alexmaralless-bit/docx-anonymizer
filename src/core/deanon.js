@@ -1,5 +1,5 @@
 // Обратная замена в тексте ответа LLM (FR-36, FR-37).
-import { CASES, declineInContext } from './deanon-morph.js';
+import { CASES, PREP_WINDOW_CHARS, declineInContext } from './deanon-morph.js';
 
 /**
  * Правка обратной замены в координатах входного текста (FR-36, FR-37).
@@ -15,19 +15,25 @@ import { CASES, declineInContext } from './deanon-morph.js';
  * Спаны отсортированы и не пересекаются; координаты — во входном тексте.
  * @param {string} text
  * @param {import('./mapping.js').Mapping} mapping
- * @param {{decline?: boolean}} [opts] decline — склонять ФИО по контексту метки (FR-37, редакция 0.2)
+ * @param {{decline?: boolean, strict?: boolean}} [opts] decline — склонять ФИО по контексту метки (FR-37, редакция 0.2);
+ *   strict — без скобок принимать только точный текст метки (`ФИО_1`, но не «Счет 1» / «договор-1»): для файлов
+ *   (FR-36а), где обычный текст документа не должен приниматься за метку; формы в скобках остаются либеральными;
+ *   used — сюда добавляются метки карты (`[ПАСПОРТ_1]`), которые встретились и были восстановлены
  * @returns {DeanonSpan[]}
  */
-export function deanonymizeSpans(text, mapping, { decline = false } = {}) {
-  /** @type {Map<string, {value: string, category: string, variants: string[]}>} ключ: «префикс_номер» в нижнем регистре, префикс с '_' вместо пробелов/дефисов */
+export function deanonymizeSpans(text, mapping, { decline = false, strict = false, used } = {}) {
+  /** @type {Map<string, {token: string, value: string, category: string, variants: string[]}>} ключ: «префикс_номер» в нижнем регистре, префикс с '_' вместо пробелов/дефисов */
   const table = new Map();
   const prefixes = new Set();
+  /** strict: точный текст меток без скобок («ФИО_1», регистр и «_» как в карте) */
+  const exact = new Set();
   for (const e of mapping?.entries || []) {
     const m = /^\[(.+)_(\d+)\]$/u.exec(e.token || '');
     if (!m) continue; // режимы mask/delete не восстанавливаются
+    exact.add(`${m[1]}_${m[2]}`);
     const prefix = m[1].toLowerCase();
     prefixes.add(prefix);
-    table.set(`${prefix}_${m[2]}`, { value: e.value ?? e.original, category: e.category, variants: e.variants || [] });
+    table.set(`${prefix}_${m[2]}`, { token: e.token, value: e.value ?? e.original, category: e.category, variants: e.variants || [] });
   }
   /** @type {DeanonSpan[]} */
   const spans = [];
@@ -45,6 +51,7 @@ export function deanonymizeSpans(text, mapping, { decline = false } = {}) {
   let m;
   while ((m = re.exec(text))) {
     const [whole, p1, n1, p2, n2] = m;
+    if (strict && p1 === undefined && !exact.has(whole)) continue; // «Счет 1 выставлен» в файле — не метка
     const p = p1 ?? p2;
     const n = n1 ?? n2;
     const entry = table.get(`${p.toLowerCase().replace(/[ -]/g, '_')}_${n}`);
@@ -68,6 +75,7 @@ export function deanonymizeSpans(text, mapping, { decline = false } = {}) {
       }
     }
     spans.push(span);
+    used?.add(entry.token);
     re.lastIndex = span.end;
   }
   return spans;
@@ -100,19 +108,24 @@ export function findUnresolved(text, spans) {
 /**
  * @param {string} text
  * @param {import('./mapping.js').Mapping} mapping
- * @param {{decline?: boolean}} [opts] decline — склонять ФИО по контексту метки (FR-37, редакция 0.2)
+ * @param {{decline?: boolean, strict?: boolean}} [opts] decline — склонять ФИО по контексту метки (FR-37, редакция 0.2);
+ *   strict — см. deanonymizeSpans
  * @returns {{
  *   text: string,
  *   unresolved: {text: string, start: number, end: number}[],
  *   replaced: number,
  *   declined: {start: number, end: number, case: string, original: string, text: string}[],
+ *   tokens: string[],
  * }}
  *   unresolved — конструкции вида [ПРЕФИКС_n], которых нет в маппинге (позиции — в результирующем тексте);
  *   declined — подстановки PERSON не в исходной форме: позиции в результирующем тексте, падеж (CASES),
- *   значение из карты (original) и подставленный текст; при decline: false — пустой массив
+ *   значение из карты (original) и подставленный текст; при decline: false — пустой массив;
+ *   tokens — восстановленные метки карты без повторов (`[ПАСПОРТ_1]`), для предупреждений страницы восстановления
  */
-export function deanonymize(text, mapping, { decline = false } = {}) {
-  const spans = deanonymizeSpans(text, mapping, { decline });
+export function deanonymize(text, mapping, { decline = false, strict = false } = {}) {
+  /** @type {Set<string>} */
+  const used = new Set();
+  const spans = deanonymizeSpans(text, mapping, { decline, strict, used });
   /** @type {{start: number, end: number, case: string, original: string, text: string}[]} */
   const declined = [];
   let out = '';
@@ -130,12 +143,12 @@ export function deanonymize(text, mapping, { decline = false } = {}) {
   const re2 = new RegExp(UNRESOLVED_RE.source, UNRESOLVED_RE.flags);
   let m;
   while ((m = re2.exec(out))) unresolved.push({ text: m[0], start: m.index, end: m.index + m[0].length });
-  return { text: out, unresolved, replaced: spans.length, declined };
+  return { text: out, unresolved, replaced: spans.length, declined, tokens: [...used] };
 }
 
-/** До 40 символов перед меткой без обрезанного слова в начале окна (FR-37: предлог в окне ≤ 3 слов). */
+/** До PREP_WINDOW_CHARS символов перед меткой без обрезанного слова в начале окна (FR-37: предлог в окне ≤ 6 слов). */
 function wordAlignedBefore(text, idx) {
-  let from = Math.max(0, idx - 40);
+  let from = Math.max(0, idx - PREP_WINDOW_CHARS);
   if (from > 0 && /[\p{L}\p{N}-]/u.test(text[from - 1])) {
     while (from < idx && /[\p{L}\p{N}-]/u.test(text[from])) from++;
   }

@@ -13,6 +13,7 @@ export const RESTORE_DICT = {
     session_item: '{name} — {time}, замен: {n}',
     session_pick: 'Обработка',
     session_missing: 'Для этой обработки ещё нет карты замен: сначала примените замены к документу.',
+    session_gone: 'Эта обработка больше недоступна (вкладку закрыли или расширение перезапустилось). Загрузите карту из файла .mapping.json.',
     file_pick: 'Файл карты (можно несколько)',
     file_loaded: 'Загружено записей: {n}',
     file_bad: 'Файл не подходит: {why}',
@@ -54,6 +55,8 @@ export const RESTORE_DICT = {
     docx_skipped: 'Не тронуто меток рядом со встроенными объектами: {n}',
     docx_hint: 'Форматирование документа сохранено. В инициалах авторов правок и комментариев метка восстанавливается полным именем.',
     error_not_docx: 'Файл не открывается как документ Word: возможно, он повреждён или защищён паролем.',
+    mixed_h: 'Проверьте вручную',
+    mixed_item: 'Метка {token}: в документе были и другие значения ({n}), а восстановлено одно — во всех местах.',
   },
   en: {
     title: 'Restore text',
@@ -68,6 +71,7 @@ export const RESTORE_DICT = {
     session_item: '{name} — {time}, replacements: {n}',
     session_pick: 'Run',
     session_missing: 'This run has no mapping yet: apply the replacements to the document first.',
+    session_gone: 'This run is no longer available (the tab was closed or the extension restarted). Load the mapping from a .mapping.json file.',
     file_pick: 'Mapping file (several allowed)',
     file_loaded: 'Entries loaded: {n}',
     file_bad: 'Unsuitable file: {why}',
@@ -109,5 +113,7 @@ export const RESTORE_DICT = {
     docx_skipped: 'Markers left next to embedded objects: {n}',
     docx_hint: 'The document formatting is preserved. In the initials of revision and comment authors the marker is restored as the full name.',
     error_not_docx: 'The file does not open as a Word document: it may be damaged or password-protected.',
+    mixed_h: 'Check manually',
+    mixed_item: 'Marker {token}: the document had other values too ({n}), but one value was restored everywhere.',
   },
 };

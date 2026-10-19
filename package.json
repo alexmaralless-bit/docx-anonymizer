@@ -1,6 +1,6 @@
 {
   "name": "docx-anonymizer",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Браузерное расширение: локальная анонимизация .docx и PDF перед загрузкой в LLM-сервисы",
   "type": "module",
   "private": true,

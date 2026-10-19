@@ -1,7 +1,8 @@
 // Строки справки. Факты — из README: что делает, как пользоваться, что данные не покидают компьютер.
 // Версия 0.2: доступ к сайтам по запросу (К9), словарный поиск ФИО (FR-23), пакет модели NER (§5.2), склонение при восстановлении (FR-37).
 // Версия 0.3: PDF с текстовым слоем (FR-54–FR-57), файл от ИИ (FR-36а), два архива — полный с моделью и лёгкий (§5.2, К12).
-// Версия 0.4: политика маскирования (docs/concept-0.4.md, Ц1–Ц3): что всегда, что по желанию, список компаний.
+// Версия 0.4: политика маскирования (docs/concept-0.4.md, Ц1–Ц3, FR-58–FR-62): что всегда (ИП и обращения по имени — люди),
+// что по желанию (организации модели — только в коммерческом режиме), список компаний, бренд Sitimlab не маскируется; модель 1.1.0.
 export const HELP_DICT = {
   ru: {
     title: 'Справка',
@@ -20,11 +21,11 @@ export const HELP_DICT = {
       'Ответ ИИ вставьте текстом или загрузите файлом от ИИ (.docx, .docm, .md, .txt) на странице «Восстановить текст»: расширение подставит настоящие значения из карты замен — ключа восстановления — и отдаст файл «имя.restored.*» с прежним форматированием; в файле заменяются только метки точно как в карте или в квадратных скобках. Ключ хранится только у вас, в памяти браузера до его перезапуска; сохранить его в файл можно на экране «готово» панели: «Ещё» → «Сохранить ключ восстановления». ФИО ставятся в нужный падеж по контексту, склонённые подстановки выделены зелёным — проверьте их.',
     policy_h: 'Что маскируется',
     policy_1:
-      'Всегда: персональные данные — ФИО (в том числе «ИП Фамилия И.О.»), паспорт, СНИЛС, SSN, телефон, электронная почта, адрес, дата рождения, банковская карта. Отключить их в настройках нельзя; снять галочку с конкретной находки в панели можно.',
+      'Всегда: персональные данные — ФИО (в том числе «ИП Фамилия И.О.»: индивидуальный предприниматель — это человек, его ИНН и ОГРНИП тоже закрываются; и обращение по одному имени — «Елена, добрый день!»), паспорт, СНИЛС, SSN, телефон, электронная почта, адрес, дата рождения, банковская карта. Отключить их в настройках нельзя; снять галочку с конкретной находки в панели можно.',
     policy_2:
       'Всегда: идентификаторы компаний — ИНН, КПП, ОГРН/ОГРНИП, расчётный счёт, IBAN, БИК, SWIFT, иностранный налоговый номер, ссылки — даже если название компании остаётся открытым.',
     policy_3:
-      'По желанию: коммерческая информация — названия организаций, номера договоров, суммы. По умолчанию выключена; включается переключателем «Коммерческая информация» в настройках, раздел «Что маскируется».',
+      'По желанию: коммерческая информация — названия организаций, номера договоров, суммы. По умолчанию выключена; включается переключателем «Коммерческая информация» в настройках, раздел «Что маскируется». Организации, найденные моделью NER, панель показывает только в этом режиме. Sitimlab — бренд разработчика расширения — не маскируется никогда.',
     policy_4:
       'Список компаний: названия, которые нужно скрывать всегда (свою фирму, ключевых клиентов), впишите в настройках, раздел «Компании для маскирования», или нажмите «Маскировать всегда» в строке организации панели. Они ищутся во всех падежах, с юридической формой и без, кириллицей и латиницей, и получают одну метку на компанию.',
     privacy_h: 'Данные не покидают ваш компьютер',
@@ -36,7 +37,7 @@ export const HELP_DICT = {
     check_h: 'Что стоит знать',
     check_1: 'Перед отправкой всегда просматривайте результат — ответственность за содержимое остаётся за вами.',
     check_2:
-      'Имена и названия находятся правилами: по меткам, шаблонам, базе знаний сторон из реквизитов и словарям имён и фамилий — так находятся и третьи лица без подписи «в лице». Для остального есть модель NER: в полном архиве расширения она уже есть и ставится сама при первом запуске, в лёгком — скачайте пакет с GitHub Releases и импортируйте в настройках («Модель NER» → «Импортировать пакет…»); модель работает офлайн, на этом компьютере. Одиночная фамилия или редкое имя всё равно могут остаться.',
+      'Имена и названия находятся правилами: по меткам, шаблонам, базе знаний сторон из реквизитов и словарям имён и фамилий — так находятся и третьи лица без подписи «в лице». Для остального есть модель NER (пакет 1.1.0 обучен и на деловых документах — письмах, коммерческих предложениях, счетах, переписке): в полном архиве расширения она уже есть и ставится сама при первом запуске, в том числе поверх прежней версии после обновления, в лёгком — скачайте пакет с GitHub Releases и импортируйте в настройках («Модель NER» → «Импортировать пакет…»); модель работает офлайн, на этом компьютере. Одиночная фамилия или редкое имя всё равно могут остаться.',
     check_3: 'Встроенные объекты (OLE-вложения) не обезличиваются — расширение предупреждает об этом или удаляет их по настройке.',
     check_4:
       'Работает с файлами .docx, .docm и PDF с текстовым слоем. Из PDF в чат уходит текст с плейсхолдерами (имя.anon.md, по настройке — .txt), а не PDF: заголовки, списки и таблицы сохранены, колонтитулы и номера страниц убраны. Сканы, PDF с паролем и пустые PDF не обрабатываются — их можно загрузить как есть после подтверждения. Нужен Chrome или Edge версии 132 и новее.',
@@ -61,11 +62,11 @@ export const HELP_DICT = {
       'Paste the AI answer as text or load the file the AI produced (.docx, .docm, .md, .txt) on the "Restore text" page: the extension puts the real values back from the replacement map (the recovery key) and gives you a "name.restored.*" file with the original formatting; in a file only markers written exactly as in the map or in square brackets are replaced. The key stays only with you, in browser memory until the browser restarts; save it to a file on the panel\'s "done" screen: "More" → "Save the recovery key". Russian names are put in the right case by context; declined values are highlighted in green — check them.',
     policy_h: 'What is masked',
     policy_1:
-      'Always: personal data — names (including “IP Surname I.I.” sole traders), passports, SNILS, SSN, phones, emails, addresses, dates of birth, bank cards. They cannot be turned off in the settings; you can still clear the checkmark of a particular finding in the panel.',
+      'Always: personal data — names (including “IP Surname I.I.”: a sole trader is a person, so their INN and OGRNIP are masked too; and a greeting with a first name only — “Elena, good afternoon!”), passports, SNILS, SSN, phones, emails, addresses, dates of birth, bank cards. They cannot be turned off in the settings; you can still clear the checkmark of a particular finding in the panel.',
     policy_2:
       'Always: company identifiers — INN, KPP, OGRN/OGRNIP, bank accounts, IBAN, BIK, SWIFT, foreign tax IDs, links — even when the company name stays visible.',
     policy_3:
-      'Optional: commercial information — company names, contract numbers, amounts. Off by default; turn it on with the “Commercial information” switch in the settings, “What is masked”.',
+      'Optional: commercial information — company names, contract numbers, amounts. Off by default; turn it on with the “Commercial information” switch in the settings, “What is masked”. Companies found by the NER model appear in the panel only in this mode. Sitimlab, the extension developer’s brand, is never masked.',
     policy_4:
       'Company list: names that must always be hidden (your own firm, key clients) — add them in the settings, “Companies to mask”, or press “Always mask” in a company row of the panel. They are found in every grammatical case, with or without the legal form, in Cyrillic and Latin, and get one label per company.',
     privacy_h: 'Your data never leaves your computer',
@@ -77,7 +78,7 @@ export const HELP_DICT = {
     check_h: 'Good to know',
     check_1: 'Always review the result before sending — you remain responsible for the content.',
     check_2:
-      'Names and titles are found by rules: labels, patterns, the knowledge base of the parties from the requisites and first-name and surname dictionaries — this also finds third persons without a “represented by” label. For the rest there is the NER model: the full extension archive already contains it and installs it on first run; with the lite archive, download the pack from GitHub Releases and import it in the settings (“NER model” → “Import pack…”); the model runs offline, on this computer. A lone surname or a rare name may still remain.',
+      'Names and titles are found by rules: labels, patterns, the knowledge base of the parties from the requisites and first-name and surname dictionaries — this also finds third persons without a “represented by” label. For the rest there is the NER model (pack 1.1.0 is also trained on business documents — letters, proposals, invoices, chats): the full extension archive already contains it and installs it on first run, including over the previous version after an update; with the lite archive, download the pack from GitHub Releases and import it in the settings (“NER model” → “Import pack…”); the model runs offline, on this computer. A lone surname or a rare name may still remain.',
     check_3: 'Embedded objects (OLE attachments) are not anonymized — the extension warns about them or removes them, depending on settings.',
     check_4:
       'Works with .docx, .docm and PDF files that have a text layer. For a PDF the chat receives the text with placeholders (name.anon.md, or .txt in the settings) instead of the PDF: headings, lists and tables are kept, headers, footers and page numbers are removed. Scans, password-protected and empty PDFs are not processed — you can upload them as is after confirming. Chrome or Edge 132 or later is required.',

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "description": "__MSG_extDescription__",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAo00CpQNtUVrnLqeH3f1gietu4n2CNQA5AeUG4N5gUov5d0SMriAasz3MNlUtOmXygVn6cRA8qYGScGT963waiU63n8oNpfzNy94DrTW7ArOJW2B/9gmmuPmDLrOVLH9z2IVzGbO7qOuSsgKU4YSl/kjLebsM5RkOuEDRANKrCPdwM2DHe2NGQPW2906WQt/wylRIjQaAEaDsIYAbfY5iXI0yppc0b0p0LsBK43WFSpQjdKVZedEtYtNFq/5OLh8qJydSH1DrpE3jvg2fbXOxO6GltFzNnVlsxUb4iZOzyBEbGp0gBmnuZK4RLRZmpqPpbmK7GjP9ZmuXLDoONZwEbwIDAQAB",
   "default_locale": "ru",
   "homepage_url": "https://sitimlab.ru",

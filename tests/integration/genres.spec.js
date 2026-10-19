@@ -2,8 +2,9 @@
 // 8 жанров × ≥ 3 документа, ru + en для letter/resume, DOCX и PDF, детерминированный генератор (scripts/gen-genre-fixtures.mjs);
 // обычный режим — ноль утечек pii/ids (целиком и частично), ноль организаций, отрицательные примеры не становятся сущностью;
 // коммерческий без модели — полнота организаций с ОПФ ≥ 0,95, ложных COMPANY на КП ≤ 2; фильтры модельных ORG на корпусе —
-// стаб-провайдером, который размечает ORG каждый отрицательный пример; с моделью (NER_MODEL_DIR) — числа в отчёт, гейты К6/К7
-// включаются флагом (WP11-C3); PRIVATE_FIXTURES=1 — настоящие документы из tests/fixtures/private, только счётчики.
+// стаб-провайдером, который размечает ORG каждый отрицательный пример; с моделью (NER_MODEL_DIR) — числа в отчёт и жёсткие
+// гейты К6/К7 для пакета 1.1.0 (в CI модели нет — блок пропускается); PRIVATE_FIXTURES=1 — настоящие документы из
+// tests/fixtures/private, только счётчики.
 // Отчёт целиком: npm run eval-genres.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -26,9 +27,9 @@ import {
 } from '../../scripts/eval-genres.mjs';
 import { registerBuiltinDetectors, clearDetectors, analyze, applyDecisions, findOccurrences } from '../../src/core/index.js';
 
-// Гейты К6/К7 с моделью: пороги концепции 0.4; жёсткая проверка включается для пакета 1.1.0 (WP11-C3) —
-// флагом ниже или переменной GENRES_MODEL_GATES=1. До этого числа только печатаются.
-const ENFORCE_MODEL_GATES = process.env.GENRES_MODEL_GATES === '1';
+// Гейты К6/К7 с моделью: пороги концепции 0.4; под NER_MODEL_DIR проверка жёсткая по умолчанию (пакет 1.1.0, версия 0.4.0).
+// GENRES_MODEL_GATES=0 — только печать чисел: для прогона другой модели (1.0.0, пробные run_id), которая гейтов не обязана проходить.
+const ENFORCE_MODEL_GATES = process.env.GENRES_MODEL_GATES !== '0';
 const K6_PERSON_PRECISION = 0.9;
 const K6_PERSON_RECALL = 0.85;
 const K7_COMPANY_PRECISION = 0.8;
@@ -359,7 +360,7 @@ describe('известные недочёты (KNOWN_GAPS): пока на мес
   }
 });
 
-describe.skipIf(!MODEL_DIR)('с моделью NER (NER_MODEL_DIR): числа К6/К7, гейты — для пакета 1.1.0 (WP11-C3)', () => {
+describe.skipIf(!MODEL_DIR)('с моделью NER (NER_MODEL_DIR): гейты К6/К7 для пакета 1.1.0', () => {
   let withModel;
   let label;
   beforeAll(async () => {
@@ -381,7 +382,7 @@ describe.skipIf(!MODEL_DIR)('с моделью NER (NER_MODEL_DIR): числа �
     console.log(
       `[genres] ${label} обычный режим: утечек ${bad.reduce((n, d) => n + leaksOf(d).length, 0)} в ${bad.length} файлах, из них частичных адресов ${addr}`,
     );
-    // утечка — не порог качества модели: проверяется всегда (ревью WP11-B), под GENRES_MODEL_GATES — только К6/К7
+    // утечка — не порог качества модели: проверяется всегда (ревью WP11-B), GENRES_MODEL_GATES=0 снимает только К6/К7
     expect(bad.map((d) => `${d.name}.${d.format}: ${leaksOf(d).map((e) => `${e.key}~${e.category}`)}`)).toEqual([]);
     expect(normal.filter((d) => d.companyCount).map((d) => `${d.name}.${d.format}`)).toEqual([]);
   });
@@ -410,7 +411,7 @@ describe.skipIf(!MODEL_DIR)('с моделью NER (NER_MODEL_DIR): числа �
     }
     for (const d of withModel.docs.filter((x) => x.mode === 'commercial' && x.genre === 'proposal'))
       if ((d.perCat.COMPANY?.fp ?? 0) > K7_PROPOSAL_FALSE_COMPANY) fails.push(`К7 ложные ORG ${d.name}.${d.format}`);
-    if (fails.length) console.log(`[genres] не пройдены гейты: ${fails.join(', ')}${ENFORCE_MODEL_GATES ? '' : ' (гейты не включены, GENRES_MODEL_GATES=1)'}`);
+    if (fails.length) console.log(`[genres] не пройдены гейты: ${fails.join(', ')}${ENFORCE_MODEL_GATES ? '' : ' (гейты выключены: GENRES_MODEL_GATES=0)'}`);
     if (ENFORCE_MODEL_GATES) expect(fails).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 // WP9 (К6, К7, К8): реальный пакет модели NER в расширении — импорт zip через настройки, анализ образца в воркере
 // offscreen (onnxruntime-web, WASM, одна нить), сущности source:'ner', ни одного http(s)-запроса, время анализа.
 // Гейт — переменная NER_PACK (путь к zip, `npm run pack:model -- --id=rubert-tiny2-ner-ruen`):
-//   flock <lock> sh -c 'npm run build:e2e && NER_PACK=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip npx playwright test ner.spec.js'
+//   flock <lock> sh -c 'npm run build:e2e && NER_PACK=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.1.0.zip npx playwright test ner.spec.js'
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

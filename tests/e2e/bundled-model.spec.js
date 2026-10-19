@@ -1,12 +1,16 @@
 // WP10-C (К15, К17): полная сборка — модель NER из архива расширения ставится сама при установке, без сети и без импорта.
 // Гейт — dist-e2e/models/index.json (полная e2e-сборка):
-//   flock <lock> sh -c 'node scripts/build.mjs --e2e --with-model=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip && npx playwright test bundled-model.spec.js'
+//   flock <lock> sh -c 'node scripts/build.mjs --e2e --with-model=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.1.0.zip && npx playwright test bundled-model.spec.js'
 // Сценарий: чистый профиль → ≤ 30 с nerModel и bundledModelSha выставлены → файлы в OPFS → карточка «проверенный пакет» →
 // анализ даёт source:'ner' → повторный bootstrap файлы не переписывает → удаление не возвращает модель само → «Восстановить»
 // → «Сбросить настройки» модель не трогает. Второй сценарий — копия сборки с испорченным zip: «не удалось ({код})», «Повторить».
+// Третий (версия 0.4, WP11-C3, К9) — обновление поверх 1.0.0, гейт NER_PACK_PREV (путь к zip прежнего пакета того же id):
+//   flock <lock> sh -c 'node scripts/build.mjs --e2e --with-model=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.1.0.zip &&
+//     NER_PACK_PREV=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip npx playwright test bundled-model.spec.js'
+import { createHash } from 'node:crypto';
 import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { test, expect, BUNDLED, DIST } from './fixtures.js';
 import { buildSampleDocx, esc } from '../../scripts/make-sample.mjs';
@@ -218,5 +222,98 @@ test.describe('испорченный zip встроенной модели', ()
     await page.getByTestId('dlg-ok').click();
     await expect(status).toHaveAttribute('data-state', 'failed');
     expect((await stored(page)).bundledModelError).toBe(code);
+  });
+});
+
+// Обновление встроенной модели (версия 0.4, WP11-C3, К9): профиль, где стоит прежний пакет того же id (1.0.0 — импорт через
+// настройки или полный архив 0.3) и bundledModelSha = его sha, после обновления расширения до полной сборки с 1.1.0 получает
+// 1.1.0 сам: новый sha → план install → MODEL_INSTALL → в OPFS один слот с 1.1.0, bundledModelSha = sha 1.1.0, сети нет.
+// Обновление — повторная команда CDP Extensions.loadUnpacked того же каталога (как кнопка «Обновить» на chrome://extensions:
+// onInstalled с reason 'update'); поэтому сценарий идёт с earlyCapture — расширение загружено той же командой.
+// chrome.runtime.reload() под Playwright не подходит: расширение после него остаётся выгруженным (ERR_BLOCKED_BY_CLIENT).
+const PREV = process.env.NER_PACK_PREV ? resolve(process.env.NER_PACK_PREV) : '';
+
+/** Все слоты пакетов в OPFS models/: [{name, version, packSha256, installing}] (installed.json и маркер .installing). */
+const opfsSlots = (page) =>
+  page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    let models;
+    try {
+      models = await root.getDirectoryHandle('models');
+    } catch {
+      return [];
+    }
+    const out = [];
+    for await (const [name, dir] of models.entries()) {
+      if (dir.kind !== 'directory') continue;
+      const names = [];
+      for await (const [n] of dir.entries()) names.push(n);
+      let info = {};
+      if (names.includes('installed.json')) info = JSON.parse(await (await (await dir.getFileHandle('installed.json')).getFile()).text());
+      out.push({ name, version: info.version ?? null, packSha256: info.packSha256 ?? null, installing: names.includes('.installing') });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+test.describe('обновление поверх прежней версии', () => {
+  test.skip(!PREV, 'нужен NER_PACK_PREV — путь к zip прежней версии встроенного пакета (1.0.0)');
+  test.use({ earlyCapture: true });
+
+  test('прежний пакет из настроек и его sha в профиле → после обновления 1.1.0 ставится сам, один слот, без сети', async ({
+    context,
+    extensionId,
+    extensionDir,
+  }) => {
+    test.setTimeout(180000);
+    const prevZip = readFileSync(PREV);
+    const prevSha = createHash('sha256').update(prevZip).digest('hex');
+    const prevManifest = JSON.parse(new TextDecoder().decode(unzipSync(new Uint8Array(prevZip))['pack.json']));
+    expect(prevManifest.id, 'NER_PACK_PREV — тот же id, что у встроенного пакета').toBe(BUNDLED.id);
+    expect(prevSha).not.toBe(BUNDLED.sha256);
+    const net = await captureAllRequests(context);
+
+    // 1. Свежий профиль: встроенный пакет ставится сам (первый сценарий); ждём итога, чтобы импорт не гонялся с автоустановкой
+    let page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/options/options.html`);
+    await expect.poll(async () => (await stored(page)).bundledModelSha, { timeout: 30000, intervals: [100, 250, 500] }).toBe(BUNDLED.sha256);
+
+    // 2. Импорт прежней версии через настройки (как tests/e2e/model-pack.spec.js): пакет из KNOWN_PACKS — без подтверждения
+    await page.getByTestId('ner-import-file').setInputFiles(PREV);
+    await expect
+      .poll(async () => (await opfsSlots(page)).map((x) => [x.version, x.packSha256, x.installing]), { timeout: 60000, intervals: [250, 500] })
+      .toEqual([[prevManifest.version, prevSha, false]]);
+    await expect(page.getByTestId('ner-status')).toContainText(prevManifest.version);
+    // профиль «как после 0.3»: обработан прежний встроенный пакет, выбран тот же id
+    await page.evaluate(async (sha) => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, bundledModelSha: sha, bundledModelError: '' } });
+    }, prevSha);
+    expect(await stored(page)).toMatchObject({ nerModel: BUNDLED.id, bundledModelSha: prevSha });
+    const urlsBefore = net.urls.length;
+
+    // 3. Обновление расширения: повторная загрузка каталога → onInstalled {reason: 'update'} → план install (новый sha)
+    const t0 = Date.now();
+    const cdp = await context.browser().newBrowserCDPSession();
+    await cdp.send('Extensions.loadUnpacked', { path: resolve(extensionDir) });
+    await cdp.detach();
+    page = await context.newPage();
+    await expect(async () => {
+      await page.goto(`chrome-extension://${extensionId}/options/options.html`);
+    }).toPass({ timeout: 15000, intervals: [250, 500, 1000] });
+    await expect.poll(async () => (await stored(page)).bundledModelSha, { timeout: 30000, intervals: [100, 250, 500] }).toBe(BUNDLED.sha256);
+    const updateMs = Date.now() - t0;
+
+    // 4. Итог: установлен 1.1.0 (встроенный), в OPFS один слот без маркера, настройки на новом sha, ошибки нет
+    expect(await stored(page)).toMatchObject({ nerModel: BUNDLED.id, bundledModelSha: BUNDLED.sha256, bundledModelError: '' });
+    const after = await opfsSlots(page);
+    expect(after.map((x) => [x.version, x.packSha256, x.installing])).toEqual([[BUNDLED.version, BUNDLED.sha256, false]]);
+    await expect(page.getByTestId('ner-status')).toContainText(BUNDLED.version);
+    await expect(page.getByTestId('ner-status')).toHaveAttribute('data-state', 'installed');
+    console.log(`[bundled-model-e2e] обновление ${prevManifest.version} → ${BUNDLED.version}: ${updateMs} мс до bundledModelSha; слот ${after[0].name}`);
+
+    // сеть: ни одного http(s); после обновления воркер читал zip нового пакета из архива расширения
+    const urls = await net.stop();
+    expect(externalRequests(urls), 'NFR-01: http(s)-запросы').toEqual([]);
+    expect(urls.slice(urlsBefore)).toContain(`chrome-extension://${extensionId}/models/${BUNDLED.file}`);
   });
 });

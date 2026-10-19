@@ -120,6 +120,50 @@ describe('background: встроенная модель NER', () => {
     expect(chrome.settings).toMatchObject({ nerModel: 'test-pack', bundledModelSha: SHA });
   });
 
+  it('обновление 1.0.0 → 1.1.0 (К9 версии 0.4): профиль с sha 1.0.0 и nerModel = id → install; installed → новый sha; удалённая потом — skip', async () => {
+    // как настоящие пакеты: тот же id, разные sha и версии (src/core/ner/known-packs.js)
+    const OLD = 'a'.repeat(64);
+    const NEW = { file: 'docx-anonymizer-ner-test-pack-1.1.0.zip', id: 'test-pack', version: '1.1.0', sha256: 'b'.repeat(64), size: 43 };
+    setup({ nerModel: 'test-pack', bundledModelSha: OLD }, NEW);
+    chrome.runtime.onInstalled.fire({ reason: 'update' });
+    await flush();
+    const sent = installMsg();
+    expect(sent.msg).toMatchObject({
+      type: MSG.MODEL_INSTALL,
+      url: `chrome-extension://extid/models/${NEW.file}`,
+      id: 'test-pack',
+      sha256: NEW.sha256,
+      version: '1.1.0',
+    });
+    expect(chrome.settings.bundledModelSha).toBe(OLD); // до ответа хоста sha не отмечается
+    // ответ на прежний sha (запоздалый от установки 1.0.0) не засчитывается за новый пакет
+    reply({ type: MSG.MODEL_INSTALLED, requestId: 'old', status: 'installed', id: 'test-pack', sha256: OLD, ms: 1 });
+    await flush();
+    expect(chrome.settings.bundledModelSha).toBe(OLD);
+    reply({
+      type: MSG.MODEL_INSTALLED,
+      requestId: sent.msg.requestId,
+      status: 'installed',
+      id: 'test-pack',
+      sha256: NEW.sha256,
+      version: '1.1.0',
+      bytes: 10,
+      ms: 5,
+    });
+    await flush();
+    expect(chrome.settings).toMatchObject({ nerModel: 'test-pack', bundledModelSha: NEW.sha256, bundledModelError: '' });
+
+    // пользователь удалил модель 1.1.0 (nerModel пуст, sha 1.1.0 уже обработан) → при следующем запуске не возвращается
+    offscreen.ensureOffscreen.mockClear();
+    setup({ nerModel: '', bundledModelSha: NEW.sha256 }, NEW);
+    chrome.runtime.onStartup.fire();
+    chrome.runtime.onInstalled.fire({ reason: 'update' });
+    await flush();
+    expect(await bootstrapBundledModel()).toBe('skip');
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(offscreen.ensureOffscreen).not.toHaveBeenCalled();
+  });
+
   it('onStartup тоже запускает план; present → те же настройки', async () => {
     setup({ nerModel: 'test-pack', bundledModelSha: '' });
     chrome.runtime.onStartup.fire();

@@ -5,7 +5,8 @@
 // «думал» бы, что модель есть. Пакуется без системного zip: fflate уже в проекте. Состав и время файлов фиксированы, поэтому
 // один и тот же код даёт побайтно один и тот же архив. Сети не требует; на GitHub ничего не публикуется.
 //
-//   node scripts/pack.mjs [--out=<каталог>] [--model=<zip пакета>]   (по умолчанию release/; пакет — release/docx-anonymizer-ner-*.zip)
+//   node scripts/pack.mjs [--out=<каталог>] [--model=<zip пакета>]   (по умолчанию release/; пакет — release/docx-anonymizer-ner-*.zip
+//   с sha из KNOWN_PACKS и наибольшей версией, findModelZip)
 import { zipSync } from 'fflate';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -13,6 +14,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, mkdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { findKnownPack, KNOWN_PACKS } from '../src/core/ner/known-packs.js';
+import { compareVersions, packZipName } from '../src/core/ner/pack.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Фиксированное время всех записей архива (воспроизводимость, К11). Дата создаётся ЛОКАЛЬНЫМ конструктором намеренно:
@@ -72,31 +75,63 @@ function packOne({ outDir, name, version, buildArgs }) {
 }
 
 /**
- * Пакет модели для полного архива: --model=<zip> или единственный release/docx-anonymizer-ner-*.zip (`npm run pack:model`).
- * Несколько — ошибка (непонятно, какой встраивать); ни одного — null (CI: модель в git не хранится, собирается только лёгкий).
- * @param {string[]} argv
+ * Последний опубликованный пакет из KNOWN_PACKS (наибольшая версия semver; при равных — первый в списке) или null.
+ * Его файл в release/ — packZipName(запись): тесты полного архива (pack.spec, manifest.spec) берут имя отсюда, а не хардкодят.
+ * @returns {{id: string, version: string, sha256: string} | null}
+ */
+export function latestKnownPack() {
+  return KNOWN_PACKS.reduce((best, p) => (!best || compareVersions(p.version, best.version) > 0 ? p : best), null);
+}
+
+/** Путь к zip последнего пакета из KNOWN_PACKS в release/ (может не существовать — гейт тестов). */
+export function latestModelZipPath(dir = join(root, 'release')) {
+  const p = latestKnownPack();
+  return p ? join(dir, packZipName(p)) : null;
+}
+
+/**
+ * Пакет модели для полного архива (версия 0.4, WP11-C3): --model=<zip> главнее всего; иначе из release/docx-anonymizer-ner-*.zip
+ * выбирается zip, чей sha256 есть в KNOWN_PACKS, с наибольшей версией (semver; при равных — первый по имени). Неизвестные zip
+ * (sha нет в KNOWN_PACKS: локальная пересборка, чужой пакет) пропускаются с предупреждением — build.mjs их всё равно не встроит.
+ * Ни одного подходящего — null (CI: модель в git не хранится, собирается только лёгкий).
+ * @param {string[]} [argv]
+ * @param {{dir?: string, warn?: (msg: string) => void, lookup?: (sha256: string) => {version: string} | null}} [opts]
+ *   dir — каталог поиска (по умолчанию release/), warn — куда писать предупреждения, lookup — поиск sha (по умолчанию findKnownPack; тесты подменяют)
  * @returns {string|null}
  */
-export function findModelZip(argv = process.argv) {
+export function findModelZip(argv = process.argv, { dir = join(root, 'release'), warn = (m) => console.warn(m), lookup = findKnownPack } = {}) {
   const arg = argv.find((a) => a.startsWith('--model='));
   if (arg) {
     const p = resolve(arg.slice('--model='.length));
     if (!existsSync(p)) throw new Error(`Нет файла пакета модели: ${p}`);
     return p;
   }
-  const dir = join(root, 'release');
-  const found = existsSync(dir) ? readdirSync(dir).filter((n) => /^docx-anonymizer-ner-.+\.zip$/.test(n)) : [];
-  if (found.length > 1) throw new Error(`В release/ несколько пакетов модели (${found.join(', ')}) — укажите --model=<zip>`);
-  return found.length ? join(dir, found[0]) : null;
+  const found = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((n) => /^docx-anonymizer-ner-.+\.zip$/.test(n))
+        .sort()
+    : [];
+  let best = null;
+  for (const name of found) {
+    const file = join(dir, name);
+    const known = lookup(createHash('sha256').update(readFileSync(file)).digest('hex'));
+    if (!known) {
+      warn(`${name}: sha256 нет в KNOWN_PACKS — пропущен (пакет не встраивается)`);
+      continue;
+    }
+    if (!best || compareVersions(known.version, best.version) > 0) best = { file, version: known.version };
+  }
+  return best ? best.file : null;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const outArg = process.argv.find((a) => a.startsWith('--out='));
   const modelZip = findModelZip();
+  if (modelZip) console.log(`пакет модели: ${relative(process.cwd(), modelZip) || modelZip}`);
   const { lite, full } = packRelease({ ...(outArg ? { outDir: outArg.slice('--out='.length) } : {}), modelZip });
   for (const r of [lite, full].filter(Boolean)) {
     console.log(`${relative(process.cwd(), r.file) || r.file}: ${r.files.length} файлов, ${r.size} байт, версия ${r.version}`);
     console.log(`sha256 ${r.sha256}`);
   }
-  if (!full) console.log('полный архив не собран: нет release/docx-anonymizer-ner-*.zip (npm run pack:model) и не задан --model=<zip>');
+  if (!full) console.log('полный архив не собран: нет release/docx-anonymizer-ner-*.zip из KNOWN_PACKS (npm run pack:model) и не задан --model=<zip>');
 }

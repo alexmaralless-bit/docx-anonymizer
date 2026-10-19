@@ -3,10 +3,11 @@
 // Сборки — во временные каталоги os.tmpdir(), dist/ не затрагивается. Сети не требуется.
 import { describe, it, expect, afterAll } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { latestKnownPack, latestModelZipPath } from '../../scripts/pack.mjs';
 import { createHash } from 'node:crypto';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -74,7 +75,8 @@ describe('сборка', () => {
 });
 
 // Встроенная модель NER (версия 0.3, WP10-C, К15): --with-model=<zip> принимает только пакеты из KNOWN_PACKS
-const MODEL_ZIP = 'release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip';
+// Имя zip — последнего пакета из KNOWN_PACKS (версия 0.4, WP11-C3), гейт — его наличие в release/
+const MODEL_ZIP = latestModelZipPath();
 describe('сборка с моделью', () => {
   it('пакет не из KNOWN_PACKS — сборка падает с понятным текстом', () => {
     const dir = mkdtempSync(join(tmpdir(), 'docx-anon-manifest-'));
@@ -95,8 +97,9 @@ describe('сборка с моделью', () => {
       const index = JSON.parse(readFileSync(join(b.dir, 'models/index.json'), 'utf8'));
       expect(index).toHaveLength(1);
       expect(Object.keys(index[0])).toEqual(['file', 'id', 'version', 'sha256', 'size']);
-      expect(index[0].file).toBe('docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip');
-      expect(index[0].id).toBe('rubert-tiny2-ner-ruen');
+      const latest = latestKnownPack();
+      expect(index[0].file).toBe(basename(MODEL_ZIP));
+      expect(index[0]).toMatchObject({ id: latest.id, version: latest.version, sha256: latest.sha256, size: statSync(MODEL_ZIP).size });
       expect(readFileSync(join(b.dir, 'models', index[0].file)).equals(readFileSync(MODEL_ZIP))).toBe(true);
       expect(readFileSync(join(b.dir, 'background.js'), 'utf8')).toContain(index[0].sha256);
     },

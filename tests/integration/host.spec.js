@@ -1,5 +1,7 @@
 // Хост ядра (то, что крутится в Web Worker offscreen) — полный протокол без браузера.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { createHash } from 'node:crypto';
+import { zipSync, strToU8 } from 'fflate';
 import { createHost, makeResultName } from '../../src/offscreen/host.js';
 import { MSG, postChunked, ChunkAssembler } from '../../src/shared/protocol.js';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
@@ -492,5 +494,136 @@ describe('host: MODEL_INSTALL (встроенная модель)', () => {
     expect(out.find((m) => m.requestId === 'a').status).toBe('installed');
     expect(out.find((m) => m.requestId === 'b').status).toBe('present');
     expect(calls.install).toHaveLength(1);
+  });
+});
+
+// Версия 0.4 (WP11-C3, К9): обновление встроенной модели 1.0.0 → 1.1.0 на настоящем model-store поверх поддельного OPFS.
+// Пакеты — вымышленные (один id, две версии), поэтому проверку sha по KNOWN_PACKS заменяет обёртка inspectPack (verified: true);
+// остальное — как в браузере: слоты models/<id>/ и models/<id>.1/, переключение и удаление прежнего (docs/contracts.md §6.2).
+describe('host: MODEL_INSTALL поверх установленной прежней версии', () => {
+  const named = (name) => Object.assign(new Error(name), { name });
+  /** Минимальный OPFS в памяти: каталоги, файлы, createWritable (содержимое меняется при close), removeEntry, entries. */
+  class Dir {
+    kind = 'directory';
+    c = new Map();
+    async getDirectoryHandle(n, o = {}) {
+      if (!this.c.has(n)) {
+        if (!o.create) throw named('NotFoundError');
+        this.c.set(n, new Dir());
+      }
+      return this.c.get(n);
+    }
+    async getFileHandle(n, o = {}) {
+      if (!this.c.has(n)) {
+        if (!o.create) throw named('NotFoundError');
+        const f = {
+          kind: 'file',
+          data: new Uint8Array(),
+          async createWritable() {
+            let pending = null;
+            return { write: async (b) => void (pending = new Uint8Array(b)), close: async () => void (pending && (f.data = pending)), abort: async () => {} };
+          },
+          async getFile() {
+            const d = f.data;
+            return { size: d.length, text: async () => new TextDecoder().decode(d), arrayBuffer: async () => d.slice().buffer };
+          },
+        };
+        this.c.set(n, f);
+      }
+      return this.c.get(n);
+    }
+    async removeEntry(n) {
+      if (!this.c.delete(n)) throw named('NotFoundError');
+    }
+    async *entries() {
+      yield* [...this.c];
+    }
+  }
+
+  const sha = (b) => createHash('sha256').update(b).digest('hex');
+  /** Вымышленный пакет id 'upd-pack' заданной версии: zip, sha архива. */
+  function fakePack(version) {
+    const files = {
+      'model.onnx': new Uint8Array(500).map((_, i) => (i * 7 + version.length + Number(version.split('.')[1])) & 0xff),
+      'vocab.txt': strToU8(`[PAD]\n[UNK]\n[CLS]\n[SEP]\nv${version}\n`),
+      LICENSE: strToU8('MIT'),
+    };
+    const manifest = {
+      kind: 'docx-anonymizer-model-pack',
+      schemaVersion: 1,
+      id: 'upd-pack',
+      version,
+      name: { ru: 'Тест', en: 'Test' },
+      languages: ['ru'],
+      task: 'token-classification',
+      labels: ['O', 'B-PER', 'I-PER'],
+      tokenizer: {
+        type: 'wordpiece',
+        vocab: 'vocab.txt',
+        lowercase: false,
+        stripAccents: false,
+        maxLen: 128,
+        stride: 32,
+        cls: '[CLS]',
+        sep: '[SEP]',
+        pad: '[PAD]',
+        unk: '[UNK]',
+      },
+      model: { file: 'model.onnx', inputs: { ids: 'input_ids', mask: 'attention_mask' }, output: 'logits', indexType: 'int64' },
+      files: Object.entries(files).map(([path, b]) => ({ path, sha256: sha(b), size: b.length })),
+      license: 'MIT',
+      source: {},
+      minExtensionVersion: '0.1.0',
+    };
+    const zip = zipSync({ 'pack.json': strToU8(JSON.stringify(manifest)), ...files });
+    return { zip, sha256: sha(zip) };
+  }
+
+  let root;
+  const hadStorage = Object.getOwnPropertyDescriptor(globalThis.navigator, 'storage');
+  beforeEach(() => {
+    root = new Dir();
+    Object.defineProperty(globalThis.navigator, 'storage', { value: { getDirectory: async () => root }, configurable: true });
+  });
+  afterAll(() => {
+    if (hadStorage) Object.defineProperty(globalThis.navigator, 'storage', hadStorage);
+    else delete globalThis.navigator.storage;
+  });
+  const slots = () => [...(root.c.get('models')?.c.keys() ?? [])].sort();
+
+  it('установлен {id, sha 1.0.0} → MODEL_INSTALL sha 1.1.0 → installed; прежний слот удалён, активен новый', async () => {
+    const store = await import('../../src/shared/model-store.js');
+    const [v1, v2] = [fakePack('1.0.0'), fakePack('1.1.0')];
+    await store.install(v1.zip, { extensionVersion: '0.4.0' }); // как ручной импорт 1.0.0 в 0.3
+    expect(slots()).toEqual(['upd-pack']);
+    expect((await store.listInstalled()).map((m) => [m.id, m.version, m.packSha256])).toEqual([['upd-pack', '1.0.0', v1.sha256]]);
+
+    const out = [];
+    const read = [];
+    const host = createHost({
+      post: (clientId, m) => out.push({ clientId, ...m }),
+      modelStore: { ...store, inspectPack: async (b, o) => ({ ...(await store.inspectPack(b, o)), verified: true }) },
+      readPackageFile: async (url) => {
+        read.push(url);
+        return v2.zip;
+      },
+    });
+    const url = 'chrome-extension://extid/models/docx-anonymizer-ner-upd-pack-1.1.0.zip';
+    const msg = { type: MSG.MODEL_INSTALL, requestId: 'up1', url, id: 'upd-pack', sha256: v2.sha256, version: '1.1.0', extensionVersion: '0.4.0' };
+    await host.handle('bootstrap', msg);
+    const r = out.find((m) => m.type === MSG.MODEL_INSTALLED);
+    expect(r).toMatchObject({ clientId: 'bootstrap', status: 'installed', id: 'upd-pack', sha256: v2.sha256, version: '1.1.0' });
+    expect(read).toEqual([url]); // другой sha того же id — не `present`: zip читается и ставится
+    // переустановка писала в неактивный слот <id>.1 и удалила прежний <id>
+    expect(slots()).toEqual(['upd-pack.1']);
+    const list = await store.listInstalled();
+    expect(list.map((m) => [m.id, m.version, m.packSha256])).toEqual([['upd-pack', '1.1.0', v2.sha256]]);
+    expect(new TextDecoder().decode(await store.readFile('upd-pack', 'vocab.txt'))).toContain('v1.1.0');
+
+    // повторный запуск с тем же sha 1.1.0 → present, файлы не переписываются
+    await host.handle('bootstrap', { ...msg, requestId: 'up2' });
+    expect(out.find((m) => m.requestId === 'up2').status).toBe('present');
+    expect(read).toHaveLength(1);
+    expect(slots()).toEqual(['upd-pack.1']);
   });
 });

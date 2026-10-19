@@ -3,11 +3,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { packRelease, FIXED_TIME } from '../../scripts/pack.mjs';
-import { KNOWN_PACKS } from '../../src/core/ner/known-packs.js';
+import { packRelease, FIXED_TIME, findModelZip, latestKnownPack, latestModelZipPath } from '../../scripts/pack.mjs';
+import { KNOWN_PACKS, findKnownPack } from '../../src/core/ner/known-packs.js';
+import { compareVersions } from '../../src/core/ner/pack.js';
 import RU_SURNAMES from '../../src/core/detect/names/dict/ru-surnames.js';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -163,9 +164,68 @@ describe('архив релиза', () => {
   }, 60000);
 });
 
-// Полный архив (версия 0.3, WP10-C, К15): модель NER в models/ — только если локально есть опубликованный zip пакета
-// (`npm run pack:model`; в git и CI его нет — там собирается только лёгкий архив).
-const MODEL_ZIP = 'release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip';
+// Выбор пакета модели для полного архива (версия 0.4, WP11-C3): --model= главнее; из release/ — zip с sha из KNOWN_PACKS и
+// наибольшей версией; неизвестные zip пропускаются с предупреждением. Фейковые zip и подменённый поиск sha — сети и модели не нужно.
+describe('findModelZip', () => {
+  const sha = (b) => createHash('sha256').update(b).digest('hex');
+  let dir;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'docx-anon-find-model-'));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  /** Каталог с zip: {имя: версия | null}; null — sha нет среди «известных». Возвращает {dir, lookup}. */
+  function release(name, files) {
+    const d = join(dir, name);
+    mkdirSync(d);
+    const known = new Map();
+    for (const [file, version] of Object.entries(files)) {
+      const bytes = Buffer.from(`zip ${file}`);
+      writeFileSync(join(d, file), bytes);
+      if (version) known.set(sha(bytes), { version });
+    }
+    writeFileSync(join(d, 'docx-anonymizer-0.4.0.zip'), 'не пакет модели'); // архив расширения не рассматривается
+    return { dir: d, lookup: (h) => known.get(h) || null };
+  }
+
+  it('несколько известных — наибольшая версия по semver (1.10.0 > 1.9.0 > 1.1.0), неизвестный пропущен с предупреждением', () => {
+    const r = release('many', {
+      'docx-anonymizer-ner-a-1.1.0.zip': '1.1.0',
+      'docx-anonymizer-ner-a-1.10.0.zip': '1.10.0',
+      'docx-anonymizer-ner-a-1.9.0.zip': '1.9.0',
+      'docx-anonymizer-ner-a-9.9.9.zip': null,
+    });
+    const warns = [];
+    expect(findModelZip([], { ...r, warn: (m) => warns.push(m) })).toBe(join(r.dir, 'docx-anonymizer-ner-a-1.10.0.zip'));
+    expect(warns).toEqual([expect.stringContaining('docx-anonymizer-ner-a-9.9.9.zip')]);
+    expect(warns[0]).toContain('KNOWN_PACKS');
+  });
+
+  it('только неизвестные или ни одного zip — null; --model= главнее выбора из release/', () => {
+    const only = release('unknown', { 'docx-anonymizer-ner-x-2.0.0.zip': null });
+    const warns = [];
+    expect(findModelZip([], { ...only, warn: (m) => warns.push(m) })).toBeNull();
+    expect(warns).toHaveLength(1);
+    expect(findModelZip([], { dir: join(dir, 'нет-такого'), warn: () => {} })).toBeNull();
+    const r = release('arg', { 'docx-anonymizer-ner-a-1.1.0.zip': '1.1.0' });
+    const explicit = join(r.dir, 'docx-anonymizer-ner-x-2.0.0.zip');
+    writeFileSync(explicit, 'любой');
+    expect(findModelZip([`--model=${explicit}`], r)).toBe(explicit);
+    expect(() => findModelZip([`--model=${join(r.dir, 'нет.zip')}`], r)).toThrow(/Нет файла пакета модели/);
+  });
+
+  it('настоящий KNOWN_PACKS: последняя версия; если её zip есть в release/, выбирается именно он (а не 1.0.0 рядом)', () => {
+    const latest = latestKnownPack();
+    expect(latest).toBeTruthy();
+    for (const p of KNOWN_PACKS) expect(compareVersions(p.version, latest.version), p.version).toBeLessThanOrEqual(0);
+    expect(latestModelZipPath(dir)).toBe(join(dir, `docx-anonymizer-ner-${latest.id}-${latest.version}.zip`));
+    const real = latestModelZipPath();
+    if (existsSync(real)) expect(findModelZip([], { warn: () => {} })).toBe(real);
+  }, 30000);
+});
+
+// Полный архив (версия 0.3, WP10-C, К15; 0.4, К12 — ≤ 45 МБ): модель NER в models/ — только если локально есть опубликованный zip
+// последнего пакета из KNOWN_PACKS (`npm run pack:model`; в git и CI его нет — там собирается только лёгкий архив).
+const MODEL_ZIP = latestModelZipPath();
 describe.skipIf(!existsSync(MODEL_ZIP))('полный архив', () => {
   let dir;
   let res;
@@ -184,14 +244,22 @@ describe.skipIf(!existsSync(MODEL_ZIP))('полный архив', () => {
     expect(res.full.size).toBeGreaterThan(res.lite.size);
   });
 
+  it('размер: полный ≤ 45 МБ, лёгкий ≤ 12 МБ (К12 версии 0.4)', () => {
+    console.log(`полный архив ${res.full.size} байт (${(res.full.size / 1048576).toFixed(1)} МБ), лёгкий ${res.lite.size} байт`);
+    expect(res.full.size).toBeLessThanOrEqual(45 * 1024 * 1024);
+    expect(res.lite.size).toBeLessThanOrEqual(12 * 1024 * 1024);
+  });
+
   it('models/index.json + models/<file>: sha256 из KNOWN_PACKS и равен sha байтов записи; zip пакета без изменений', () => {
     const index = JSON.parse(strFromU8(fullZip['models/index.json']));
     expect(index).toHaveLength(1);
     expect(Object.keys(index[0])).toEqual(['file', 'id', 'version', 'sha256', 'size']);
     const entry = fullZip[`models/${index[0].file}`];
     expect(entry, index[0].file).toBeDefined();
-    const known = KNOWN_PACKS.find((p) => p.id === index[0].id);
-    expect(index[0].sha256).toBe(known.sha256);
+    // пакетов одного id в KNOWN_PACKS несколько (1.0.0 и 1.1.0) — сверка по sha и версии
+    const known = findKnownPack(index[0].sha256);
+    expect(known).toMatchObject({ id: index[0].id, version: index[0].version });
+    expect(known).toEqual(latestKnownPack());
     expect(createHash('sha256').update(entry).digest('hex')).toBe(index[0].sha256);
     expect(entry.length).toBe(index[0].size);
     expect(Buffer.from(entry).equals(readFileSync(MODEL_ZIP))).toBe(true);

@@ -1,6 +1,7 @@
 // Конвейер PDF → .anon.md на фикстурах (версия 0.3): К2 (утечки — целиком и частично: фамилии gold-ФИО и номера,
 // разорванные дефисом или пробелом), К3 (паритет с DOCX; для «диких» PDF без DOCX — полнота по gold), К4 (порядок,
-// колонтитулы, таблица реквизитов), К6 (50 страниц ≤ 8 с), кросс-проверка слов с pdftotext (если установлен).
+// колонтитулы, таблица реквизитов; perf-50p — порядок по исходному тексту генератора, полнота строк относительно
+// pdftotext — финальная приёмка 0.3), К6 (50 страниц ≤ 8 с), кросс-проверка слов с pdftotext (если установлен).
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -19,7 +20,8 @@ import {
 } from '../../src/core/index.js';
 import { buildFixtures } from '../../scripts/gen-fixtures.mjs';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
-import { PDF_FIXTURES_DIR } from '../../scripts/gen-pdf-fixtures.mjs';
+import { PDF_FIXTURES_DIR, perfDocument } from '../../scripts/gen-pdf-fixtures.mjs';
+import { unescapeXml } from '../../src/core/docx/xml.js';
 
 const DIR = PDF_FIXTURES_DIR;
 const SETTINGS = { ...defaultSettings(), nerEnabled: false };
@@ -45,7 +47,7 @@ const NO_ORDER = new Set(['structures.lo', 'sample-contract.lo']);
 const WILD = ['wild-mono', 'wild-landscape', 'wild-2col'];
 const LEAK_FIXTURES = [...Object.keys(SOURCES), 'perf-50p', ...WILD];
 const HEADERS =
-  /Договор оказания услуг № 5\/ИП-2026$|— Договор транспортной экспедиции № 88$|— Services Agreement$|— Договор № 3$|— Договор № 12\/К$|— Договор поставки № 17\/ПС-2026$/;
+  /Договор оказания услуг № 5\/ИП-2026$|— Договор транспортной экспедиции № 88$|— Services Agreement$|— Договор № 3$|— Договор № 12\/К$|— Договор поставки № 17\/ПС-2026$|^Договор подряда № 50\/П-2026$/;
 const PDFTOTEXT = spawnSync('pdftotext', ['-v']).status === 0;
 
 const norm = (s) =>
@@ -62,6 +64,28 @@ const paraNorm = (s) =>
 const pdfBytes = (n) => new Uint8Array(readFileSync(join(DIR, `${n}.pdf`)));
 const gold = (n) => JSON.parse(readFileSync(join(DIR, `${n}.gold.json`), 'utf8'));
 let docx;
+
+/** Абзацы document.xml генератора (perfDocument) — исходный текст perf-50p по порядку, gold для К4. */
+function xmlParagraphs(xml) {
+  return [...xml.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g)]
+    .map((m) => paraNorm([...m[1].matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((t) => unescapeXml(t[1])).join('')))
+    .filter(Boolean);
+}
+
+/** Блоки текста (абзацы, заголовки, пункты), сопоставленные по порядку с абзацами исходника: доля упорядоченных. */
+function orderedShare(paras, blocks) {
+  // каждому блоку — абзац исходника, который его содержит или содержится в нём; индексы должны идти по порядку
+  let cursor = 0;
+  let ordered = 0;
+  for (const t of blocks) {
+    const idx = paras.findIndex((p, i) => i >= cursor && (p === t || p.includes(t) || t.includes(p)));
+    if (idx >= 0) {
+      ordered++;
+      cursor = idx;
+    }
+  }
+  return ordered / blocks.length;
+}
 
 /** Множество (категория, нормализованное значение вхождения) — по основному тексту документа. */
 function keyset(groups, pred) {
@@ -205,23 +229,26 @@ describe('К4: разметка', () => {
         .map((p) => paraNorm(dd.streamById.get(p.streams.live).text))
         .filter(Boolean);
       const blocks = layout.blocks.filter((b) => ['p', 'h1', 'h2', 'li'].includes(b.kind)).map((b) => paraNorm(b.text));
-      // каждому блоку — абзац DOCX, который его содержит или содержится в нём; индексы должны идти по порядку
-      let cursor = 0;
-      let ordered = 0;
-      for (const t of blocks) {
-        const idx = paras.findIndex((p, i) => i >= cursor && (p === t || p.includes(t) || t.includes(p)));
-        if (idx >= 0) {
-          ordered++;
-          cursor = idx;
-        }
-      }
-      expect(ordered / blocks.length, n).toBeGreaterThanOrEqual(0.98);
+      expect(orderedShare(paras, blocks), n).toBeGreaterThanOrEqual(0.98);
       for (const b of layout.blocks.filter((x) => !['header', 'footer'].includes(x.kind))) {
         expect(HEADERS.test(b.text), `${n}: колонтитул в тексте: ${b.kind}`).toBe(false);
         expect(/^Страница \d+ из \d+$/.test(b.text), `${n}: номер страницы`).toBe(false);
       }
     }
   }, 60000);
+
+  it('perf-50p: абзацы по порядку исходного текста генератора, ни один абзац и заголовок раздела не потерян', async () => {
+    // Финальная приёмка 0.3: эвристика колонтитулов удаляла из тела повторяющиеся строки с цифрами («(ИНН …), который
+    // согласует…»), «обязательств по настоящему договору.» и заголовки разделов 13, 26, 39 в нижней полосе.
+    const { layout } = await pdfPipeline('perf-50p');
+    const paras = xmlParagraphs(perfDocument().xml);
+    const blocks = layout.blocks.filter((b) => ['p', 'h1', 'h2', 'li'].includes(b.kind)).map((b) => paraNorm(b.text));
+    expect(orderedShare(paras, blocks)).toBe(1);
+    // каждый абзац исходника — ровно один блок (не склеен с соседним и не обрезан)
+    expect(blocks).toEqual(paras);
+    expect(layout.blocks.filter((b) => b.kind === 'header').map((b) => b.text)).toEqual(['Договор подряда № 50/П-2026']);
+    expect(layout.blocks.filter((b) => b.kind === 'footer')).toEqual([]);
+  }, 30000);
 
   it('таблица реквизитов ip-contract: ≥ 7 строк × 2 колонки с текстами ячеек DOCX (Chromium и LibreOffice)', async () => {
     const dd = parseDocx(docx['ip-contract']);
@@ -265,6 +292,33 @@ describe('К6: производительность', () => {
 });
 
 describe.skipIf(!PDFTOTEXT)('кросс-проверка с pdftotext -layout', () => {
+  it('К4 perf-50p: ≥ 99 % строк pdftotext (с повторами) есть в тексте блоков, кроме колонтитула и номеров страниц', async () => {
+    // Строки сравниваются мультимножеством: строка, повторённая на странице k раз, должна встретиться в тексте тела
+    // не меньше k раз, — иначе удалённая из тела повторяющаяся строка («обязательств по настоящему договору.») не видна.
+    const { layout } = await pdfPipeline('perf-50p');
+    const ours = layout.blocks
+      .filter((b) => ['p', 'h1', 'h2', 'li', 'cell'].includes(b.kind))
+      .map((b) => paraNorm(b.text))
+      .join('\n');
+    const pt = spawnSync('pdftotext', [join(DIR, 'perf-50p.pdf'), '-'], { encoding: 'utf8' }).stdout;
+    const lines = pt
+      .split('\n')
+      .map((l) => paraNorm(l).replace(/-$/, ''))
+      .filter((l) => l && !HEADERS.test(l) && !/^Страница \d+ из \d+$/.test(l));
+    const count = new Map();
+    for (const l of lines) count.set(l, (count.get(l) || 0) + 1);
+    let found = 0;
+    const missing = [];
+    for (const [l, c] of count) {
+      const o = ours.split(l).length - 1;
+      found += Math.min(c, o);
+      if (o < c) missing.push(`${c - o}× ${l.slice(0, 40)}`);
+    }
+    console.log(`perf-50p: строк pdftotext ${lines.length}, найдено ${found}`);
+    expect(lines.length).toBeGreaterThan(1500);
+    expect(found / lines.length, missing.slice(0, 5).join('; ')).toBeGreaterThanOrEqual(0.99);
+  }, 30000);
+
   it('Jaccard слов основного текста ≥ 0.97', async () => {
     const words = (s) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
     for (const n of LEAK_FIXTURES) {

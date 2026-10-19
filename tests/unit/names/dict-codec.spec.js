@@ -59,7 +59,8 @@ describe('санитария словарей', () => {
   });
 
   it('частые фамилии на месте, нарицательные — нет', () => {
-    for (const w of ['иванов', 'смирнов', 'ткаченко', 'шевчук', 'чайковский', 'хасанов', 'павловский', 'римский', 'корсаков']) expect(d.ruSurnames.has(w), w).toBe(true);
+    for (const w of ['иванов', 'смирнов', 'ткаченко', 'шевчук', 'чайковский', 'хасанов', 'павловский', 'римский', 'корсаков'])
+      expect(d.ruSurnames.has(w), w).toBe(true);
     for (const w of ['ромашка', 'вектор', 'москва', 'директор', 'иван', 'анна']) expect(d.ruSurnames.has(w), w).toBe(false);
   });
 
@@ -82,7 +83,12 @@ describe('санитария словарей', () => {
 describe('морфология фамилий по словарю', () => {
   it('падежные формы обоих родов и дефисные фамилии', () => {
     expect(surnameLemmas('Ивановой')).toEqual(expect.arrayContaining([{ lemma: 'иванова', gender: 'f', cases: [1, 2, 4, 5] }]));
-    expect(surnameLemmas('Иванову').map((x) => [x.lemma, x.gender])).toEqual(expect.arrayContaining([['иванов', 'm'], ['иванова', 'f']]));
+    expect(surnameLemmas('Иванову').map((x) => [x.lemma, x.gender])).toEqual(
+      expect.arrayContaining([
+        ['иванов', 'm'],
+        ['иванова', 'f'],
+      ]),
+    );
     expect(surnameLemmas('Павловской').map((x) => x.lemma)).toContain('павловская');
     expect(surnameLemmas('Шевчуку')).toEqual([{ lemma: 'шевчук', gender: 'm', cases: [2] }]);
     expect(surnameLemmas('Римского-Корсакова')).toEqual(expect.arrayContaining([{ lemma: 'римский-корсаков', gender: 'm', cases: [1, 3] }]));

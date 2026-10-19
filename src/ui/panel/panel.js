@@ -13,6 +13,13 @@ import { formatSize } from '../../content/files.js';
 import { shouldShowMappingHint } from './done-hint.js';
 
 export const PANEL_TAG = 'docx-anonymizer-root';
+
+/**
+ * Ключ предупреждения PDF_PAGES_NO_TEXT (FR-57, §3.5, версия 0.3): одна страница — единственное число («Страница 2 не содержит
+ * текста»), несколько — множественное.
+ * @param {number[] | undefined} pages
+ */
+export const pdfPagesKey = (pages) => ((pages || []).length === 1 ? 'warnPdfPage' : 'warnPdfPages');
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 function logo() {
@@ -280,8 +287,8 @@ export class Panel {
           ? this.t('warnEmbedded', { n: w.count ?? 0 })
           : w.code === 'NER_FAILED' // WP8: сбой модели NER не мешает результату правил (NFR-13)
             ? this.t('warnNer', { reason: this.t(`nerReason_${reason}`) })
-            : w.code === 'PDF_PAGES_NO_TEXT' // версия 0.3: смешанный PDF — страницы без текстового слоя
-              ? this.t('warnPdfPages', { pages: (w.details?.pages || []).join(', ') })
+            : w.code === 'PDF_PAGES_NO_TEXT' // версия 0.3: смешанный PDF — страницы без текстового слоя (одна — в единственном числе)
+              ? this.t(pdfPagesKey(w.details?.pages), { pages: (w.details?.pages || []).join(', ') })
               : this.t('warnGeneric', { code: w.code });
       warns.push(h('div', { class: 'warn', text }));
     }

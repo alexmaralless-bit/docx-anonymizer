@@ -146,7 +146,7 @@ test.describe('PDF: отказы и предупреждения (К5)', () => {
     await page.setInputFiles('#multi-input', writeTemp('mixed.pdf', pdf('mixed')));
     const ui = panel(page);
     await expect(ui.summary).toBeVisible({ timeout: 60000 });
-    await expect(ui.host.locator('.warn')).toContainText('Страницы 2 не содержат текста');
+    await expect(ui.host.locator('.warn')).toContainText('Страница 2 не содержит текста');
   });
 });
 

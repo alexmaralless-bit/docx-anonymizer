@@ -6,6 +6,8 @@ import { common } from '../../../src/ui/i18n/common.js';
 import { OPTIONS_DICT as options } from '../../../src/ui/i18n/options.js';
 import { ERROR_CODES, STAGES } from '../../../src/shared/protocol.js';
 import { ERROR_CODES as CORE_CODES } from '../../../src/core/errors.js';
+import { createT } from '../../../src/ui/i18n/index.js';
+import { pdfPagesKey } from '../../../src/ui/panel/panel.js';
 
 const keys = (d) => Object.keys(d).sort();
 
@@ -27,6 +29,15 @@ describe('i18n PDF', () => {
     expect(common.ru['err.PDF_NO_TEXT']).toMatch(/скан/);
     expect(common.en['err.PDF_NO_TEXT']).toMatch(/scan/);
     expect(panel.ru.warnPdfPages).toContain('{pages}');
+  });
+  it('страницы без текста: одна — единственное число, несколько — множественное (ru и en)', () => {
+    const say = (lang, pages) => createT(panel, lang)(pdfPagesKey(pages), { pages: pages.join(', ') });
+    expect(pdfPagesKey([2])).toBe('warnPdfPage');
+    expect(pdfPagesKey([2, 5])).toBe('warnPdfPages');
+    expect(say('ru', [2])).toMatch(/^Страница 2 не содержит текста .*её содержимое/);
+    expect(say('ru', [2, 5])).toMatch(/^Страницы 2, 5 не содержат текста .*их содержимое/);
+    expect(say('en', [2])).toMatch(/^Page 2 contains no text .*its content/);
+    expect(say('en', [2, 5])).toMatch(/^Pages 2, 5 contain no text .*their content/);
   });
   it('у каждого кода ошибки протокола и стадии есть текст; коды ядра и протокола совпадают', () => {
     for (const code of ERROR_CODES) expect(common.ru[`err.${code}`], code).toBeTruthy();

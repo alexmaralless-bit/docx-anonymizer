@@ -6,18 +6,25 @@
 // не включён Network, поэтому ранние запросы (загрузка offscreen.html, скрипт воркера) не теряются.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { profileDirs } from '../fixtures.js';
+import { earlyCaptures, profileDirs } from '../fixtures.js';
 
 /** Интерфейс самого Chromium (омнибокс и т.п.) — не расширение и не тестовые страницы. */
 const SKIP_TYPES = new Set(['browser_ui']);
 
 /**
- * Начинает запись запросов всех целей браузера контекста.
+ * Начинает запись запросов всех целей браузера контекста. Если фикстура запустила контекст с earlyCapture, первый
+ * вызов возвращает запись, подключённую до загрузки расширения (ничего не пропущено с самого старта).
  * @param {import('@playwright/test').BrowserContext} context  контекст из фикстуры tests/e2e/fixtures.js
  * @returns {Promise<{urls: string[], targets: {type: string, url: string}[], stop: () => Promise<string[]>}>}
  *   urls — живой список URL (Network.requestWillBeSent), targets — присоединённые цели (для диагностики)
  */
 export async function captureAllRequests(context) {
+  // запись, начатая фикстурой до загрузки расширения (earlyCapture), — первому вызову
+  const early = earlyCaptures.get(context);
+  if (early) {
+    earlyCaptures.delete(context);
+    return early;
+  }
   const dir = profileDirs.get(context);
   if (!dir) throw new Error('captureAllRequests: контекст создан не фикстурой tests/e2e/fixtures.js');
   const portFile = join(dir, 'DevToolsActivePort');

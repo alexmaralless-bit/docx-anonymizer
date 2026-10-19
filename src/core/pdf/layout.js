@@ -362,14 +362,25 @@ const lineText = (L) => L.segs.map((s) => s.text).join(' ');
 /* ---------------- колонтитулы ---------------- */
 
 const repeatKey = (text) => text.toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+/** Конец предложения (абзаца) в конце строки: «.», «!», «?», «:», «;», «…» с закрывающими кавычками и скобками. */
+const SENTENCE_END_RE = /[.!?:;…][»"”')\]]*$/u;
+/** Реквизит с номером («ИНН 7701…», «ОГРН 1…», «р/с 4…») — строка тела договора, а не колонтитул (финальная приёмка 0.3). */
+const REQUISITE_RE = /(?:^|[^\p{L}])(?:ИНН|КПП|ОГРНИП|ОГРН|БИК|СНИЛС|р\/с|к\/с)\s*:?\s*\d/iu;
 
 /**
- * Колонтитулы и номера страниц (FR колонтитулов концепции 0.3): строки верхней и нижней полос (BAND высоты), текст
- * которых (цифры → #) повторяется на ≥ 3 страницах или на ≥ 50 % страниц (не меньше двух), — колонтитулы; одиночная
- * крайняя строка полосы мелким кеглем (≤ 0.85 основного) — тоже; крайняя строка полосы обычным кеглем без жирного,
- * отделённая от текста шагом > HEADER_GAP·pitch, — тоже, и на одностраничном документе (колонтитул LibreOffice
- * 12 pt над текстом); номера страниц («3», «- 3 -», «Страница 2 из 4», «Page 2 of 4») удаляются. Возвращает строки
- * без колонтитулов и сами колонтитулы (по одному на уникальный текст).
+ * Колонтитулы и номера страниц (FR колонтитулов концепции 0.3): номера страниц («3», «- 3 -», «Страница 2 из 4»,
+ * «Page 2 of 4») в верхней и нижней полосах (BAND высоты) удаляются. Колонтитул по повтору — только крайние строки
+ * полосы: участок подряд идущих от края страницы строк (номера страниц между ними и краем не считаются), текст каждой
+ * из которых (цифры → #) повторяется на ≥ 3 страницах или на ≥ 50 % страниц (не меньше двух) и не похож на текст
+ * договора: не заголовок (не крупнее 1.15 основного кегля и не жирная), не пункт с нумерацией («2.8. …»), без
+ * реквизита с номером («ИНН 7701…»). Участок не должен продолжаться абзацем: сверху — предыдущая страница кончается
+ * незавершённым предложением, а следующая строка идёт обычным шагом (≤ PARA_PITCH·pitch); снизу — строка выше идёт
+ * обычным шагом без конца предложения. Иначе на perf-50p повторы «(ИНН #), который согласует…», «обязательств по
+ * настоящему договору.» и «#. ПОРЯДОК ВЫПОЛНЕНИЯ РАБОТ ЭТАПА #» уходили из тела (финальная приёмка 0.3, К4).
+ * Кроме того, одиночная крайняя строка полосы мелким кеглем (≤ 0.85 основного) — колонтитул; крайняя строка полосы
+ * обычным кеглем без жирного, отделённая от текста шагом > HEADER_GAP·pitch, — тоже, и на одностраничном документе
+ * (колонтитул LibreOffice 12 pt над текстом). Возвращает строки без колонтитулов и сами колонтитулы (по одному на
+ * уникальный текст).
  * @param {{page: number, height: number, lines: Line[]}[]} pages
  * @param {number} bodySize медианный кегль документа
  * @param {number} [pitch] обычный шаг строк (0 — правило отделённой строки не применяется)
@@ -377,14 +388,23 @@ const repeatKey = (text) => text.toLowerCase().replace(/\d+/g, '#').replace(/\s+
  */
 export function stripRepeating(pages, bodySize = 0, pitch = 0) {
   const n = pages.length;
+  const bandOf = (L, h) => (L.y < BAND * h ? 'top' : L.y > (1 - BAND) * h ? 'bottom' : null);
+  const isPageNum = (L) => PAGE_NUM_RE.test(lineText(L).trim());
+  const plain = (L) => bodySize > 0 && L.size <= 1.15 * bodySize && L.segs.every((x) => x.bold < 0.5);
+  // похожа на текст договора сама по себе (без соседей): заголовок, пункт с нумерацией, реквизит с номером
+  const bodyLike = (L) => {
+    const text = lineText(L).trim();
+    const heading = bodySize > 0 ? !plain(L) : L.segs.some((x) => x.bold >= 0.5);
+    return heading || NUMBERING_RE.test(text) || REQUISITE_RE.test(text);
+  };
   /** @type {Map<string, Set<number>>} */
   const seen = new Map();
-  const bandOf = (L, h) => (L.y < BAND * h ? 'top' : L.y > (1 - BAND) * h ? 'bottom' : null);
+  const keyOf = (band, L) => `${band}\u0000${repeatKey(lineText(L))}`;
   for (const p of pages) {
     for (const L of p.lines) {
       const band = bandOf(L, p.height);
-      if (!band) continue;
-      const key = `${band}\u0000${repeatKey(lineText(L))}`;
+      if (!band || isPageNum(L) || bodyLike(L)) continue;
+      const key = keyOf(band, L);
       let set = seen.get(key);
       if (!set) seen.set(key, (set = new Set()));
       set.add(p.page);
@@ -394,33 +414,75 @@ export function stripRepeating(pages, bodySize = 0, pitch = 0) {
     const c = seen.get(key)?.size || 0;
     return c >= 2 && (c >= 3 || c >= 0.5 * n);
   };
+  const near = (a, b) => pitch > 0 && Math.abs(a.y - b.y) <= PARA_PITCH * pitch;
   const headers = [];
   const known = new Set();
+  /** Последняя строка тела предыдущей страницы (после удаления колонтитулов). */
+  let prevTail = null;
   const out = pages.map((p) => {
-    const lines = [];
-    p.lines.forEach((L, i) => {
+    const L0 = p.lines;
+    const drop = new Set();
+    /** @type {Map<number, 'header'|'footer'>} строка → вид колонтитула */
+    const marked = new Map();
+    const mark = (i, band) => {
+      drop.add(i);
+      marked.set(i, band === 'top' ? 'header' : 'footer');
+    };
+    // номера страниц — в обеих полосах
+    L0.forEach((L, i) => {
+      if (bandOf(L, p.height) && isPageNum(L)) drop.add(i);
+    });
+    // одиночная мелкая или отделённая от текста крайняя строка полосы (по индексу на странице, как в 0.3 до приёмки)
+    L0.forEach((L, i) => {
       const band = bandOf(L, p.height);
-      const text = lineText(L);
-      if (band) {
-        if (PAGE_NUM_RE.test(text.trim())) return;
-        const extreme = band === 'top' ? i === 0 : i === p.lines.length - 1;
-        const small = bodySize > 0 && L.size <= 0.85 * bodySize && extreme;
-        // отделённая от текста крайняя строка обычного кегля: не заголовок (не крупнее и не жирная)
-        const neighbour = band === 'top' ? p.lines[i + 1] : p.lines[i - 1];
-        const plain = bodySize > 0 && L.size <= 1.15 * bodySize && L.segs.every((x) => x.bold < 0.5);
-        const isolated = extreme && plain && pitch > 0 && !!neighbour && Math.abs(neighbour.y - L.y) > HEADER_GAP * pitch;
-        if (repeated(`${band}\u0000${repeatKey(text)}`) || small || isolated) {
-          const kind = band === 'top' ? 'header' : 'footer';
-          const k = `${kind}\u0000${repeatKey(text)}`;
-          if (!known.has(k)) {
-            known.add(k);
-            headers.push({ kind, text, page: p.page });
-          }
-          return;
+      if (!band || drop.has(i)) return;
+      const extreme = band === 'top' ? i === 0 : i === L0.length - 1;
+      if (!extreme) return;
+      const small = bodySize > 0 && L.size <= 0.85 * bodySize;
+      const neighbour = band === 'top' ? L0[i + 1] : L0[i - 1];
+      const isolated = plain(L) && pitch > 0 && !!neighbour && Math.abs(neighbour.y - L.y) > HEADER_GAP * pitch;
+      if (small || isolated) mark(i, band);
+    });
+    // Повтор: подряд идущие от края страницы строки полосы с повторяющимся текстом, не похожие на текст договора
+    // (номера страниц и уже признанные строки между ними пропускаются). Колонтитул — самый длинный такой участок от
+    // края, после которого текст не продолжает его как абзац: сверху — предыдущая страница не кончается
+    // незавершённым предложением или следующая строка отделена шагом > PARA_PITCH·pitch; снизу — строка выше
+    // отделена так же или кончается концом предложения.
+    const unfinished = !!prevTail && !SENTENCE_END_RE.test(lineText(prevTail).trim());
+    const walk = (band, from, step) => {
+      const run = [];
+      let inner = null;
+      for (let i = from; i >= 0 && i < L0.length; i += step) {
+        const L = L0[i];
+        if (drop.has(i)) continue;
+        if (bandOf(L, p.height) === band && !bodyLike(L) && repeated(keyOf(band, L))) run.push(i);
+        else {
+          inner = L;
+          break;
         }
       }
-      lines.push(L);
-    });
+      const flows = (edgeSide, next) =>
+        !!next && (band === 'top' ? unfinished && near(edgeSide, next) : near(next, edgeSide) && !SENTENCE_END_RE.test(lineText(next).trim()));
+      for (let k = run.length; k > 0; k--) {
+        const next = k < run.length ? L0[run[k]] : inner;
+        if (flows(L0[run[k - 1]], next)) continue;
+        for (let j = 0; j < k; j++) mark(run[j], band);
+        return;
+      }
+    };
+    walk('top', 0, 1);
+    walk('bottom', L0.length - 1, -1);
+    for (const i of [...marked.keys()].sort((a, b) => a - b)) {
+      const kind = /** @type {'header'|'footer'} */ (marked.get(i));
+      const text = lineText(L0[i]);
+      const k = `${kind}\u0000${repeatKey(text)}`;
+      if (!known.has(k)) {
+        known.add(k);
+        headers.push({ kind, text, page: p.page });
+      }
+    }
+    const lines = L0.filter((_, i) => !drop.has(i));
+    if (lines.length) prevTail = lines[lines.length - 1];
     return { ...p, lines };
   });
   return { pages: out, headers };

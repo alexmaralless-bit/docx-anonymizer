@@ -41,7 +41,8 @@ function corpus(paragraphs, seed) {
     const words = [];
     for (let w = 0; w < 65; w++) {
       const r = rand();
-      if (r < 0.005) words.push(pick(PAIRS)); // пара — 2 слова, ~1 % слов
+      if (r < 0.005)
+        words.push(pick(PAIRS)); // пара — 2 слова, ~1 % слов
       else if (r < 0.085) words.push(pick(CAPS));
       else words.push(pick(WORDS));
       if (rand() < 0.07) words[words.length - 1] += '.';

@@ -23,7 +23,8 @@ export function parseCategoriesFile(text) {
 }
 
 // nerModel — id пакета модели в хранилище этого браузера (WP8): на другой машине пакета нет, поэтому не переносится.
-export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel']);
+// hintMappingShown — одноразовая подсказка о ключе восстановления (WP10-D): состояние этого браузера, не настройка.
+export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel', 'hintMappingShown']);
 
 /**
  * Разбор файла настроек: {patch, skipped} или {error}. `version` файла — версия формата файла, `schemaVersion` —

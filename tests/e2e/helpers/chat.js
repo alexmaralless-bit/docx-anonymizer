@@ -108,6 +108,14 @@ export const enableIntercept = (context, extensionId, site) =>
  *              [data-testid="pv-rows"] .pv-row    строки сущностей
  *              [data-testid="file-tab"]           вкладка файла (несколько файлов)
  *              [data-testid="done-title"]         экран «готово» после подстановки
+ *              [data-testid="btn-done-close"]     «Закрыть» на экране «готово» (может показать подсказку о ключе, WP10-D)
+ *              [data-testid="btn-download-result"]  «Скачать результат» (основная кнопка экрана «готово»)
+ *              [data-testid="btn-more"]           «Ещё ▾» — открывает меню (есть, если карта замен доступна)
+ *              [data-testid="more-menu"]          меню «Ещё»
+ *              [data-testid="btn-download-mapping"]  пункт меню «Сохранить ключ восстановления» (.mapping.json)
+ *              [data-testid="mapping-hint"]       одноразовая подсказка о ключе восстановления (флаг hintMappingShown)
+ *              [data-testid="btn-hint-ok"]        «Понятно» — закрыть панель без сохранения
+ *              [data-testid="btn-hint-save"]      «Сохранить» — скачать ключ и закрыть панель
  *              [data-testid="error-message"]      ошибка
  */
 export const PANEL_HOST = 'docx-anonymizer-root';
@@ -129,6 +137,14 @@ export const panel = (scope) => {
     rows: host.locator('.pv-row'),
     tabs: t('file-tab'),
     done: t('done-title'),
+    doneClose: t('btn-done-close'),
+    downloadResult: t('btn-download-result'),
+    more: t('btn-more'),
+    moreMenu: t('more-menu'),
+    downloadMapping: t('btn-download-mapping'),
+    mappingHint: t('mapping-hint'),
+    hintOk: t('btn-hint-ok'),
+    hintSave: t('btn-hint-save'),
     error: t('error-message'),
   };
 };

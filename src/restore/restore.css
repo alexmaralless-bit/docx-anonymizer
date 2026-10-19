@@ -61,3 +61,17 @@ mark.declined {
   border-bottom: 1px dotted var(--ok);
   cursor: help;
 }
+/* FR-36а: сводка восстановления файла DOCX и список склонённых ФИО */
+.result.summary {
+  min-height: 0;
+  white-space: normal;
+}
+.result.summary p {
+  margin: 0 0 8px;
+}
+.declined-list {
+  margin: 6px 0 10px;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}

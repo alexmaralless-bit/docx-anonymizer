@@ -14,11 +14,11 @@ const EMAIL_B = 'maria.sidorova@example.org';
 const docxBytes = () => Buffer.from(makeDocx(para(run(`Связь: ${EMAIL_A}, запасной адрес ${EMAIL_B}. Срок поставки — 10 дней.`))));
 const docxFile = (name = 'договор.docx') => ({ name, mimeType: DOCX_MIME, buffer: docxBytes() });
 
-async function setup(context, extensionId, { enabled = true } = {}) {
+async function setup(context, extensionId, { enabled = true, extra = {} } = {}) {
   await context.route(`${ORIGIN}/**`, (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: PAGE_HTML }));
   const ext = await context.newPage();
   await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
-  await setSettings(ext, enabled);
+  await setSettings(ext, enabled, extra);
   await ext.close();
   const page = await context.newPage();
   await page.goto(`${ORIGIN}/`);
@@ -47,7 +47,7 @@ test.describe('перехват на сайте', () => {
   });
 
   test('input: панель, снятие галочки, «Анонимизировать» → сайт получает *.anon.docx', async ({ context, extensionId }) => {
-    const page = await setup(context, extensionId);
+    const page = await setup(context, extensionId, { extra: { hintMappingShown: true } }); // подсказка о ключе (WP10-D) — отдельный тест
     await page.setInputFiles('#single', docxFile());
     await expect(page.getByTestId('pv-summary')).toContainText('Найдено', { timeout: 30000 });
     expect(await dump(page)).toEqual([]); // до решения сайт ничего не получил
@@ -135,7 +135,7 @@ test.describe('перехват на сайте', () => {
   });
 
   test('динамический input и input в open shadow root', async ({ context, extensionId }) => {
-    const page = await setup(context, extensionId);
+    const page = await setup(context, extensionId, { extra: { hintMappingShown: true } });
     await page.click('#add-dynamic');
     await page.setInputFiles('#dynamic', docxFile('dyn.docx'));
     await expect(page.getByTestId('btn-anonymize')).toBeEnabled({ timeout: 30000 });
@@ -151,7 +151,7 @@ test.describe('перехват на сайте', () => {
   });
 
   test('drag&drop (FR-02) и вставка (FR-03)', async ({ context, extensionId }) => {
-    const page = await setup(context, extensionId);
+    const page = await setup(context, extensionId, { extra: { hintMappingShown: true } });
     const b64 = docxBytes().toString('base64');
     await page.evaluate(
       ({ b64, mime }) => {
@@ -242,6 +242,69 @@ test.describe('перехват на сайте', () => {
   });
 });
 
+// WP10-D (К16): ключ восстановления — в меню «Ещё»; одноразовая подсказка при закрытии без сохранения
+test.describe('экран «готово»: меню «Ещё» и подсказка о ключе восстановления', () => {
+  async function anonymizeOnce(page, name = 'договор.docx') {
+    await page.setInputFiles('#single', docxFile(name));
+    await expect(page.getByTestId('btn-anonymize')).toBeEnabled({ timeout: 30000 });
+    await page.getByTestId('btn-anonymize').click();
+    await expect(page.getByTestId('done-title')).toBeVisible({ timeout: 30000 });
+  }
+
+  test('ключ скачивается из меню «Ещё»; после сохранения «Закрыть» закрывает без подсказки', async ({ context, extensionId }) => {
+    const page = await setup(context, extensionId);
+    await anonymizeOnce(page);
+    await expect(page.getByTestId('btn-download-mapping')).toBeHidden();
+    await expect(page.getByTestId('btn-download-result')).toHaveClass(/btn-primary/);
+    await expect(page.getByTestId('btn-more')).toHaveAttribute('aria-expanded', 'false');
+    await page.getByTestId('btn-more').click();
+    await expect(page.getByTestId('more-menu')).toBeVisible();
+    await expect(page.getByTestId('btn-more')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByTestId('btn-download-mapping')).toHaveText('Сохранить ключ восстановления');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('btn-download-mapping').click()]);
+    expect(dl.suggestedFilename()).toBe('договор.mapping.json');
+    const json = JSON.parse(readFileSync(await dl.path(), 'utf8'));
+    expect(Array.isArray(json.entries)).toBe(true);
+    expect(json.entries.length).toBeGreaterThan(0);
+    await expect(page.getByTestId('more-menu')).toBeHidden();
+    await page.getByTestId('btn-done-close').click();
+    await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+    await expect(page.getByTestId('mapping-hint')).toHaveCount(0);
+  });
+
+  test('без сохранения — подсказка один раз, флаг в настройках; Esc и клик вне закрывают меню, не панель', async ({ context, extensionId }) => {
+    const page = await setup(context, extensionId);
+    await anonymizeOnce(page);
+    await page.getByTestId('btn-more').click();
+    await expect(page.getByTestId('more-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('more-menu')).toBeHidden();
+    await expect(page.getByTestId('done-title')).toBeVisible();
+    await page.getByTestId('btn-more').click();
+    await expect(page.getByTestId('more-menu')).toBeVisible();
+    await page.getByTestId('done-title').click();
+    await expect(page.getByTestId('more-menu')).toBeHidden();
+    await expect(page.getByTestId('done-title')).toBeVisible();
+
+    await page.getByTestId('btn-done-close').click();
+    await expect(page.getByTestId('mapping-hint')).toBeVisible();
+    await expect(page.getByTestId('mapping-hint')).toContainText('Сохранить ключ восстановления?');
+    await expect(page.getByTestId('btn-hint-save')).toBeVisible();
+    await page.getByTestId('btn-hint-ok').click();
+    await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+    const ext = await context.newPage();
+    await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    await expect.poll(() => ext.evaluate(async () => (await chrome.storage.local.get('settings')).settings?.hintMappingShown)).toBe(true);
+    await ext.close();
+
+    await page.reload();
+    await anonymizeOnce(page, 'второй.docx');
+    await page.getByTestId('btn-done-close').click();
+    await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+    await expect(page.getByTestId('mapping-hint')).toHaveCount(0);
+  });
+});
+
 test('popup: тумблер перехвата сохраняется в настройках, статус сайта (FR-42)', async ({ context, extensionId }) => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/popup/popup.html`);
@@ -299,7 +362,9 @@ test('скриншоты панели для портфолио (E2E_SHOTS=ка�
   const opt = await context.newPage();
   await opt.setViewportSize({ width: 1100, height: 900 });
   await opt.goto(`chrome-extension://${extensionId}/options/options.html`);
-  await opt.evaluate(() => chrome.storage.local.set({ settings: { interceptEnabled: true, allowlist: ['https://chatgpt.com', 'https://claude.ai'], uiLanguage: 'ru' } }));
+  await opt.evaluate(() =>
+    chrome.storage.local.set({ settings: { interceptEnabled: true, allowlist: ['https://chatgpt.com', 'https://claude.ai'], uiLanguage: 'ru' } }),
+  );
   await opt.reload();
   await opt.waitForTimeout(600);
   await opt.screenshot({ path: `${process.env.E2E_SHOTS}/options.png`, fullPage: true });

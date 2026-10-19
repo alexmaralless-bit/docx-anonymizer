@@ -19,14 +19,19 @@ export function h(tag, attrs = {}, ...children) {
   return el;
 }
 
-/** Скачивание JSON-файла без chrome.downloads. */
-export function downloadJson(name, obj) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
+/** Скачивание файла без chrome.downloads (FR-36а: восстановленный файл от ИИ). */
+export function downloadBlob(name, blob) {
+  const url = URL.createObjectURL(blob);
   const a = h('a', { href: url, download: name });
   document.body.append(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/** Скачивание JSON-файла без chrome.downloads. */
+export function downloadJson(name, obj) {
+  downloadBlob(name, new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
 }
 
 /** Модальное подтверждение на <dialog>. */

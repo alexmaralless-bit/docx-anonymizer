@@ -68,8 +68,13 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .empty-found { color: var(--muted); }
 
 /* подвал */
-.ftr { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--bg); }
+.ftr { position: relative; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--bg); }
 .ftr .sp { flex: 1; }
+/* меню «Ещё» на экране «готово» (WP10-D): ключ восстановления */
+.menu { position: absolute; right: 16px; bottom: calc(100% - 4px); z-index: 4; min-width: 260px; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; }
+.menu[hidden] { display: none; }
+.menu-item { text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 7px; color: var(--text); }
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface); }
 .btn { border: 1px solid var(--border); background: var(--bg); padding: 8px 14px; border-radius: 10px; font-weight: 550; white-space: nowrap; }
 .btn:hover { background: var(--surface); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }

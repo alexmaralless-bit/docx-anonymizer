@@ -10,6 +10,7 @@ import { panel as dict } from '../i18n/panel.js';
 import { createPreview } from '../preview/preview.js';
 import { PANEL_CSS } from './styles.js';
 import { formatSize } from '../../content/files.js';
+import { shouldShowMappingHint } from './done-hint.js';
 
 export const PANEL_TAG = 'docx-anonymizer-root';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -42,6 +43,7 @@ function logo() {
  * @property {(i: number) => void} onRetry
  * @property {() => void} onDisableSite
  * @property {(pos: {x: number, y: number}) => void} onPosition
+ * @property {() => void} [onMappingHintShown]  подсказка о ключе восстановления показана (WP10-D): сохранить флаг hintMappingShown
  */
 
 export class Panel {
@@ -170,13 +172,15 @@ export class Panel {
     if (e.key !== 'Escape' || this.destroyed) return;
     e.preventDefault();
     e.stopPropagation();
+    // WP10-D: открытое меню «Ещё» закрывается первым, панель остаётся
+    if (this.menuOpen) return this.closeMenu();
     if (this.phase === 'applying') return;
     if (this.phase === 'confirm-original' || this.phase === 'confirm-close') return this.backFromConfirm();
     this.requestClose();
   }
 
   requestClose() {
-    if (this.phase === 'done') return this.o.handlers.onCancel();
+    if (this.phase === 'done' || this.phase === 'mapping-hint') return this.o.handlers.onCancel();
     if (this.phase === 'applying') return;
     if (this.phase === 'notice') return this.o.handlers.onCancel();
     this.showConfirm('close');
@@ -458,24 +462,18 @@ export class Panel {
   }
 
   /**
-   * @param {{replacements: number, names: string[], resultFiles: File[], mappingText: string|null, mappingName: string}} d
+   * @param {{replacements: number, names: string[], resultFiles: File[], mappingText: string|null, mappingName: string, hintMappingShown?: boolean}} d
+   *   hintMappingShown — подсказка о ключе восстановления уже показывалась (WP10-D)
    */
   showDone(d) {
     const t = this.t;
     this.removeOverlay();
     this.phase = 'done';
+    this.done = d;
+    this.mappingSaved = false;
     this.applyView?.remove();
     for (const f of this.files) f.view.remove();
     this.renderFilesBar();
-    const download = (name, blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = h('a', { href: url, download: name });
-      a.style.display = 'none';
-      this.shadow.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    };
     this.body.append(
       h(
         'div',
@@ -491,27 +489,143 @@ export class Panel {
       ),
     );
     clear(this.footer);
-    this.footer.append(
-      h('button', { class: 'btn', type: 'button', text: t('btnClose'), 'data-testid': 'btn-done-close', onClick: () => this.o.handlers.onCancel() }),
-      h('span', { class: 'sp' }),
-      h('button', {
+    this.menu = null;
+    this.btnMore = null;
+    // FR-28 / WP10-D: ключ восстановления (карта замен) — в меню «Ещё», на виду только результат
+    if (d.mappingText != null) {
+      this.btnMore = h('button', {
         class: 'btn',
+        type: 'button',
+        text: `${t('btnMore')} ▾`,
+        'aria-haspopup': 'menu',
+        'aria-expanded': 'false',
+        'data-testid': 'btn-more',
+        onClick: () => (this.menuOpen ? this.closeMenu() : this.openMenu()),
+      });
+      this.menu = h(
+        'div',
+        { class: 'menu', role: 'menu', hidden: true, 'data-testid': 'more-menu' },
+        h('button', {
+          class: 'menu-item',
+          type: 'button',
+          role: 'menuitem',
+          text: t('btnDownloadMapping'),
+          'data-testid': 'btn-download-mapping',
+          onClick: () => {
+            this.saveMapping();
+            this.closeMenu();
+          },
+        }),
+      );
+    }
+    this.footer.append(
+      h('button', { class: 'btn', type: 'button', text: t('btnClose'), 'data-testid': 'btn-done-close', onClick: () => this.closeDone() }),
+      h('span', { class: 'sp' }),
+      this.btnMore,
+      h('button', {
+        class: 'btn btn-primary',
         type: 'button',
         text: t('btnDownloadResult'),
         'data-testid': 'btn-download-result',
-        onClick: () => d.resultFiles.forEach((f) => download(f.name, f)),
+        onClick: () => d.resultFiles.forEach((f) => this.download(f.name, f)),
       }),
-      d.mappingText != null
-        ? h('button', {
-            class: 'btn btn-primary',
-            type: 'button',
-            text: t('btnDownloadMapping'),
-            'data-testid': 'btn-download-mapping',
-            onClick: () => download(d.mappingName, new Blob([d.mappingText], { type: 'application/json' })),
-          })
-        : null,
+      this.menu,
     );
     this.updateChrome();
+  }
+
+  /** Скачивание без chrome.downloads: ссылка внутри shadow root. */
+  download(name, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: name });
+    a.style.display = 'none';
+    this.shadow.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  /** Ключ восстановления (карта замен) → файл .mapping.json (FR-28). */
+  saveMapping() {
+    const d = this.done;
+    if (!d || d.mappingText == null) return;
+    this.download(d.mappingName, new Blob([d.mappingText], { type: 'application/json' }));
+    this.mappingSaved = true;
+  }
+
+  openMenu() {
+    if (!this.menu || this.menuOpen) return;
+    this.menuOpen = true;
+    this.menu.hidden = false;
+    this.btnMore?.setAttribute('aria-expanded', 'true');
+    // Клик вне меню закрывает его: внутри панели — слушатель на shadow root, на странице — на window (capture)
+    this.onOutside = (e) => {
+      const path = e.composedPath();
+      if (e.currentTarget === window && path.includes(this.host)) return; // клик в панели — разберётся слушатель shadow root
+      if (path.includes(this.menu) || path.includes(this.btnMore)) return;
+      this.closeMenu();
+    };
+    this.shadow.addEventListener('pointerdown', this.onOutside);
+    window.addEventListener('pointerdown', this.onOutside, true);
+    /** @type {HTMLElement|null} */ (this.menu.querySelector('.menu-item'))?.focus();
+  }
+
+  closeMenu() {
+    if (this.onOutside) {
+      this.shadow.removeEventListener('pointerdown', this.onOutside);
+      window.removeEventListener('pointerdown', this.onOutside, true);
+      this.onOutside = null;
+    }
+    if (!this.menuOpen) return;
+    this.menuOpen = false;
+    if (this.menu) this.menu.hidden = true;
+    this.btnMore?.setAttribute('aria-expanded', 'false');
+  }
+
+  /** «Закрыть» на экране «готово»: один раз напомнить о ключе восстановления, если он не сохранён (WP10-D). */
+  closeDone() {
+    this.closeMenu();
+    const d = this.done;
+    if (shouldShowMappingHint({ hintMappingShown: d?.hintMappingShown, mappingAvailable: d?.mappingText != null, mappingSaved: this.mappingSaved })) {
+      return this.showMappingHint();
+    }
+    this.o.handlers.onCancel();
+  }
+
+  showMappingHint() {
+    const t = this.t;
+    this.removeOverlay();
+    this.phase = 'mapping-hint';
+    const save = h('button', {
+      class: 'btn btn-primary',
+      type: 'button',
+      text: t('hintMappingSave'),
+      'data-testid': 'btn-hint-save',
+      onClick: () => {
+        this.saveMapping();
+        this.o.handlers.onCancel();
+      },
+    });
+    this.overlay = h(
+      'div',
+      { class: 'overlay', 'data-testid': 'mapping-hint' },
+      h(
+        'div',
+        { class: 'dialog', role: 'alertdialog', 'aria-label': t('hintMappingTitle') },
+        h('h3', { text: t('hintMappingTitle') }),
+        h('p', { text: t('hintMappingText') }),
+        h(
+          'div',
+          { class: 'row' },
+          h('button', { class: 'btn', type: 'button', text: t('hintMappingOk'), 'data-testid': 'btn-hint-ok', onClick: () => this.o.handlers.onCancel() }),
+          save,
+        ),
+      ),
+    );
+    this.body.append(this.overlay);
+    save.focus();
+    // Показана — больше не показывать (флаг в настройках, FR-29: сама карта в хранилище не пишется)
+    this.o.handlers.onMappingHintShown?.();
   }
 
   /** Уведомление без обмена с ядром (инвалидация контекста FR-09, сбои). */
@@ -563,6 +677,7 @@ export class Panel {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.closeMenu();
     window.removeEventListener('keydown', this.onKey, true);
     window.removeEventListener('resize', this.onResize);
     for (const f of this.files) f.preview?.destroy();

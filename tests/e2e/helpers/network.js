@@ -10,6 +10,8 @@ import { earlyCaptures, profileDirs } from '../fixtures.js';
 
 /** Интерфейс самого Chromium (омнибокс и т.п.) — не расширение и не тестовые страницы. */
 const SKIP_TYPES = new Set(['browser_ui']);
+/** Предел ожидания одной команды CDP при подключении к цели (мс). */
+const SETUP_TIMEOUT_MS = 5000;
 
 /**
  * Начинает запись запросов всех целей браузера контекста. Если фикстура запустила контекст с earlyCapture, первый
@@ -52,17 +54,22 @@ export async function captureAllRequests(context) {
     });
 
   const autoAttach = (sessionId) => send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId);
+  // Ответ CDP может не прийти (цель исчезла, пока команда в пути): без предела цель осталась бы на паузе навсегда
+  const bounded = (p, ms = SETUP_TIMEOUT_MS) => {
+    let t;
+    return Promise.race([p, new Promise((r) => (t = setTimeout(r, ms)))]).finally(() => clearTimeout(t));
+  };
 
   async function onAttached({ sessionId, targetInfo, waitingForDebugger }) {
     try {
       if (!SKIP_TYPES.has(targetInfo.type)) {
         targets.push({ type: targetInfo.type, url: targetInfo.url });
         // Не у всех целей есть Network/Target (например, tab) — ошибки домена не мешают остальным
-        await send('Network.enable', {}, sessionId).catch(() => {});
-        await autoAttach(sessionId).catch(() => {});
+        await bounded(send('Network.enable', {}, sessionId).catch(() => {}));
+        await bounded(autoAttach(sessionId).catch(() => {}));
       }
     } finally {
-      if (waitingForDebugger) await send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => {});
+      if (waitingForDebugger) await bounded(send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => {}));
     }
   }
 

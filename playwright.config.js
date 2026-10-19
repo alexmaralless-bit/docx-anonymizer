@@ -7,4 +7,6 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   outputDir: 'test-output/playwright',
+  // в CI трасса упавшего теста (действия, сеть страниц, консоль) попадает в артефакт e2e-test-output — для разбора зависаний
+  use: { trace: process.env.CI ? 'retain-on-failure' : 'off' },
 });

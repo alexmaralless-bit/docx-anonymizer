@@ -1,11 +1,13 @@
-# CI версии 0.2 (К12, docs/concept-0.2.md): lint + unit/integration + сборка + архив релиза, затем e2e в Chromium.
+# CI (с версии 0.2, К12 docs/concept-0.2.md; К13 docs/concept-0.3.md): lint + unit/integration + сборка + архив релиза, затем e2e в Chromium.
 # Сети расширение не использует; сеть здесь нужна только для npm ci и загрузки Chromium Playwright.
 #
 # Гейтовые тесты реальной модели NER в CI пропускаются — так задумано: модель в git не хранится (пакет — в GitHub Releases).
 #   NER_MODEL_DIR — tests/integration/ner-provider.spec.js (К7, К8), NER_PACK — tests/e2e/ner.spec.js; запускаются локально.
 # Версия 0.3 (WP10-C): npm run pack здесь собирает только лёгкий архив — пакета модели (release/docx-anonymizer-ner-*.zip) в CI нет.
 #   Полный архив docx-anonymizer-<версия>-full.zip, «полный архив» в tests/integration/pack.spec.js и e2e bundled-model.spec.js
-#   (гейт — dist-e2e/models/index.json) — только локально.
+#   (гейт — dist-e2e/models/index.json) — только локально. PDF-фикстуры закоммичены: их извлечение сверяется со снимками
+#   всегда, а регенерация в pdf-fixtures.spec.js нужна Chromium Playwright — в задании test его нет, она пропускается (локально тоже
+#   можно выключить SKIP_PDF_REGEN=1); LibreOffice-варианты фикстур пересобираются только локально (npm run gen-pdf-fixtures).
 name: CI
 
 on:

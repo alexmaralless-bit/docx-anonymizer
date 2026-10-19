@@ -26,6 +26,11 @@
 `src/core/contracts/ner.js`, `src/core/detect/runner.js`, `src/core/{settings,deanon}.js`, `src/shared/**` (в т.ч. новые `permissions.js`, `model-store.js`),
 `src/offscreen/**`, `src/background/{index,router,offscreen-manager}.js`. Правило прежнее: минимальное аддитивное изменение, с тестом, в рамках своего WP.
 Версия 0.2.0 завершена (WP6–WP9 выполнены); остальные файлы фундамента по-прежнему меняются только через координатора, с записью в `docs/contracts.md`.
+В 0.3 (WP10-A…D) через координатора изменены `src/core/{apply,errors,index}.js` (сериализатор по `doc.kind`, коды `PDF_*`, реэкспорт) и уже размороженные
+`manifest.json`, `scripts/build.mjs`, `src/core/{settings,deanon}.js`, `src/shared/protocol.js`, `src/offscreen/{host,worker}.js`, `src/background/{index,router}.js`;
+добавлены `src/shared/bundled-model.js`, `src/offscreen/{package-fetch,pdf-loader}.js`. Остальной фундамент (`src/core/contracts/**`, `src/core/docx/**`,
+`src/core/detect/{index,runner,overlap}.js`, `src/core/{mapping,placeholders,sites,search,text-view}.js`, `src/background/offscreen-manager.js`) в 0.3 не менялся
+и по-прежнему меняется только через координатора.
 
 ---
 
@@ -164,7 +169,7 @@
 - Модель в git не попадает; zip выкладывается в GitHub Releases, sha256 — в `known-packs.js` и README.
 
 **Приёмка:** К6, К7, К8; результаты бенчмарка (мс/окно, холодная загрузка) — в `docs/contracts.md` §6.7.
-Факт (финальная модель, int8; WikiANN — argmax без порога, синтетика — порог 0.7): WikiANN ru test F1 PER 0.915 / ORG 0.760 / LOC 0.861, en PER 0.809 / ORG 0.652 / LOC 0.772; `eval-ru` PER 0.982 / ORG 0.923 / LOC 0.938,
+Факт (финальная модель, int8; WikiANN — argmax без порога, синтетика — порог 0.7): WikiANN ru test F1 PER 0.916 / ORG 0.762 / LOC 0.861 (fp32 — 0.915 / 0.760), en PER 0.809 / ORG 0.652 / LOC 0.772; `eval-ru` PER 0.982 / ORG 0.923 / LOC 0.938,
 `eval-en` PER 0.913 / ORG 0.875 / LOC 0.857; `model.onnx` 30,4 МБ; согласие с PyTorch 99,7 %; холодная загрузка 0,28 с; ≈ 12 мс на окно 128 токенов; 20 страниц (9 016 слов) — 1,4 с.
 Пакет `docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip` (29 517 760 байт), sha256 `ca023f16…318f` — в `KNOWN_PACKS` и README.
 
@@ -182,7 +187,7 @@
 
 **Статус:** закоммичено `64bdb9f`. pdf.js 6.4 — **legacy-сборка** в `vendor/pdfjs/` (современная требует API новее Chrome 132), вложенный воркер через `PDFWorker({port})`; `core/pdf/{layout,extract}.js`, `core/text/{model,serialize}.js`, `planEdits` + сериализатор по `doc.kind`, хук `doc.tables` в `kb.js`, `pdfMode`, стадия `pdf`, коды `PDF_*`, `RESULT_BEGIN.mime`, `ENTITIES.kind`; 13 PDF-фикстур (10 текстовых со снимками и gold). Факт: К2 — 0 утечек детекторами на 10 фикстурах; К3 — паритет 100 % по всем категориям; К4 — порядок абзацев 100 %, колонтитулы вынесены, таблица реквизитов `ip-contract` 8 × 2 и в Chromium, и в LibreOffice; К6 — `perf-50p` (48 стр.) ≈ 0,45 с в Node, 0,36 с в Chromium, холодный PDF с загрузкой pdf.js 0,2 с; К8 — `vendor/pdfjs/` 3,6 МБ, лёгкий архив 6,1 МБ; `worker.js` без ORT 706 952 байт (≤ 700 КБ). Архивы на `64bdb9f`: лёгкий 6 425 902 байт (sha256 `c1980132…a6411`), полный 35 944 673 байт. Спайки S1–S4 — `docs/contracts.md` §7.6. Тест восстановления по карте PDF-сессии (К10) — в `tests/e2e/pdf.spec.js` (файл `restore.spec.js` — зона WP10-B).
 
-Доработка по ревью (19.10.2026, ждёт коммита координатора): мягкий перенос в номерах («ИНН 7805-» + «003215» → без дефиса при группе ≥ 4 цифр, телефоны
+Доработка по ревью (19.10.2026) — коммит `68d9c73`: мягкий перенос в номерах («ИНН 7805-» + «003215» → без дефиса при группе ≥ 4 цифр, телефоны
 не трогаются) и знак переноса U+2010/U+00AD всегда, «Ан-» + «дреева» (Д1, Д2); моноширинный шрифт — пробел не режет ячейку «БИК 044525901» (Д3); узкая
 надпись LibreOffice — один абзац по локальному правому краю (Д4); повёрнутое содержимое (`/Rotate` + `cm`) — через матрицу viewport и `orientPage`,
 страница из одних водяных знаков → `PDF_NO_TEXT`/`PDF_PAGES_NO_TEXT` (Д5); колонки таблицы по правому краю для чисел (Д6); заголовок после двух колонок —
@@ -192,20 +197,19 @@
 `sample-contract.lo` (16 текстовых); К2 — 0 утечек целиком и частично (фамилии gold-ФИО, номера с дефисом/пробелом внутри), К3 ≥ 95 % на каждой.
 Бюджет `worker.js` разделён (§6.5 `docs/contracts.md`): код без ORT и словарей 350 775 байт (≤ 400 КБ), словари ФИО 365 494 байт (≤ 400 КБ).
 
-**Бэклог:** вынести словари в `vendor/dict/*.txt` с ленивой загрузкой через `package-fetch.js` (освободит ≈ 360 КБ `worker.js` и время старта воркера);
-таблица, разорванная границей страницы (по 1–2 строки на странице), собирается в одну.
+Бэклог — в разделе «Бэклог после 0.3» в конце файла.
 
 ## WP10-B — восстановление файла от ИИ
 
-**Файлы:** `src/core/{deanon,restore-doc,index}.js`, `src/shared/protocol.js` (`GET_MAPPING`/`MAPPING`), `schemas/protocol.schema.json`, `src/offscreen/host.js`, `src/restore/{restore.js,restore.css}`, `src/ui/deanon/{index,dom}.js`, `src/ui/i18n/{restore,help}.js`, `tests/unit/{deanon-spans,restore-doc}.spec.js`, `tests/unit/ui/restore-model.spec.js`, `tests/integration/{host,schemas}.spec.js`, `tests/unit/protocol.spec.js`, `tests/e2e/restore.spec.js`.
+**Файлы:** `src/core/{deanon,deanon-morph,restore-doc,index}.js`, `src/shared/protocol.js` (`GET_MAPPING`/`MAPPING`), `schemas/protocol.schema.json`, `src/offscreen/host.js`, `src/restore/{restore.js,restore.css}`, `src/ui/deanon/{index,dom}.js`, `src/ui/i18n/{restore,help}.js`, `tests/unit/{deanon-spans,deanon-morph,restore-doc}.spec.js`, `tests/unit/ui/restore-model.spec.js`, `tests/integration/{host,schemas}.spec.js`, `tests/unit/protocol.spec.js`, `tests/e2e/restore.spec.js`.
 
 **Сделать:** `deanonymizeSpans` (координаты входа) и `deanonymize` поверх него (фикстуры 30 + 51 без изменений); `restoreDocx` — обратная замена во всех потоках DOCX с сохранением форматирования (`keepMetadata:true`), склонение в live/deleted, обратное отображение `rel-target`; страница восстановления: режим «Файл от ИИ» (`.docx/.docm/.md/.txt`), карта из файла или по `GET_MAPPING`, скачивание `имя.restored.*`; `?docId=` предвыбирает сессию.
 
 **Приёмка:** К10, К14, К13.
 
-**Статус:** реализовано, ждёт коммита координатора. `deanonymizeSpans`/`findUnresolved` (фикстуры 30 + 51 без изменений), `restoreDocx`/`restoreText`, `GET_MAPPING`/`MAPPING`, режим «Файл от ИИ» и `?docId=` на странице восстановления; тесты `deanon-spans`, `restore-doc` (в т.ч. круговой прогон образца), `restore-model`, `host`/`schemas`/`protocol`, e2e `restore.spec.js` (+3).
+**Статус:** выполнено, коммиты `d691fff` (восстановление файла, `GET_MAPPING`, `?docId=`; протокол и схема — в общем коммите `64bdb9f`) и `e76285a` (доработка по ревью). `deanonymizeSpans`/`findUnresolved` (фикстуры 30 + 51 без изменений), `restoreDocx`/`restoreText`, `GET_MAPPING`/`MAPPING`, режим «Файл от ИИ» и `?docId=` на странице восстановления; тесты `deanon-spans`, `restore-doc` (в т.ч. круговой прогон образца), `restore-model`, `host`/`schemas`/`protocol`, e2e `restore.spec.js` (+3).
 Доработка по ревью: склонение «в лице генерального директора [ФИО_n]» → родительный (FR-37: окно до 6 слов / 64 символов, мостики — обращения и основы должностей из `POSITION_RE_SRC`; «по доверенности» и «в отношении» — по-прежнему именительный); строгое распознавание меток в файлах (`strict`, FR-36а: «Счет 1», «Договор 1» из текста документа не заменяются), текст — либерально; предупреждение о метке с несколькими значениями (`mixedValueWarnings`); сброс результата для скачивания при смене файла, карты, источника, обработки или флажка склонения; `ERROR.reason` (`NO_MAPPING`/`NO_SESSION`) и сообщения `session_missing`/`session_gone`; имя результата снимает пользовательский суффикс, `.anon` и хвост ` (n)`.
-**Известное ограничение (отложено):** паспорт с 0.2 хранит под одной меткой `[ПАСПОРТ_n]` серию/номер, а орган выдачи и код подразделения — в `variants`; при восстановлении все три места получают серию и номер (сейчас — только предупреждение в сводке). Правильное решение — отдельные метки для частей паспорта в анонимизаторе (детектор и `core/mapping.js`), следующая версия.
+**Известное ограничение (отложено, бэклог):** паспорт с 0.2 хранит под одной меткой `[ПАСПОРТ_n]` серию/номер, а орган выдачи и код подразделения — в `variants`; при восстановлении все три места получают серию и номер (сейчас — только предупреждение в сводке). Правильное решение — отдельные метки для частей паспорта в анонимизаторе (детектор и `core/mapping.js`), следующая версия.
 
 ## WP10-C — модель в полном архиве, автоустановка, онбординг
 
@@ -215,7 +219,7 @@
 
 **Приёмка:** К15, К16, К17 (модель), К13.
 
-**Статус:** реализовано, ждёт коммита координатора. `build.mjs --with-model`, `pack.mjs` → лёгкий (побайтно прежний) и `-full.zip`; `bundledModelSha`
+**Статус:** выполнено, коммиты `f75399f` (сборка с моделью, два архива, автоустановка, онбординг; общие файлы `build.mjs`, `host.js`, `worker.js`, `settings.js`, `protocol.js`, `options.js`, `flow.js`, `panel.js` — в `64bdb9f`) и `53b59ba` (доработка по ревью). `build.mjs --with-model`, `pack.mjs` → лёгкий (побайтно прежний) и `-full.zip`; `bundledModelSha`
 (не экспортируется); `shared/bundled-model.js` (`planBootstrap`, `settingsPatchFor`), `background/bundled-model.js` (onInstalled + миграция, onStartup,
 ответ хоста), `MODEL_BOOTSTRAP`/`MODEL_INSTALL`/`MODEL_INSTALLED`, `offscreen/package-fetch.js` (единственный `fetch`, override ESLint); онбординг в настройках,
 popup и панели. Тесты: `tests/unit/{bundled-model,background/bundled-model,router,settings,protocol}.spec.js`, `tests/integration/{host,schemas,pack,manifest}.spec.js`,
@@ -235,4 +239,19 @@ e2e: снимок записи сети после автоустановки, �
 
 **Приёмка:** К16 (меню и подсказка), К13.
 
-**Статус:** реализовано, ждёт коммита координатора. `hintMappingShown` (не экспортируется), `done-hint.js`, меню «Ещё ▾» с `btn-download-mapping`, подсказка `mapping-hint`, флаг из `content/flow.js`; тесты `done-hint`, `settings`, e2e `intercept.spec.js` (+2), контракт DOM в `tests/e2e/helpers/chat.js`. Доработка по ревью: «×» и Esc на экране «готово» идут через `closeDone()` (подсказка не обходится), Esc в открытом меню возвращает фокус на «Ещё ▾»; e2e `intercept.spec.js` (+2).
+**Статус:** выполнено, коммит `d691fff` (`hintMappingShown` и `content/flow.js` — в общем коммите `64bdb9f`); доработка «×»/Esc по ревью — `e76285a`. `hintMappingShown` (не экспортируется), `done-hint.js`, меню «Ещё ▾» с `btn-download-mapping`, подсказка `mapping-hint`, флаг из `content/flow.js`; тесты `done-hint`, `settings`, e2e `intercept.spec.js` (+2), контракт DOM в `tests/e2e/helpers/chat.js`. Доработка по ревью: «×» и Esc на экране «готово» идут через `closeDone()` (подсказка не обходится), Esc в открытом меню возвращает фокус на «Ещё ▾»; e2e `intercept.spec.js` (+2).
+
+---
+
+## Бэклог после 0.3
+
+Версия 0.3.0 завершена (WP10-A…D выполнены, критерии К1–К17 `docs/concept-0.3.md`). Отложено:
+
+- **Словари ФИО — в `vendor/dict/*.txt`** с ленивой загрузкой через `offscreen/package-fetch.js`: освободит ≈ 360 КБ `worker.js` (бюджет словарей — §6.5 `docs/contracts.md`) и время старта воркера.
+- **Отдельные метки для частей паспорта** (серия и номер, орган выдачи, код подразделения) в детекторе и `core/mapping.js`: сейчас все три места под одной `[ПАСПОРТ_n]`
+  и при восстановлении получают серию и номер (страница восстановления предупреждает, WP10-B).
+- **Таблица, разорванная границей страницы** (по 1–2 строки на странице) в PDF собирается в одну; сейчас такая часть может уйти абзацем (WP10-A).
+- **Ответ ИИ в `.xlsx`/`.pptx`** — восстановление файлов этих форматов (`docs/concept-0.3.md`, «Что не делаем в 0.3»).
+- **Склонение после «индивидуального предпринимателя»** при восстановлении: мостики `BRIDGE` в `core/deanon-morph.js` повторяют основы `POSITION_RE_SRC` вручную,
+  но без «индивидуальн…/предпринимател…» — «в лице индивидуального предпринимателя [ФИО_1]» сейчас даёт именительный (FR-37). Найдено при сверке документации.
+- Сканы и OCR, «PDF → PDF», формы PDF — по `docs/concept-0.3.md`; публикация в Chrome Web Store — решение владельца.

@@ -1,5 +1,5 @@
 {
   "extName": { "message": "DOCX Anonymizer" },
-  "extDescription": { "message": "Anonymizes .docx files locally before uploading them to ChatGPT, Claude and other services. No network requests." },
+  "extDescription": { "message": "Anonymizes .docx and PDF files locally before uploading them to ChatGPT, Claude and other services. No network requests." },
   "actionTitle": { "message": "DOCX Anonymizer" }
 }

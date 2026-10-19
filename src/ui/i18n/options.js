@@ -19,12 +19,13 @@ export const OPTIONS_DICT = {
     nav_data: 'Данные',
 
     intercept_h: 'Перехват файлов',
-    intercept_enabled: 'Перехватывать .docx перед отправкой',
+    intercept_enabled: 'Перехватывать .docx и PDF перед отправкой',
     intercept_enabled_hint: 'Выключено по умолчанию. Когда включено, расширение предложит обезличить файл до того, как сайт его получит.',
     site_mode: 'Где перехватывать',
     site_mode_allowlist: 'Только на сайтах из списка',
     site_mode_all: 'На всех сайтах, кроме заблокированных',
-    site_all_warn: 'Перехват на всех сайтах затронет и почту, CRM и другие сервисы: везде, куда вы прикладываете .docx, появится окно обезличивания. Включить?',
+    site_all_warn:
+      'Перехват на всех сайтах затронет и почту, CRM и другие сервисы: везде, куда вы прикладываете .docx или PDF, появится окно обезличивания. Включить?',
     allowlist: 'Список разрешённых сайтов',
     allowlist_hint: 'При добавлении сайта Chrome спросит разрешение на доступ к нему — без этого перехват там не заработает.',
     access_denied_hint: 'Сайт сохранён, но Chrome не выдал доступ — перехват на нём не заработает. Разрешите доступ в меню расширения на этом сайте.',
@@ -215,13 +216,13 @@ export const OPTIONS_DICT = {
     nav_data: 'Data',
 
     intercept_h: 'File interception',
-    intercept_enabled: 'Intercept .docx files before they are sent',
+    intercept_enabled: 'Intercept .docx and PDF files before they are sent',
     intercept_enabled_hint: 'Off by default. When on, the extension offers to anonymize a file before the site receives it.',
     site_mode: 'Where to intercept',
     site_mode_allowlist: 'Only on listed sites',
     site_mode_all: 'On all sites except blocked ones',
     site_all_warn:
-      'Intercepting on all sites also affects mail, CRM and other services: the anonymization window will appear wherever you attach a .docx. Enable?',
+      'Intercepting on all sites also affects mail, CRM and other services: the anonymization window will appear wherever you attach a .docx or PDF. Enable?',
     allowlist: 'Allowed sites',
     allowlist_hint: 'When you add a site, Chrome will ask for permission to access it — interception does not work there without it.',
     access_denied_hint:

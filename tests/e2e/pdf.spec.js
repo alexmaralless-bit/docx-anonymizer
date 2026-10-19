@@ -91,7 +91,7 @@ test.describe('PDF: перехват и результат (К9)', () => {
   test("pdfMode: 'text' → .anon.txt (text/plain); pdfMode: 'off' → PDF проходит как есть, панели нет", async ({ context, extensionId, site }) => {
     let page = await setup(context, extensionId, site, { pdfMode: 'text' });
     await page.setInputFiles('#multi-input', writeTemp('t.pdf', SAMPLE));
-    // заметка называет расширение результата по pdfMode (FR-53)
+    // заметка называет расширение результата по pdfMode (FR-54)
     await expect(panel(page).host.locator('[data-testid="pdf-note"]')).toContainText('.txt', { timeout: 60000 });
     await panel(page).anonymize.click({ timeout: 60000 });
     const [r] = await waitReceived(page, 1, 60000);

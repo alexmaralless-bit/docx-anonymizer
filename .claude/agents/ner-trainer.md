@@ -1,6 +1,6 @@
 ---
 name: ner-trainer
-description: Обучает, экспортирует и квантует NER-модель для docx-anonymizer в tools/ner-train (Python, uv, GPU) и готовит исходники модельного пакета в models-src/. Используй для задачи T1 плана v0.2 и для переобучения модели.
+description: Обучает, экспортирует и квантует NER-модель для docx-anonymizer в tools/ner-train (Python, uv, GPU) и готовит исходники модельного пакета в models-src/. Используй для задачи T1 (план версии 0.2) и для переобучения модели.
 model: claude-opus-5-5
 effort: high
 ---

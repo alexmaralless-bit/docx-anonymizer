@@ -2,7 +2,7 @@
 export const popup = {
   ru: {
     interceptLabel: 'Перехват загрузки',
-    interceptHint: 'Файлы .docx обезличиваются до отправки на сайт',
+    interceptHint: 'Файлы .docx и PDF обезличиваются до отправки на сайт',
     siteOn: 'Включён на {host}',
     siteOff: 'Выключен',
     siteNotListed: 'Сайт {host} не в списке',
@@ -28,7 +28,7 @@ export const popup = {
   },
   en: {
     interceptLabel: 'Upload interception',
-    interceptHint: '.docx files are anonymized before they are sent to the site',
+    interceptHint: '.docx and PDF files are anonymized before they are sent to the site',
     siteOn: 'On for {host}',
     siteOff: 'Off',
     siteNotListed: '{host} is not in the site list',

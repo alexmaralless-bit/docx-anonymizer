@@ -1,27 +1,27 @@
 # DOCX Anonymizer
 
-Расширение для Chrome и Edge: перед тем как договор `.docx` попадёт в ChatGPT, Claude или другой ИИ-сервис, оно **перехватывает файл, локально находит в нём персональные и коммерческие данные и заменяет их плейсхолдерами**. В сервис уходит обезличенный документ с сохранённым форматированием, а ответ ИИ можно вернуть обратно с настоящими названиями и именами.
+Расширение для Chrome и Edge: перед тем как договор `.docx` или PDF попадёт в ChatGPT, Claude или другой ИИ-сервис, оно **перехватывает файл, локально находит в нём персональные и коммерческие данные и заменяет их плейсхолдерами**. В сервис уходит обезличенный документ с сохранённым форматированием (из PDF — его текст с плейсхолдерами), а ответ ИИ — текстом или файлом — можно вернуть обратно с настоящими названиями и именами.
 
 ![Панель перехвата над страницей чата](docs/screenshots/panel-intercept.png)
 
 <details>
 <summary><b>English summary</b></summary>
 
-**DOCX Anonymizer** is a Chrome/Edge extension that intercepts a `.docx` file the moment you attach it to ChatGPT, Claude or another AI chat, finds personal and commercial data in it **locally**, and uploads an anonymized copy instead. Formatting, tables, footnotes and headers are preserved; file metadata is wiped. The AI's answer — pasted text or a file the AI produced (`.docx`, `.md`, `.txt`) — can be de-anonymized back on the "Restore text" page using a replacement map (the recovery key) that never leaves your computer; a restored `.docx` keeps its formatting.
+**DOCX Anonymizer** is a Chrome/Edge extension that intercepts a `.docx` file (or a PDF with a text layer) the moment you attach it to ChatGPT, Claude or another AI chat, finds personal and commercial data in it **locally**, and uploads an anonymized copy instead. Formatting, tables, footnotes and headers are preserved; file metadata is wiped. The AI's answer — pasted text or a file the AI produced (`.docx`, `.md`, `.txt`) — can be de-anonymized back on the "Restore text" page using a replacement map (the recovery key) that never leaves your computer; a restored `.docx` keeps its formatting. In files only markers written exactly as in the map or in square brackets are replaced (so "Account 1" in the document text stays), names are declined by context, and the page warns about a marker that stood for several different values. The recovery key is saved from the panel's "More" menu.
 
 **What it finds.** 21 categories with checksum validation where one exists: Russian tax and registration numbers (INN, KPP, OGRN, BIK, bank accounts), IBAN/SWIFT, card numbers (Luhn), passports, SNILS/SSN, dates of birth, phones, e-mails, URLs, postal addresses, company names (Russian and Western legal forms), contract numbers and amounts, plus your own dictionaries, label+pattern rules and regular expressions. Person names are found three ways: by labels and the parties' details block, by dictionaries of first names and surnames with Russian morphology (any case, initials, transliteration), and optionally by a local NER model.
 
-**NER model.** A compact `rubert-tiny2` fine-tuned on WikiANN ru+en, exported to ONNX int8 (30 MB) and run by onnxruntime-web (WASM) inside the extension's worker. The full release archive (`docx-anonymizer-<version>-full.zip`) already contains it and installs it on first run, with no download and no import; the lite archive leaves it out — then take the model package from [GitHub Releases](https://github.com/alexmaralless-bit/docx-anonymizer/releases) and import it on the settings page. WikiANN ru test F1: PER 0.92, ORG 0.76, LOC 0.86; cold start ≈ 0.3 s, a 20-page contract ≈ 2 s.
+**NER model.** A compact `rubert-tiny2` fine-tuned on WikiANN ru+en, exported to ONNX int8 (30 MB) and run by onnxruntime-web (WASM) inside the extension's worker. The full release archive (`docx-anonymizer-<version>-full.zip`, ≈ 34 MB) already contains it and installs it on first run, with no download and no import (if that fails, the settings card says so and offers Retry); the lite archive (≈ 6 MB) leaves it out — then take the model package from [GitHub Releases](https://github.com/alexmaralless-bit/docx-anonymizer/releases) and import it on the settings page. WikiANN ru test F1 (int8): PER 0.916, ORG 0.762, LOC 0.861; cold start ≈ 0.3 s, a 20-page contract ≈ 2 s.
 
-**Privacy.** Zero network requests: the manifest's CSP is `connect-src 'self'`, ESLint forbids `fetch`/`XMLHttpRequest`/`WebSocket` in the source, and an end-to-end test captures traffic of every browser target (pages, service worker, offscreen document and its worker) to prove nothing leaves the machine. Document contents and the replacement map live only in memory. Site access is granted per site on request (`optional_host_permissions`); nothing is injected elsewhere.
+**Privacy.** Zero network requests: the manifest's CSP is `connect-src 'self'`, ESLint forbids `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource`/`sendBeacon` in the source (one exception: `src/offscreen/package-fetch.js` reads the bundled model zip from the extension's own package, `chrome-extension://`), and an end-to-end test captures traffic of every browser target (pages, service worker, offscreen document and its worker) to prove nothing leaves the machine. Document contents and the replacement map live only in memory. Site access is granted per site on request (`optional_host_permissions`); nothing is injected elsewhere.
 
-**Install.** Node.js 22+, `npm install`, `npm run build`, then load `dist/` as an unpacked extension at `chrome://extensions`. Or take a release archive: `docx-anonymizer-<version>-full.zip` (with the NER model, installs itself) or the lite `docx-anonymizer-<version>.zip`. Enable interception for a site from the extension menu and accept Chrome's access prompt.
+**Install.** Chrome or Edge 132+. Node.js 22+, `npm ci`, `npm run build`, then load `dist/` as an unpacked extension at `chrome://extensions`. Or take a release archive: `docx-anonymizer-<version>-full.zip` (≈ 34 MB, with the NER model, installs itself) or the lite `docx-anonymizer-<version>.zip` (≈ 6 MB). The extension gets no site access at install time: enable interception for a site from the extension menu and accept Chrome's access prompt.
 
-**PDF.** A PDF with a text layer is intercepted too: pdf.js (bundled in the extension, no network) extracts the text, a layout step rebuilds paragraphs, headings, lists, two-column pages and tables and drops running headers and page numbers, and the chat receives `name.anon.md` (or `.txt`) with placeholders instead of the PDF. Scans, password-protected and empty PDFs are refused with a hint and can be uploaded as is after an explicit choice.
+**PDF.** A PDF with a text layer is intercepted too: pdf.js (bundled in the extension, no network) extracts the text, a layout step rebuilds paragraphs, headings, lists, two-column pages and tables and drops running headers and page numbers, and the chat receives `name.anon.md` (or `.txt`) with placeholders instead of the PDF. The setting "PDF with a text layer" switches the output to `.txt` or turns PDF interception off. Scans, password-protected, empty and damaged PDFs are refused with a hint and can be uploaded as is after an explicit choice.
 
-**Limits.** `.docx`/`.docm` and text-layer PDF only (no scans/OCR, no PDF → PDF); embedded OLE objects are not anonymized (warned about or removed); single surnames of third parties without a label are found only by the NER model; Russian case restoration skips ambiguous prepositions. The UI is Russian-first with full English localization.
+**Limits.** `.docx`/`.docm` and text-layer PDF only (no scans/OCR, no PDF → PDF; layout is tested on Chromium and LibreOffice PDFs); AI files are restored from `.docx`/`.docm`/`.md`/`.txt`, not `.xlsx`/`.pptx`/PDF; embedded OLE objects are not anonymized (warned about or removed); single surnames of third parties without a label are found only by the NER model; Russian case restoration skips ambiguous prepositions. The UI is Russian-first with full English localization.
 
-**Development.** `npm test` (Vitest, ~1 450 tests), `npm run e2e` (Playwright, Chromium with the extension), `npm run lint`, `npm run pack` (reproducible release archive), `npm run pack:model`, `tools/ner-train` (Python/uv training pipeline). MIT license; dictionaries and the model carry their own permissive notices.
+**Development.** `npm test` (Vitest, ~1 750 tests), `npm run e2e` (Playwright, Chromium with the extension), `npm run lint`, `npm run pack` (reproducible lite and full release archives), `npm run pack:model`, `npm run gen-pdf-fixtures`, `tools/ner-train` (Python/uv training pipeline). MIT license; dictionaries, ONNX Runtime Web (MIT), pdf.js (Apache-2.0) and the model carry their own notices.
 
 </details>
 
@@ -32,8 +32,8 @@
 ## Как это работает
 
 1. **Перехват.** Вы прикладываете `.docx` или PDF в чате (кнопкой, перетаскиванием или вставкой). Расширение останавливает файл до отправки и показывает панель: что найдено, где, с возможностью снять лишние галочки.
-2. **Замена.** Нажимаете «Анонимизировать и загрузить» — в чат уходит `имя.anon.docx`: данные заменены плейсхолдерами (`[ФИО_1]`, `ООО «[КОМПАНИЯ_1]»`, `[ИНН_1]`), форматирование, таблицы, сноски и колонтитулы сохранены, метаданные файла очищены. Одно и то же значение везде получает один плейсхолдер.
-3. **Восстановление.** Ответ ИИ вставляете на странице «Восстановить текст» или загружаете файлом от ИИ (`.docx`, `.md`, `.txt`) — расширение подставляет настоящие значения из карты замен (ключа восстановления), которая хранится только у вас, и склоняет ФИО по контексту.
+2. **Замена.** Нажимаете «Анонимизировать и загрузить» — в чат уходит `имя.anon.docx`: данные заменены плейсхолдерами (`[ФИО_1]`, `ООО «[КОМПАНИЯ_1]»`, `[ИНН_1]`), форматирование, таблицы, сноски и колонтитулы сохранены, метаданные файла очищены. Одно и то же значение везде получает один плейсхолдер. Из PDF в чат уходит `имя.anon.md` — текст документа с теми же плейсхолдерами (раздел [«PDF»](#pdf)).
+3. **Восстановление.** Ответ ИИ вставляете на странице «Восстановить текст» или загружаете файлом от ИИ (`.docx`, `.docm`, `.md`, `.txt`) — расширение подставляет настоящие значения из карты замен (ключа восстановления), которая хранится только у вас, и склоняет ФИО по контексту.
 
 ![До и после](docs/screenshots/before-after.png)
 
@@ -43,11 +43,11 @@
 
 ## Установка
 
-Расширение пока не опубликовано в Chrome Web Store, оно ставится как распакованное.
+Расширение пока не опубликовано в Chrome Web Store, оно ставится как распакованное. Нужен Chrome или Edge версии 132 и новее.
 
 1. Возьмите сборку: соберите её сами — Node.js 22+, `npm ci`, `npm run build`, появится каталог `dist/` — или распакуйте в отдельную папку архив релиза (`npm run pack`, см. ниже; архивы выкладываются в [GitHub Releases](https://github.com/alexmaralless-bit/docx-anonymizer/releases)). Архивов два:
    - **полный** `docx-anonymizer-<версия>-full.zip` (≈ 34 МБ) — с моделью NER: при первом запуске она ставится сама, ничего скачивать и импортировать не нужно;
-   - **лёгкий** `docx-anonymizer-<версия>.zip` (≈ 6,1 МБ) — без модели: всё работает правилами и словарями, модель можно добавить позже (раздел «Распознавание имён моделью»).
+   - **лёгкий** `docx-anonymizer-<версия>.zip` (≈ 6 МБ) — без модели: всё работает правилами и словарями, модель можно добавить позже (раздел «Распознавание имён моделью»).
 2. Chrome → `chrome://extensions` → включите «Режим разработчика».
 3. «Загрузить распакованное расширение» → выберите распакованную папку архива или `dist/`. При установке Chrome не предупреждает о доступе к данным на сайтах: расширение не получает доступа ни к одному сайту, пока вы его не выдадите (разрешения по запросу).
 4. Откройте сайт чата и меню расширения, включите «Перехват загрузки» (по умолчанию выключен).
@@ -57,7 +57,7 @@
 
 ### Архив релиза
 
-`npm run pack` собирает расширение и пакует его в `release/docx-anonymizer-<версия>.zip` — лёгкий архив (≈ 6,1 МБ, `manifest.json` — в корне архива; сеть не нужна, `dist/` не затрагивается). Если в `release/` есть пакет модели (`npm run pack:model`, см. «Распознавание имён моделью») или он указан явно (`npm run pack -- --model=<zip>`), рядом появляется полный `release/docx-anonymizer-<версия>-full.zip` (≈ 34 МБ): то же расширение плюс `models/<zip пакета>` (байт в байт, без повторного сжатия) и `models/index.json`. В полный архив попадает только пакет из списка проверенных (`src/core/ner/known-packs.js`), иначе сборка падает. Оба архива воспроизводимы: один и тот же код даёт побайтно один и тот же файл, в том числе на машинах с разными часовыми поясами; команда печатает точный размер и sha256 каждого (здесь размеры округлены, чтобы не устаревать с каждым изменением кода). Большая часть лёгкого архива — WebAssembly ONNX Runtime (`vendor/ort-wasm-simd-threaded.wasm`, 13,6 МБ, в архиве ≈ 3,6 МБ) и pdf.js. В CI модели нет — там собирается только лёгкий архив.
+`npm run pack` собирает расширение и пакует его в `release/docx-anonymizer-<версия>.zip` — лёгкий архив (≈ 6 МБ, `manifest.json` — в корне архива; сеть не нужна, `dist/` не затрагивается). Если в `release/` есть пакет модели (`npm run pack:model`, см. «Распознавание имён моделью») или он указан явно (`npm run pack -- --model=<zip>`), рядом появляется полный `release/docx-anonymizer-<версия>-full.zip` (≈ 34 МБ): то же расширение плюс `models/<zip пакета>` (байт в байт, без повторного сжатия) и `models/index.json`. В полный архив попадает только пакет из списка проверенных (`src/core/ner/known-packs.js`), иначе сборка падает. Оба архива воспроизводимы: один и тот же код даёт побайтно один и тот же файл, в том числе на машинах с разными часовыми поясами; команда печатает точный размер и sha256 каждого (здесь размеры округлены, чтобы не устаревать с каждым изменением кода). Большая часть лёгкого архива — WebAssembly ONNX Runtime (`vendor/ort-wasm-simd-threaded.wasm`, 13,6 МБ, в архиве ≈ 3,6 МБ) и pdf.js. В CI модели нет — там собирается только лёгкий архив.
 
 Порядок релиза: `npm run pack:model -- --id=<id>` → sha256 пакета в `KNOWN_PACKS` (`src/core/ner/known-packs.js`) → `npm run pack` → в Releases выкладываются три файла: полный архив, лёгкий архив и пакет модели (для тех, у кого лёгкий).
 
@@ -90,7 +90,7 @@
 - **Проверенный пакет.** Опубликованный проектом пакет имеет sha256
   `ca023f16799f08b1b1d6134fae242461bda6ab79dfe74e34eda1ec6c9a48318f` — расширение узнаёт его и показывает «проверенный пакет». Пакет, которого нет в этом списке, ставится только после подтверждения («не проверен»: целостность файлов проверена, происхождение — нет).
 - **Приватность.** Файлы пакета хранятся в хранилище браузера (OPFS, разрешение `unlimitedStorage`) на этом компьютере; документы и результаты туда не записываются. Сетевых запросов нет и при работе модели. Если модель не загрузилась, анализ продолжается правилами и словарями, а панель показывает предупреждение.
-- **Качество** (int8). Тест WikiANN (argmax, без порога), F1: русский — PER 0,915, ORG 0,760, LOC 0,861; английский — PER 0,809, ORG 0,652, LOC 0,772. Синтетический корпус договорных фраз (`tests/fixtures/ner/eval-{ru,en}.json`, span-F1 с точными границами): ru — PER 0,982, ORG 0,923, LOC 0,938; en — PER 0,913, ORG 0,875, LOC 0,857. Числа на синтетическом корпусе оптимистичны: в обучение входила шаблонная синтетика того же стиля, поэтому опорные — числа WikiANN. Ответы int8-модели совпадают с исходной PyTorch-моделью на 99,7 % токенов.
+- **Качество** (int8). Тест WikiANN (argmax, без порога), F1: русский — PER 0,916, ORG 0,762, LOC 0,861; английский — PER 0,809, ORG 0,652, LOC 0,772. Синтетический корпус договорных фраз (`tests/fixtures/ner/eval-{ru,en}.json`, span-F1 с точными границами): ru — PER 0,982, ORG 0,923, LOC 0,938; en — PER 0,913, ORG 0,875, LOC 0,857. Числа на синтетическом корпусе оптимистичны: в обучение входила шаблонная синтетика того же стиля, поэтому опорные — числа WikiANN. Ответы int8-модели совпадают с исходной PyTorch-моделью на 99,7 % токенов.
 - **Скорость** (одна нить WASM, AMD Ryzen 9 7945HX, `npm run bench-ner`): холодная загрузка модели 0,28 с, ≈ 12 мс на окно из 128 токенов (≈ 10 000 токенов/с); договор на 20 страниц (9 016 слов) — 1,4 с на модель, ≈ 2,2 с на весь анализ в браузере вместе с правилами. `model.onnx` int8 — 30,4 МБ.
 - **Собрать пакет самому:** обучение — [`tools/ner-train/`](tools/ner-train/README.md), упаковка — `npm run pack:model -- --id=<id>` из `models-src/<id>/`; формат и подробные замеры — [`docs/contracts.md`](docs/contracts.md), раздел 6.
 
@@ -112,10 +112,10 @@ PDF с текстовым слоем перехватывается так же,
 
 - Текст извлекает pdf.js (Apache 2.0) из самого пакета расширения (`vendor/pdfjs/` вместе с CMaps и стандартными шрифтами) — без сети. Разметка восстанавливает абзацы, заголовки (`#`, `##`), маркированные списки, две колонки (слева направо), таблицы (`| … |`, таблица реквизитов сохраняет строки и столбцы, суммы и количества, выровненные вправо, — свои столбцы) и переносы слов (в том числе мягкий перенос внутри номера: «ИНН 7805-» + «003215» → `7805003215`; телефоны с группами по 2–3 цифры не склеиваются); колонтитулы и номера страниц убираются, граница страниц — `---`. Альбомные страницы, сохранённые «по-принтерному» (повёрнутый лист), читаются в той ориентации, в какой видны на экране; моноширинный шрифт и надписи (врезки) LibreOffice не разрывают реквизиты.
 - Находки те же, что для `.docx`: все детекторы, словари, модель NER, база знаний сторон, исключения. Карта замен и восстановление ответа — без изменений; «Скачать результат» отдаёт тот же `.anon.md`.
-- Скан (на страницах нет текстового слоя), PDF с паролем, пустой и повреждённый PDF отклоняются с подсказкой; в чат такой файл уходит только после явного «Загрузить как есть». Если без текста лишь часть страниц, панель предупреждает: «Страницы N, M не содержат текста».
+- Скан (на страницах нет текстового слоя), PDF с паролем, пустой и повреждённый PDF, а также PDF больше лимита размера (`maxFileSizeMB`, по умолчанию 50 МБ) или 1000 страниц отклоняются с подсказкой; в чат такой файл уходит только после явного «Загрузить как есть». Если без текста лишь часть страниц, панель предупреждает: «Страницы N, M не содержат текста».
 - PDF на 50 страниц (≈ 20 000 слов) извлекается и анализируется за ≈ 0,5 с; pdf.js загружается при первом PDF за доли секунды.
 
-**Ручная проверка перед релизом.** Фикстуры PDF собраны из синтетических договоров Chromium и LibreOffice (`npm run gen-pdf-fixtures`, `tests/fixtures/pdf/`); PDF других генераторов по-разному хранят пробелы и порядок текста. Перед релизом откройте в панели (вкладка «Текст») договор, сохранённый в PDF из Microsoft Word, и тот же договор из LibreOffice Writer: слова не склеены, порядок абзацев верный, таблица реквизитов разбита на ячейки, колонтитулов и номеров страниц нет, в `.anon.md` нет реквизитов.
+Фикстуры PDF собраны из синтетических договоров в Chromium и LibreOffice; PDF других программ проверяются вручную перед релизом (раздел [«Разработка»](#разработка)).
 
 ## Режимы замены
 
@@ -145,7 +145,7 @@ PDF с текстовым слоем перехватывается так же,
 
 ## Приватность
 
-- Ни одного сетевого запроса: политика безопасности расширения `connect-src 'self'`, ESLint запрещает в коде расширения `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource`/`sendBeacon`, e2e-тесты через CDP браузера слушают запросы всех целей — страниц, service worker, offscreen-документа и его воркера — и проверяют, что исходящих http(s)-запросов нет, в том числе при импорте и работе модели NER.
+- Ни одного сетевого запроса: политика безопасности расширения `connect-src 'self'`, ESLint запрещает в коде расширения `fetch`/`XMLHttpRequest`/`WebSocket`/`EventSource`/`sendBeacon` — с одним исключением: `src/offscreen/package-fetch.js` читает zip встроенной модели из собственного пакета расширения (`chrome-extension://` того же расширения, только `/models/*.zip`; другие адреса отклоняются до запроса), e2e-тесты через CDP браузера слушают запросы всех целей — страниц, service worker, offscreen-документа и его воркера — и проверяют, что исходящих http(s)-запросов нет, в том числе при импорте, автоустановке и работе модели NER, при разборе PDF (pdf.js, его воркер, CMaps и шрифты — из пакета) и при восстановлении файла от ИИ.
 - Документ обрабатывается в изолированном окне браузера (offscreen-документ и Web Worker), никуда не отправляется.
 - Содержимое документа и карта замен живут только в памяти и не записываются в хранилище браузера; в логи значения из документа не попадают.
 - Пакет модели NER (встроенный из полного архива или импортированный вами) хранится в хранилище браузера на этом компьютере; документы и карта замен — нет. Встроенная модель копируется из файлов самого расширения (`chrome-extension://`), это не сетевой запрос.
@@ -168,15 +168,15 @@ PDF с текстовым слоем перехватывается так же,
 
 [![CI](https://github.com/alexmaralless-bit/docx-anonymizer/actions/workflows/ci.yml/badge.svg)](https://github.com/alexmaralless-bit/docx-anonymizer/actions/workflows/ci.yml)
 
-CI (`.github/workflows/ci.yml`) запускается при push и pull request в `main`: lint, тесты, сборка и архив релиза, затем e2e в headless Chromium.
+CI (`.github/workflows/ci.yml`) запускается при push и pull request в `main`: lint, тесты, сборка и лёгкий архив релиза, затем e2e в headless Chromium. Пакета модели в CI нет, поэтому полный архив и тесты с моделью идут только локально (ниже).
 
 | Команда | Что делает |
 |---|---|
-| `npm test` | модульные и интеграционные тесты (Vitest, ≈ 1 450 тестов) |
+| `npm test` | модульные и интеграционные тесты (Vitest, ≈ 1 750 тестов) |
 | `npm run e2e` | e2e-сборка в `dist-e2e/` + e2e в Chromium с расширением (Playwright, headless) |
 | `npm run lint` | ESLint |
 | `npm run build` / `build:dev` | сборка в `dist/` (dev — с sourcemaps) |
-| `npm run build:e2e` | сборка для e2e в `dist-e2e/`: в манифест добавлен `host_permissions: <all_urls>`, потому что нативный диалог разрешений Playwright нажать не может |
+| `npm run build:e2e` | сборка для e2e в `dist-e2e/`: в манифест добавлен `host_permissions: <all_urls>`, потому что нативный диалог разрешений Playwright нажать не может; `npm run build:e2e -- --with-model=<zip>` — полная e2e-сборка с моделью (`--with-model` принимает и `npm run build`; только пакет из `KNOWN_PACKS`) |
 | `npm run pack` | архивы релиза: лёгкий `release/docx-anonymizer-<версия>.zip` и, если есть пакет модели в `release/` (или `-- --model=<zip>`), полный `…-full.zip` |
 | `npm run pack:model -- --id=<id>` | пакет модели NER `release/docx-anonymizer-ner-<id>-<версия>.zip` из `models-src/<id>/` (детерминированный, печатает sha256) |
 | `npm run dicts` | перегенерировать словари ФИО `src/core/detect/names/dict/` из закреплённых версий источников (сеть нужна только здесь); `-- --check` — сверить с закоммиченными |
@@ -187,13 +187,17 @@ CI (`.github/workflows/ci.yml`) запускается при push и pull reque
 | `npm run icons` | иконки `icons/` из знака Sitimlab |
 | `npm run sample` | образец договора `tests/fixtures/sample-contract.docx` (вымышленные стороны) |
 
-Проект делался по спецификации: рамки первой версии — [`docs/mvp-scope.md`](docs/mvp-scope.md), цели и критерии версии 0.2 — [`docs/concept-0.2.md`](docs/concept-0.2.md), полное ТЗ — [`docs/spec-full.md`](docs/spec-full.md), контракты модулей — [`docs/contracts.md`](docs/contracts.md), рабочие пакеты — [`docs/tasks.md`](docs/tasks.md).
+Проект делался по спецификации: рамки первой версии — [`docs/mvp-scope.md`](docs/mvp-scope.md), цели и критерии версий 0.2 и 0.3 — [`docs/concept-0.2.md`](docs/concept-0.2.md), [`docs/concept-0.3.md`](docs/concept-0.3.md), полное ТЗ — [`docs/spec-full.md`](docs/spec-full.md), контракты модулей — [`docs/contracts.md`](docs/contracts.md), рабочие пакеты — [`docs/tasks.md`](docs/tasks.md).
 
 
-**Тесты на реальной модели NER** модель в git не хранят и включаются переменными окружения (в CI пропускаются):
+**Тесты на реальной модели NER.** Модели в git нет, поэтому эти тесты включаются только при её наличии (в CI пропускаются):
 
 - `NER_MODEL_DIR=models-src/rubert-tiny2-ner-ruen npx vitest run tests/integration/ner-provider.spec.js` — F1 на корпусах оценки, документ с третьими лицами, отсутствие сети;
-- `npm run build:e2e && NER_PACK=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip npx playwright test ner.spec.js` — импорт пакета в настройках, анализ с моделью в воркере, время, отсутствие сети.
+- `npm run build:e2e && NER_PACK=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip npx playwright test ner.spec.js` — импорт пакета в настройках, анализ с моделью в воркере, время, отсутствие сети;
+- полная сборка (`BUNDLED` — в `dist-e2e/` есть `models/index.json`): `npm run build:e2e -- --with-model=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip && npx playwright test bundled-model.spec.js` — автоустановка встроенной модели, «Восстановить встроенную модель», сброс настроек, испорченный zip → «Повторить», отсутствие сети. Без полной сборки тест пропускается; обычный `npm run e2e` пересобирает `dist-e2e/` лёгкой;
+- `tests/integration/pack.spec.js` («полный архив») и `tests/integration/manifest.spec.js` (настоящий zip пакета) идут, если в `release/` лежит `docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip`.
+
+Прочие переключатели: `SKIP_LIBREOFFICE=1` — без проверки открытия результата в LibreOffice, `SKIP_PDF_REGEN=1` — без регенерации PDF-фикстур в Chromium (`pdf-fixtures.spec.js`), `E2E_SHOTS=<каталог>` — снимки экрана, `E2E_HEADED=1` — e2e в окне.
 
 **Доступ к сайтам — ручная проверка.** Запрос доступа (`chrome.permissions.request`) показывает нативный диалог Chrome, его автотесты не нажимают: e2e идут на сборке `dist-e2e/`, где доступ ко всем сайтам выдан при установке. Перед релизом пройдите вручную:
 
@@ -203,6 +207,8 @@ CI (`.github/workflows/ci.yml`) запускается при push и pull reque
 4. В `chrome://extensions` → «Сведения» → «Доступ к сайтам» отзовите доступ к chatgpt.com. Меню расширения на сайте снова показывает «Разрешить доступ»; после перезагрузки страницы файл уходит без перехвата.
 5. В настройках добавьте сайт в список и отклоните запрос Chrome — сайт сохраняется, под списком появляется подсказка, что доступ не выдан.
 
+**PDF из Word и LibreOffice — ручная проверка.** Фикстуры PDF собраны из синтетических договоров Chromium и LibreOffice (`npm run gen-pdf-fixtures`, `tests/fixtures/pdf/`); PDF других генераторов по-разному хранят пробелы и порядок текста. Перед релизом откройте в панели (вкладка «Текст») договор, сохранённый в PDF из Microsoft Word, и тот же договор из LibreOffice Writer: слова не склеены, порядок абзацев верный, таблица реквизитов разбита на ячейки, колонтитулов и номеров страниц нет, в `.anon.md` нет реквизитов.
+
 Скриншоты панели и меню снимаются e2e-тестом: `E2E_SHOTS=<каталог> npx playwright test intercept.spec.js -g скриншоты`.
 
 ## Лицензия
@@ -211,4 +217,5 @@ MIT — см. [`LICENSE`](LICENSE). Сторонние компоненты — 
 
 - словари ФИО — BSD-3-Clause (datacoon/russiannames), MIT (natasha), public domain (US Census); тексты — [`NOTICE.md`](src/core/detect/names/dict/NOTICE.md);
 - ONNX Runtime Web (`vendor/` в сборке) — MIT, текст — [`assets/licenses/onnxruntime-web.LICENSE`](assets/licenses/onnxruntime-web.LICENSE);
+- pdf.js (`pdfjs-dist`, в сборке — `vendor/pdfjs/` вместе с CMaps и стандартными шрифтами) — Apache-2.0, текст — `vendor/pdfjs/LICENSE` в сборке (копируется из `node_modules/pdfjs-dist/LICENSE`);
 - пакет модели NER — MIT (веса дообученной модели и базовая `cointegrated/rubert-tiny2`), файлы `LICENSE` и `NOTICE` внутри пакета; данные обучения (WikiANN) в пакет не входят.

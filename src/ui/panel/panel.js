@@ -271,7 +271,7 @@ export class Panel {
       warns.push(hint);
     }
     // PDF (версия 0.3): в чат уйдёт текст, а не PDF — объясняем заранее
-    // расширение результата — по pdfMode (FR-53): «.md» или «.txt»
+    // расширение результата — по pdfMode (FR-54): «.md» или «.txt»
     if (d.kind === 'pdf') warns.push(h('div', { class: 'note', text: this.t('pdfNote', { ext: d.ext || '.md' }), 'data-testid': 'pdf-note' }));
     for (const w of d.warnings || []) {
       const reason = w.details?.reason === 'MODEL_LOAD_FAILED' ? 'MODEL_LOAD_FAILED' : 'INFERENCE_FAILED';

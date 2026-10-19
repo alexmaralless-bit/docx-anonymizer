@@ -3,7 +3,7 @@ export const RESTORE_DICT = {
   ru: {
     title: 'Восстановить текст',
     subtitle:
-      'Вставьте ответ ИИ с плейсхолдерами или загрузите файл от ИИ (.docx, .md, .txt) — получите текст или файл с настоящими значениями. Всё происходит на этом компьютере.',
+      'Вставьте ответ ИИ с плейсхолдерами или загрузите файл от ИИ (.docx, .docm, .md, .txt) — получите текст или файл с настоящими значениями. Всё происходит на этом компьютере.',
     input_h: '1. Ответ ИИ с плейсхолдерами',
     input_placeholder: 'Например: Договор с [КОМПАНИЯ_1] подписывает [ФИО_1].',
     source_h: '2. Откуда взять карту замен',
@@ -61,7 +61,7 @@ export const RESTORE_DICT = {
   en: {
     title: 'Restore text',
     subtitle:
-      'Paste an AI answer with placeholders or load a file from the AI (.docx, .md, .txt) to get text or a file with the real values. Everything happens on this computer.',
+      'Paste an AI answer with placeholders or load a file from the AI (.docx, .docm, .md, .txt) to get text or a file with the real values. Everything happens on this computer.',
     input_h: '1. AI answer with placeholders',
     input_placeholder: 'For example: The contract with [COMPANY_1] is signed by [PERSON_1].',
     source_h: '2. Where to take the mapping from',

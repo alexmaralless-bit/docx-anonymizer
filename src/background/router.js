@@ -3,6 +3,7 @@
 import { PORT_NAME, TARGET, MSG, errorMessage } from '../shared/protocol.js';
 import { ensureOffscreen, hasDocument } from './offscreen-manager.js';
 import { loadSettings } from '../shared/settings-store.js';
+import { bootstrapBundledModel } from './bundled-model.js';
 
 /** @type {Map<string, chrome.runtime.Port>} */
 const ports = new Map();
@@ -33,6 +34,13 @@ export function initRouter() {
 
 async function forward(clientId, port, msg) {
   try {
+    // WP10-C: «Восстановить встроенную модель» — установка идёт в фоне (bundled-model.js), клиенту сразу ACK;
+    // итог он увидит по смене настроек (nerModel/bundledModelSha). offscreen поднимает сам bootstrap, если нужно.
+    if (msg.type === MSG.MODEL_BOOTSTRAP) {
+      bootstrapBundledModel({ force: true }).catch(() => {});
+      port.postMessage({ type: MSG.ACK, requestId: msg.requestId });
+      return;
+    }
     // WP8: смена пакета модели NER сбрасывает кэш провайдера в воркере. Нет offscreen — нет и кэша: отвечаем сами,
     // не поднимая документ ради пустой операции (новый воркер прочтёт модель заново).
     if (msg.type === MSG.MODEL_CHANGED && !(await hasDocument())) {

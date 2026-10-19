@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { strToU8, unzipSync, zipSync } from 'fflate';
-import { test, expect } from './fixtures.js';
+import { test, expect, BUNDLED } from './fixtures.js';
 import { buildSampleDocx, esc } from '../../scripts/make-sample.mjs';
 import { installClient, runPipeline } from './helpers/client.js';
 import { findKnownPack } from '../../src/core/ner/known-packs.js';
@@ -27,6 +27,7 @@ function sampleWithThirdPerson(extra) {
 }
 
 test.skip(!PACK, 'нужен NER_PACK — путь к zip-пакету модели');
+test.skip(!!BUNDLED, 'полная сборка: модель встроена, ручной импорт проверяется на лёгкой (tests/e2e/bundled-model.spec.js)');
 
 test('реальный пакет модели: импорт, анализ с NER в воркере, source:ner, без сети, время', async ({ context, extensionId }) => {
   test.setTimeout(180000);

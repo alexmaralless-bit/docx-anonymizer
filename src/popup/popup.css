@@ -159,6 +159,20 @@ input:focus-visible + .switch {
   font-size: 12px;
   color: var(--muted);
 }
+/* WP10-C: строка «Модель NER не установлена» между карточкой и «Недавними» */
+.ner-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.ner-hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.ner-hint a:hover,
+.ner-hint a:focus-visible {
+  text-decoration: underline;
+}
 .btn-sm {
   font: inherit;
   font-size: 12.5px;

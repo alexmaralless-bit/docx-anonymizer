@@ -5,6 +5,9 @@ import { MSG, PORT_NAME, TARGET } from '../../src/shared/protocol.js';
 
 const offscreen = vi.hoisted(() => ({ hasDocument: vi.fn(), ensureOffscreen: vi.fn() }));
 vi.mock('../../src/background/offscreen-manager.js', () => offscreen);
+// WP10-C: установка встроенной модели — отдельный модуль; здесь проверяется только маршрутизация MODEL_BOOTSTRAP
+const bundled = vi.hoisted(() => ({ bootstrapBundledModel: vi.fn(async () => 'install'), initBundledModel: vi.fn() }));
+vi.mock('../../src/background/bundled-model.js', () => bundled);
 
 const { initRouter } = await import('../../src/background/router.js');
 
@@ -62,6 +65,38 @@ describe('router: MODEL_CHANGED', () => {
     await tick();
     expect(offscreen.ensureOffscreen).toHaveBeenCalledTimes(1);
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ target: TARGET.OFFSCREEN, clientId: expect.any(String), msg });
+    expect(port.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('router: MODEL_BOOTSTRAP (WP10-C)', () => {
+  let chrome;
+  beforeEach(() => {
+    chrome = fakeChrome();
+    vi.stubGlobal('chrome', chrome);
+    vi.stubGlobal('__BUNDLED_MODEL__', { file: 'p.zip', id: 'test-pack', version: '1.0.0', sha256: 'e'.repeat(64), size: 1 });
+    offscreen.hasDocument.mockReset().mockResolvedValue(false);
+    offscreen.ensureOffscreen.mockReset().mockResolvedValue(undefined);
+    bundled.bootstrapBundledModel.mockClear();
+    initRouter();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('ACK сразу, установка — bootstrapBundledModel({force: true}); в offscreen само сообщение не уходит', async () => {
+    const port = connect(chrome);
+    port.onMessage.fire({ type: MSG.MODEL_BOOTSTRAP, requestId: 'b1' });
+    await tick();
+    await tick();
+    expect(port.postMessage).toHaveBeenCalledWith({ type: MSG.ACK, requestId: 'b1' });
+    expect(bundled.bootstrapBundledModel).toHaveBeenCalledWith({ force: true });
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(offscreen.ensureOffscreen).not.toHaveBeenCalled();
+  });
+
+  it('сообщения хоста с clientId bootstrap router не пересылает ни одному порту', async () => {
+    const port = connect(chrome);
+    chrome.runtime.onMessage.fire({ target: TARGET.BACKGROUND, clientId: 'bootstrap', msg: { type: MSG.MODEL_INSTALLED, requestId: 'x' } });
+    await tick();
     expect(port.postMessage).not.toHaveBeenCalled();
   });
 });

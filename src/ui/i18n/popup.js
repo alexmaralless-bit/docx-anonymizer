@@ -22,6 +22,9 @@ export const popup = {
     entities: '{n} знач.',
     devTitle: 'Проверка конвейера (dev)',
     devPick: 'Выберите .docx',
+    // WP10-C: строка о модели NER, пока её нет
+    nerHint: 'Модель NER не установлена — находить больше имён',
+    nerInstalling: 'Встроенная модель NER устанавливается…',
   },
   en: {
     interceptLabel: 'Upload interception',
@@ -45,5 +48,8 @@ export const popup = {
     entities: '{n} items',
     devTitle: 'Pipeline check (dev)',
     devPick: 'Pick a .docx',
+    // WP10-C: NER model line while there is none
+    nerHint: 'NER model not installed — find more names',
+    nerInstalling: 'The built-in NER model is being installed…',
   },
 };

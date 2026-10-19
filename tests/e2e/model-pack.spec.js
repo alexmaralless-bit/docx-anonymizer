@@ -3,11 +3,14 @@
 // сущности правил на месте. За весь сценарий — ни одного http(s)-запроса.
 import { createHash } from 'node:crypto';
 import { zipSync, strToU8 } from 'fflate';
-import { test, expect } from './fixtures.js';
+import { test, expect, BUNDLED } from './fixtures.js';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
 import { buildFixtures } from '../../scripts/gen-fixtures.mjs';
 import { installClient, runPipeline } from './helpers/client.js';
 import { captureAllRequests, externalRequests, offscreenRequests } from './helpers/network.js';
+
+// Полная сборка (WP10-C) ставит встроенную модель сама — сценарий «модели нет → импорт» проверяется на лёгкой
+test.skip(!!BUNDLED, 'полная сборка: встроенная модель ставится сама (tests/e2e/bundled-model.spec.js)');
 
 const ID = 'e2e-fake-ner';
 const VERSION = '0.0.1';

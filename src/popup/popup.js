@@ -20,6 +20,10 @@ let tabUrl;
 let granted;
 let accessDenied = false;
 let t = (k) => k;
+/** Встроенный пакет модели полной сборки или null — лёгкая (WP10-C, scripts/build.mjs --with-model). */
+const BUNDLED = typeof __BUNDLED_MODEL__ !== 'undefined' ? __BUNDLED_MODEL__ : null;
+/** Ссылка строки NER: держим сам элемент — в состоянии «устанавливается» он вынут из DOM. */
+const nerLink = /** @type {HTMLAnchorElement} */ (document.getElementById('open-ner'));
 
 async function currentTabUrl() {
   try {
@@ -104,6 +108,24 @@ function renderSite() {
     actions.append(h('small', { class: 'site-note', 'data-testid': 'access-denied', text: t('accessDenied') }));
 }
 
+/**
+ * Строка о модели NER (WP10-C, К16): скрыта, когда модель выбрана; в полной сборке, пока встроенный пакет не обработан
+ * профилем, — «устанавливается» без ссылки; иначе — ссылка на карточку «Модель NER» настроек.
+ */
+function renderNer() {
+  const p = $('ner-hint');
+  p.hidden = !!settings.nerModel;
+  if (p.hidden) return;
+  if (BUNDLED && settings.bundledModelSha !== BUNDLED.sha256) {
+    p.dataset.state = 'installing';
+    p.replaceChildren(t('nerInstalling'));
+  } else {
+    p.dataset.state = 'none';
+    nerLink.textContent = t('nerHint');
+    p.replaceChildren(nerLink);
+  }
+}
+
 async function renderRecent() {
   const list = $('recent-list');
   clear(list);
@@ -149,11 +171,13 @@ async function init() {
   await refreshAccess();
   applyLanguage();
   renderSite();
+  renderNer();
   const toggle = /** @type {HTMLInputElement} */ ($('intercept-toggle'));
   toggle.addEventListener('change', () => saveSettingsPatch({ interceptEnabled: toggle.checked }));
   onSettingsChanged((s) => {
     settings = s;
     applyLanguage();
+    renderNer();
     render();
   });
   // доступ могли выдать или отозвать в chrome://extensions, пока popup открыт
@@ -162,6 +186,11 @@ async function init() {
   $('open-options').addEventListener('click', (e) => {
     e.preventDefault();
     chrome.runtime.openOptionsPage();
+  });
+  // openOptionsPage() не принимает якорь — открываем страницу настроек вкладкой сразу на карточке модели
+  nerLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#ner') });
   });
   $('open-restore').addEventListener('click', (e) => {
     e.preventDefault();

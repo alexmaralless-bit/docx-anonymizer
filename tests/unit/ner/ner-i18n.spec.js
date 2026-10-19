@@ -49,4 +49,16 @@ describe('i18n: модель NER', () => {
     const helpJs = readFileSync(new URL('../../../src/help/help.js', import.meta.url), 'utf8');
     expect(helpJs).toContain("list('ul', t, 'privacy', 4)");
   });
+
+  it('встроенная модель (WP10-C): тексты говорят про полный и лёгкий архив, «ничего не скачивает» и «локально» сохранены', () => {
+    for (const k of ['ner_hint', 'ner_privacy']) expect(OPTIONS_DICT.ru[k], k).toMatch(/архив/);
+    expect(OPTIONS_DICT.ru.ner_hint).toMatch(/полном архиве/);
+    expect(OPTIONS_DICT.ru.ner_hint).toMatch(/лёгкого архива/);
+    expect(OPTIONS_DICT.ru.ner_privacy).toMatch(/ничего не скачивает/);
+    expect(HELP_DICT.ru.check_2).toMatch(/полном архиве/);
+    expect(HELP_DICT.ru.check_2).toMatch(/GitHub Releases/);
+    expect(HELP_DICT.ru.privacy_4).toMatch(/не скачивается из сети/);
+    expect(HELP_DICT.en.check_2).toMatch(/full extension archive/);
+    expect(HELP_DICT.en.privacy_4).toMatch(/browser storage/);
+  });
 });

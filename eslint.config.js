@@ -8,7 +8,7 @@ export default [
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
-      globals: { ...globals.browser, ...globals.webextensions, ...globals.worker, __VERSION__: 'readonly' },
+      globals: { ...globals.browser, ...globals.webextensions, ...globals.worker, __VERSION__: 'readonly', __BUNDLED_MODEL__: 'readonly' },
     },
     rules: {
       'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
@@ -26,6 +26,20 @@ export default [
         { name: 'EventSource', message: 'Сетевые запросы запрещены (NFR-01)' },
       ],
       'no-restricted-properties': ['error', { object: 'navigator', property: 'sendBeacon', message: 'Сетевые запросы запрещены (NFR-01)' }],
+    },
+  },
+  {
+    // WP10-C: единственное исключение — чтение zip встроенной модели из СОБСТВЕННОГО пакета расширения (chrome-extension://
+    // того же origin; другие адреса файл отклоняет до fetch, CSP connect-src 'self' — тоже). Сети нет, NFR-01 соблюдён.
+    // fetch разрешён только здесь; сторож «fetch ровно в одном файле» — tests/unit/bundled-model.spec.js (К16).
+    files: ['src/offscreen/package-fetch.js'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        { name: 'XMLHttpRequest', message: 'Сетевые запросы запрещены (NFR-01)' },
+        { name: 'WebSocket', message: 'Сетевые запросы запрещены (NFR-01)' },
+        { name: 'EventSource', message: 'Сетевые запросы запрещены (NFR-01)' },
+      ],
     },
   },
   {

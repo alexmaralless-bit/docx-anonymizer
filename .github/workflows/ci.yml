@@ -3,6 +3,9 @@
 #
 # Гейтовые тесты реальной модели NER в CI пропускаются — так задумано: модель в git не хранится (пакет — в GitHub Releases).
 #   NER_MODEL_DIR — tests/integration/ner-provider.spec.js (К7, К8), NER_PACK — tests/e2e/ner.spec.js; запускаются локально.
+# Версия 0.3 (WP10-C): npm run pack здесь собирает только лёгкий архив — пакета модели (release/docx-anonymizer-ner-*.zip) в CI нет.
+#   Полный архив docx-anonymizer-<версия>-full.zip, «полный архив» в tests/integration/pack.spec.js и e2e bundled-model.spec.js
+#   (гейт — dist-e2e/models/index.json) — только локально.
 name: CI
 
 on:

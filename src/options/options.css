@@ -479,3 +479,20 @@ mark.hit {
 .ner-unverified {
   color: var(--danger);
 }
+/* WP10-C: онбординг модели NER в лёгкой сборке — три шага, пока модели нет */
+.ner-onboarding {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.ner-onboarding h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.ner-onboarding .steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}

@@ -1,7 +1,7 @@
 // WP4: страница настроек — FR-42 (сохранение ≤ 200 мс), siteMode с подтверждением, валидация, свои категории и regex-guard.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { test, expect } from './fixtures.js';
+import { test, expect, BUNDLED } from './fixtures.js';
 
 const stored = (page) => page.evaluate(async () => (await chrome.storage.local.get('settings')).settings);
 
@@ -95,4 +95,32 @@ test('свои категории: regex-guard блокирует (a+)+$, при
   await expect.poll(async () => (await stored(page)).customCategories.map((c) => c.id)).toEqual([cc.id]);
 
   await page.screenshot({ path: join(dir, 'options.png'), fullPage: true });
+});
+
+// WP10-C (К16): лёгкая сборка без модели — онбординг из трёх шагов в карточке «Модель NER», строка в popup со ссылкой на #ner
+test('лёгкая сборка: онбординг модели NER в настройках и строка в popup → options.html#ner', async ({ context, extensionId }) => {
+  test.skip(!!BUNDLED, 'полная сборка: модель встроена (tests/e2e/bundled-model.spec.js)');
+  const page = await openOptions(context, extensionId);
+  const onboarding = page.getByTestId('ner-onboarding');
+  await expect(onboarding).toBeVisible();
+  await expect(onboarding.locator('ol.steps > li')).toHaveCount(3);
+  await expect(onboarding.getByTestId('ner-releases-link')).toHaveAttribute('href', /github\.com\/.+\/releases/);
+  await expect(onboarding.getByTestId('ner-import')).toBeVisible();
+  await expect(page.getByTestId('ner-status')).toHaveAttribute('data-state', 'none');
+  await expect(page.getByTestId('ner-restore')).toBeHidden();
+  await page.close();
+
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  const hint = popup.getByTestId('ner-hint');
+  await expect(hint).toBeVisible();
+  await expect(hint).toContainText('Модель NER не установлена');
+  const [opened] = await Promise.all([context.waitForEvent('page'), hint.getByRole('link').click()]);
+  await opened.waitForLoadState();
+  expect(opened.url()).toBe(`chrome-extension://${extensionId}/options/options.html#ner`);
+  await expect(opened.locator('#ner')).toBeInViewport();
+
+  // модель выбрана — строки в popup нет (сама модель здесь не нужна: popup смотрит только на nerModel)
+  await popup.evaluate(() => chrome.storage.local.set({ settings: { uiLanguage: 'ru', nerModel: 'some-pack' } }));
+  await expect(hint).toBeHidden();
 });

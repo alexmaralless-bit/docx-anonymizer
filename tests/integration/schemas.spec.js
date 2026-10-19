@@ -8,6 +8,7 @@ import { buildSampleDocx } from '../../scripts/make-sample.mjs';
 import { defaultSettings, mergeMappings } from '../../src/core/index.js';
 import { createValidator } from '../helpers/jsonschema.js';
 import { anonymize } from './support/pipeline.js';
+import { extractPdfNode } from './support/pdf.js';
 
 const load = (n) => JSON.parse(readFileSync(new URL(`../../schemas/${n}`, import.meta.url), 'utf8'));
 const mappingSchema = load('mapping.schema.json');
@@ -95,6 +96,9 @@ describe('schemas/protocol.schema.json', () => {
     // FR-37: DEANON {decline: true} → DEANON_RESULT {declined[]} (карта — из фикстуры склонения)
     await send({ type: MSG.DEANON, requestId: 'r6d', mappingRef: declineFx.mapping, text: 'Письмо [ФИО_1]у и от [ФИО_2].', decline: true });
     expect(out.find((m) => m.requestId === 'r6d').declined.map((d) => d.case)).toEqual(['dat', 'gen']);
+    // WP10-B: карта сессии для восстановления файла на странице
+    await send({ type: MSG.GET_MAPPING, requestId: 'g1', docId: ent.docId });
+    expect(out.find((m) => m.requestId === 'g1')).toMatchObject({ type: MSG.MAPPING, mapping: end.mapping });
     await send({ type: MSG.LIST_SESSIONS, requestId: 'r7' });
     await upload('e1', new TextEncoder().encode('это не docx, а просто текст достаточной длины'), 'x.docx');
     await send({ type: MSG.CATALOG_CHANGED, requestId: 'c1' });
@@ -125,12 +129,44 @@ describe('schemas/protocol.schema.json', () => {
       'ADD_ENTITY',
       'GET_TEXT',
       'MODEL_CHANGED',
+      'GET_MAPPING',
+      'MAPPING',
     ]) {
       expect(types.has(t), `в прогоне нет ${t}`).toBe(true);
     }
     for (const m of [...sent, ...out]) expect(checkMessage(m), `${m.type}`).toEqual([]);
     expect(JSON.stringify(out.filter((m) => m.type === MSG.SESSIONS))).not.toContain('@');
   });
+
+  it('PDF (версия 0.3): стадия pdf, ENTITIES kind, RESULT_BEGIN .anon.md + mime, предупреждение и коды отказов валидны', async () => {
+    const out = [];
+    const sent = [];
+    const host = createHost({ post: (_c, msg) => out.push(msg), extractPdf: extractPdfNode });
+    const settings = defaultSettings();
+    const send = async (msg) => {
+      sent.push(msg);
+      await host.handle('c1', { settings, ...msg });
+    };
+    const upload = async (requestId, data, name) => {
+      const msgs = [];
+      postChunked((m) => msgs.push(m), { requestId, kind: 'FILE', bytes: data, meta: { name, sha256: null, origin: 'http://test.invalid' } });
+      for (const m of msgs) await send(m);
+      await send({ type: MSG.ANALYZE, requestId });
+    };
+    const pdf = (n) => new Uint8Array(readFileSync(new URL(`../fixtures/pdf/${n}.pdf`, import.meta.url)));
+    await upload('p1', pdf('mixed'), 'договор.pdf');
+    const ent = out.find((m) => m.type === MSG.ENTITIES);
+    expect(ent.kind).toBe('pdf');
+    expect(ent.warnings.map((w) => w.code)).toContain('PDF_PAGES_NO_TEXT');
+    await send({ type: MSG.APPLY, requestId: 'p2', docId: ent.docId, decisions: [] });
+    expect(out.find((m) => m.type === MSG.RESULT_BEGIN)).toMatchObject({ name: 'договор.anon.md', mime: 'text/markdown' });
+    await upload('p3', pdf('scan'), 'scan.pdf');
+    await upload('p4', pdf('empty'), 'empty.pdf');
+    await upload('p5', buildSampleDocx().bytes, 'notpdf.pdf');
+    expect(out.filter((m) => m.type === MSG.ERROR).map((m) => m.code)).toEqual(['PDF_NO_TEXT', 'PDF_EMPTY', 'PDF_INVALID']);
+    expect(out.some((m) => m.type === MSG.PROGRESS && m.stage === 'pdf')).toBe(true);
+    for (const m of [...sent, ...out]) expect(checkMessage(m), `${m.type}`).toEqual([]);
+  }, 30000);
 
   it('отвергает испорченные сообщения', () => {
     const base = { type: 'FILE_BEGIN', requestId: 'r1', name: 'a.docx', size: 10, chunks: 1 };
@@ -147,6 +183,10 @@ describe('schemas/protocol.schema.json', () => {
       { type: 'DEANON', requestId: 'r', mappingRef: 'd1', text: 'x', decline: 'да' },
       { type: 'MODEL_CHANGED', requestId: 'r', modelId: 'Bad Id' },
       { type: 'MODEL_CHANGED' },
+      { type: 'GET_MAPPING', requestId: 'r' },
+      { type: 'GET_MAPPING', requestId: 'r', docId: '' },
+      { type: 'MAPPING', requestId: 'r', docId: 'd1' },
+      { type: 'MAPPING', requestId: 'r', docId: 'd1', mapping: { entries: [] } },
       {
         type: 'DEANON_RESULT',
         requestId: 'r',
@@ -155,6 +195,52 @@ describe('schemas/protocol.schema.json', () => {
         replaced: 1,
         declined: [{ start: 0, end: 1, case: 'dative', original: 'a', text: 'x' }],
       },
+    ]) {
+      expect(validate(protocolSchema, bad), JSON.stringify(bad)).not.toEqual([]);
+    }
+  });
+});
+
+// WP10-C: сообщения встроенной модели NER (client → bg MODEL_BOOTSTRAP, bg → offscreen MODEL_INSTALL, ответ MODEL_INSTALLED)
+describe('schemas/protocol.schema.json: встроенная модель (WP10-C)', () => {
+  const SHA = '0123456789abcdef'.repeat(4);
+  it('сообщения реального хоста и клиента валидны', async () => {
+    const out = [];
+    const host = createHost({
+      post: (_c, m) => out.push(m),
+      readPackageFile: async () => new Uint8Array([1]),
+      modelStore: {
+        listInstalled: async () => [],
+        inspectPack: async () => ({ manifest: { id: 'rubert-tiny2-ner-ruen' }, packSha256: SHA, verified: true }),
+        install: async () => ({ version: '1.0.0', bytes: 29000000 }),
+      },
+    });
+    const install = {
+      type: MSG.MODEL_INSTALL,
+      requestId: 'mi1',
+      url: 'chrome-extension://abcdefghijklmnop/models/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip',
+      id: 'rubert-tiny2-ner-ruen',
+      sha256: SHA,
+      version: '1.0.0',
+      extensionVersion: '0.3.0',
+    };
+    await host.handle('bootstrap', install);
+    await host.handle('bootstrap', { ...install, requestId: 'mi2', sha256: 'f'.repeat(64) }); // → failed/MISMATCH
+    const msgs = [{ type: MSG.MODEL_BOOTSTRAP, requestId: 'b1' }, install, ...out];
+    expect(out.map((m) => m.status)).toEqual(['installed', 'failed']);
+    for (const m of msgs) expect(checkMessage(m), m.type).toEqual([]);
+  });
+
+  it('отвергает испорченные', () => {
+    const ok = { type: 'MODEL_INSTALL', requestId: 'r', url: 'chrome-extension://x/models/a.zip', id: 'test-pack', sha256: SHA };
+    expect(validate(protocolSchema, ok)).toEqual([]);
+    for (const bad of [
+      { ...ok, url: 'https://example.invalid/a.zip' },
+      { ...ok, sha256: 'XYZ' },
+      { ...ok, id: 'Bad Id' },
+      { type: 'MODEL_INSTALLED', requestId: 'r', status: 'done', id: 'test-pack', sha256: SHA },
+      { type: 'MODEL_INSTALLED', requestId: 'r', status: 'installed', id: 'test-pack' },
+      { type: 'MODEL_BOOTSTRAP' },
     ]) {
       expect(validate(protocolSchema, bad), JSON.stringify(bad)).not.toEqual([]);
     }

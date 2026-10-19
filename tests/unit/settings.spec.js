@@ -93,6 +93,31 @@ describe('settings', () => {
     const { parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
     expect(parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { dictNames: false } })).patch).toEqual({ dictNames: false });
   });
+  it('hintMappingShown (WP10-D): по умолчанию false, boolean, миграция без изменений версии, не экспортируется', async () => {
+    expect(defaultSettings().hintMappingShown).toBe(false);
+    expect(validateSettingsPatch({ hintMappingShown: true })).toEqual([]);
+    expect(validateSettingsPatch({ hintMappingShown: 'да' })).toEqual(['hintMappingShown']);
+    expect(migrateSettings({ hintMappingShown: 1 }).settings.hintMappingShown).toBe(false);
+    expect(migrateSettings({ hintMappingShown: true }).settings.hintMappingShown).toBe(true);
+    expect(migrateSettings({}).settings.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
+    const { NOT_EXPORTED, parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
+    expect(NOT_EXPORTED.has('hintMappingShown')).toBe(true);
+    expect(parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { hintMappingShown: true, mode: 'mask' } })).patch).toEqual({ mode: 'mask' });
+  });
+  it('bundledModelSha (WP10-C): по умолчанию пусто, только hex64, без миграции версии, не экспортируется', async () => {
+    const sha = '0123456789abcdef'.repeat(4);
+    expect(defaultSettings().bundledModelSha).toBe('');
+    expect(validateSettingsPatch({ bundledModelSha: sha })).toEqual([]);
+    expect(validateSettingsPatch({ bundledModelSha: '' })).toEqual([]);
+    for (const bad of ['abc', sha.toUpperCase(), sha + '0', 42])
+      expect(validateSettingsPatch({ bundledModelSha: bad }), String(bad)).toEqual(['bundledModelSha']);
+    expect(migrateSettings({ bundledModelSha: 'плохо' }).settings.bundledModelSha).toBe('');
+    expect(migrateSettings({ bundledModelSha: sha }).settings.bundledModelSha).toBe(sha);
+    expect(migrateSettings({}).settings.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
+    const { NOT_EXPORTED, parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
+    expect(NOT_EXPORTED.has('bundledModelSha')).toBe(true);
+    expect(parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { bundledModelSha: sha, mode: 'mask' } })).patch).toEqual({ mode: 'mask' });
+  });
   it('профиль external включает все категории', () => {
     const s = effectiveSettings(defaultSettings(), 'external');
     expect(s.categories.AMOUNT).toBe(true);

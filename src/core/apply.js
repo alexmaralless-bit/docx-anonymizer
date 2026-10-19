@@ -1,5 +1,7 @@
-// applyDecisions: группы с решениями → байты .docx + маппинг (FR-25–FR-28).
+// applyDecisions: группы с решениями → байты результата + маппинг (FR-25–FR-28).
+// DOCX → .docx (serializeDocx); текстовая модель PDF (версия 0.3, doc.kind === 'text') → Markdown/текст (serializeText).
 import { serializeDocx } from './docx/replace.js';
+import { serializeText, TEXT_MIME } from './text/serialize.js';
 import { replacementFor } from './placeholders.js';
 import { buildMapping } from './mapping.js';
 
@@ -13,17 +15,21 @@ import { buildMapping } from './mapping.js';
  * @property {{name: string, sha256?: string, resultName?: string}} [document]
  * @property {string} [createdAt]                     ISO-время (для детерминированных тестов)
  * @property {string} [toolVersion]
+ * @property {'md'|'txt'} [textFormat='md']           формат результата текстовой модели (PDF, версия 0.3)
  */
 
+export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
 /**
- * @param {import('./docx/model.js').DocModel} doc
- * @param {import('./contracts/entity.js').EntityGroup[]} groups  с решениями (см. mergeDecisions)
- * @param {ApplyOptions} [options]
- * @returns {{docxBytes: Uint8Array, mapping: object, stats: {replacements: number, entities: number, changedParts: string[], removedParts: string[]}}}
+ * Правки по решениям (FR-26, FR-13) и сводка применённого для маппинга — общая часть DOCX и текста.
+ * @param {{streamById: Map<string, any>}} doc
+ * @param {import('./contracts/entity.js').EntityGroup[]} groups
+ * @param {{mode?: string, placeholderLanguage?: string}} [opts]
+ * @returns {{edits: import('./docx/replace.js').TextEdit[], applied: Map<string, {token: string, occurrences: number, parts: Set<string>, firstForm?: string}>}}
  */
-export function applyDecisions(doc, groups, options = {}) {
-  const mode = options.mode || 'placeholder';
-  const lang = options.placeholderLanguage || 'ru';
+export function planEdits(doc, groups, opts = {}) {
+  const mode = opts.mode || 'placeholder';
+  const lang = opts.placeholderLanguage || 'ru';
   /** @type {import('./docx/replace.js').TextEdit[]} */
   const edits = [];
   /** @type {Map<string, {token: string, occurrences: number, parts: Set<string>, firstForm?: string}>} */
@@ -37,7 +43,7 @@ export function applyDecisions(doc, groups, options = {}) {
       const s = doc.streamById.get(o.streamId);
       if (!s) continue;
       const core = o.text.slice(o.keepPrefix, o.text.length - o.keepSuffix);
-      const token = replacementFor(g, core, mode, lang);
+      const token = replacementFor(g, core, /** @type {any} */ (mode), /** @type {any} */ (lang));
       let newText = o.text.slice(0, o.keepPrefix) + token + o.text.slice(o.text.length - o.keepSuffix);
       if (s.attrKind === 'rel-target' && g.category === 'URL') {
         // FR-13: внешняя ссылка остаётся кликабельной и никуда не ведёт
@@ -51,11 +57,31 @@ export function applyDecisions(doc, groups, options = {}) {
       if (!a.firstForm && core === g.value) a.firstForm = o.text.slice(0, o.keepPrefix) + token + o.text.slice(o.text.length - o.keepSuffix);
     }
   }
+  return { edits, applied };
+}
 
-  const { bytes, changedParts, removedParts } = serializeDocx(doc, edits, {
-    keepMetadata: options.keepMetadata,
-    stripEmbedded: options.stripEmbedded,
-  });
+/**
+ * @param {import('./docx/model.js').DocModel} doc
+ * @param {import('./contracts/entity.js').EntityGroup[]} groups  с решениями (см. mergeDecisions)
+ * @param {ApplyOptions} [options]
+ * @returns {{bytes: Uint8Array, docxBytes: Uint8Array, mime: string, mapping: object, stats: {replacements: number, entities: number, changedParts: string[], removedParts: string[]}}}
+ *   docxBytes — прежнее имя поля (= bytes) для совместимости
+ */
+export function applyDecisions(doc, groups, options = {}) {
+  const mode = options.mode || 'placeholder';
+  const { edits, applied } = planEdits(doc, groups, { mode, placeholderLanguage: options.placeholderLanguage || 'ru' });
+
+  let out;
+  let mime;
+  if (/** @type {any} */ (doc).kind === 'text') {
+    const format = options.textFormat === 'txt' ? 'txt' : 'md';
+    out = serializeText(/** @type {any} */ (doc), edits, { format });
+    mime = TEXT_MIME[format];
+  } else {
+    out = serializeDocx(doc, edits, { keepMetadata: options.keepMetadata, stripEmbedded: options.stripEmbedded });
+    mime = DOCX_MIME;
+  }
+  const { bytes, changedParts, removedParts } = out;
 
   const mapping = buildMapping({
     groups,
@@ -68,7 +94,9 @@ export function applyDecisions(doc, groups, options = {}) {
   });
 
   return {
+    bytes,
     docxBytes: bytes,
+    mime,
     mapping,
     stats: { replacements: edits.length, entities: applied.size, changedParts, removedParts },
   };

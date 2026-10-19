@@ -1,0 +1,57 @@
+[
+  {
+    "key": "co",
+    "category": "COMPANY",
+    "value": "Северный Ветер"
+  },
+  {
+    "key": "inn",
+    "category": "INN",
+    "value": "7805003215"
+  },
+  {
+    "key": "person",
+    "category": "PERSON",
+    "value": "Морозов Виктор Андреевич"
+  },
+  {
+    "key": "mail",
+    "category": "EMAIL",
+    "value": "v.morozov@severny-veter.example"
+  },
+  {
+    "key": "phone",
+    "category": "PHONE",
+    "value": "+7 (812) 555-77-88"
+  },
+  {
+    "key": "au1",
+    "category": "PERSON",
+    "value": "Крылов Денис"
+  },
+  {
+    "key": "au2",
+    "category": "PERSON",
+    "value": "Фомина Алла"
+  },
+  {
+    "key": "au3",
+    "category": "PERSON",
+    "value": "Громов Кирилл"
+  },
+  {
+    "key": "boxPerson",
+    "category": "PERSON",
+    "value": "Зайцева Ольга Петровна"
+  },
+  {
+    "key": "sdtInn",
+    "category": "INN",
+    "value": "781000012304"
+  },
+  {
+    "key": "split",
+    "category": "PERSON",
+    "value": "Тихонов Борис Львович"
+  }
+]

@@ -1,0 +1,102 @@
+[
+  {
+    "key": "person0",
+    "category": "PERSON",
+    "value": "Корнилов Степан Аркадьевич"
+  },
+  {
+    "key": "inn0",
+    "category": "INN",
+    "value": "7701001005"
+  },
+  {
+    "key": "person1",
+    "category": "PERSON",
+    "value": "Ветрова Лидия Олеговна"
+  },
+  {
+    "key": "inn1",
+    "category": "INN",
+    "value": "7701011130"
+  },
+  {
+    "key": "person2",
+    "category": "PERSON",
+    "value": "Шубин Матвей Ильич"
+  },
+  {
+    "key": "inn2",
+    "category": "INN",
+    "value": "7701021266"
+  },
+  {
+    "key": "person3",
+    "category": "PERSON",
+    "value": "Галкина Ульяна Романовна"
+  },
+  {
+    "key": "inn3",
+    "category": "INN",
+    "value": "7701031391"
+  },
+  {
+    "key": "person4",
+    "category": "PERSON",
+    "value": "Лаптев Игнат Семёнович"
+  },
+  {
+    "key": "inn4",
+    "category": "INN",
+    "value": "7701041520"
+  },
+  {
+    "key": "person5",
+    "category": "PERSON",
+    "value": "Широкова Таисия Глебовна"
+  },
+  {
+    "key": "inn5",
+    "category": "INN",
+    "value": "7701051655"
+  },
+  {
+    "key": "person6",
+    "category": "PERSON",
+    "value": "Дроздов Ростислав Юрьевич"
+  },
+  {
+    "key": "inn6",
+    "category": "INN",
+    "value": "7701061780"
+  },
+  {
+    "key": "person7",
+    "category": "PERSON",
+    "value": "Абрамова Нелли Вадимовна"
+  },
+  {
+    "key": "inn7",
+    "category": "INN",
+    "value": "7701071919"
+  },
+  {
+    "key": "person8",
+    "category": "PERSON",
+    "value": "Колосов Тимур Эдуардович"
+  },
+  {
+    "key": "inn8",
+    "category": "INN",
+    "value": "7701082043"
+  },
+  {
+    "key": "person9",
+    "category": "PERSON",
+    "value": "Рябинина Злата Артёмовна"
+  },
+  {
+    "key": "inn9",
+    "category": "INN",
+    "value": "7701092179"
+  }
+]

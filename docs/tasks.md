@@ -180,6 +180,8 @@
 
 **Приёмка:** К1–К9, К11–К13, К17 (PDF) из `docs/concept-0.3.md`.
 
+**Статус:** реализовано, ждёт коммита координатора. pdf.js 6.4 — **legacy-сборка** в `vendor/pdfjs/` (современная требует API новее Chrome 132), вложенный воркер через `PDFWorker({port})`; `core/pdf/{layout,extract}.js`, `core/text/{model,serialize}.js`, `planEdits` + сериализатор по `doc.kind`, хук `doc.tables` в `kb.js`, `pdfMode`, стадия `pdf`, коды `PDF_*`, `RESULT_BEGIN.mime`, `ENTITIES.kind`; 13 PDF-фикстур (10 текстовых со снимками и gold). Факт: К2 — 0 утечек детекторами на 10 фикстурах; К3 — паритет 100 % по всем категориям; К4 — порядок абзацев 100 %, колонтитулы вынесены, таблица реквизитов `ip-contract` 8 × 2 и в Chromium, и в LibreOffice; К6 — `perf-50p` (48 стр.) ≈ 0,45 с в Node, 0,36 с в Chromium, холодный PDF с загрузкой pdf.js 0,2 с; К8 — `vendor/pdfjs/` 3,6 МБ, лёгкий архив 6,1 МБ; `worker.js` без ORT 706 952 байт (≤ 700 КБ). Спайки S1–S4 — `docs/contracts.md` §7.6. Тест восстановления по карте PDF-сессии (К10) — в `tests/e2e/pdf.spec.js` (файл `restore.spec.js` — зона WP10-B).
+
 ## WP10-B — восстановление файла от ИИ
 
 **Файлы:** `src/core/{deanon,restore-doc,index}.js`, `src/shared/protocol.js` (`GET_MAPPING`/`MAPPING`), `schemas/protocol.schema.json`, `src/offscreen/host.js`, `src/restore/{restore.js,restore.css}`, `src/ui/deanon/{index,dom}.js`, `src/ui/i18n/{restore,help}.js`, `tests/unit/{deanon-spans,restore-doc}.spec.js`, `tests/unit/ui/restore-model.spec.js`, `tests/integration/{host,schemas}.spec.js`, `tests/unit/protocol.spec.js`, `tests/e2e/restore.spec.js`.
@@ -187,6 +189,8 @@
 **Сделать:** `deanonymizeSpans` (координаты входа) и `deanonymize` поверх него (фикстуры 30 + 51 без изменений); `restoreDocx` — обратная замена во всех потоках DOCX с сохранением форматирования (`keepMetadata:true`), склонение в live/deleted, обратное отображение `rel-target`; страница восстановления: режим «Файл от ИИ» (`.docx/.docm/.md/.txt`), карта из файла или по `GET_MAPPING`, скачивание `имя.restored.*`; `?docId=` предвыбирает сессию.
 
 **Приёмка:** К10, К14, К13.
+
+**Статус:** реализовано, ждёт коммита координатора. `deanonymizeSpans`/`findUnresolved` (фикстуры 30 + 51 без изменений), `restoreDocx`/`restoreText`, `GET_MAPPING`/`MAPPING`, режим «Файл от ИИ» и `?docId=` на странице восстановления; тесты `deanon-spans`, `restore-doc` (в т.ч. круговой прогон образца), `restore-model`, `host`/`schemas`/`protocol`, e2e `restore.spec.js` (+3). Отклонение: при `decline: true` ФИО в «в лице генерального директора [ФИО_n]» восстанавливается именительным — предлог «в лице» дальше окна в 3 слова (FR-37), правило склонения не менялось.
 
 ## WP10-C — модель в полном архиве, автоустановка, онбординг
 
@@ -196,6 +200,13 @@
 
 **Приёмка:** К15, К16, К17 (модель), К13.
 
+**Статус:** реализовано, ждёт коммита координатора. `build.mjs --with-model`, `pack.mjs` → лёгкий (побайтно прежний) и `-full.zip`; `bundledModelSha`
+(не экспортируется); `shared/bundled-model.js` (`planBootstrap`, `settingsPatchFor`), `background/bundled-model.js` (onInstalled + миграция, onStartup,
+ответ хоста), `MODEL_BOOTSTRAP`/`MODEL_INSTALL`/`MODEL_INSTALLED`, `offscreen/package-fetch.js` (единственный `fetch`, override ESLint); онбординг в настройках,
+popup и панели. Тесты: `tests/unit/{bundled-model,background/bundled-model,router,settings,protocol}.spec.js`, `tests/integration/{host,schemas,pack,manifest}.spec.js`,
+e2e `bundled-model.spec.js` (полная сборка, гейт), `options.spec.js`, `intercept.spec.js`. Замер e2e: автоустановка `MODEL_INSTALLED.ms` 804 мс, `nerModel` ≈ 1,2 с
+после старта. Архивы (19.10.2026): лёгкий 6 425 890 байт, полный 35 944 655 байт (`docs/contracts.md` §6.8).
+
 ## WP10-D — меню «Ещё» и подсказка о ключе восстановления
 
 **Файлы:** `src/ui/panel/{panel,done-hint,styles}.js`, `src/ui/i18n/panel.js`, `src/content/flow.js`, `src/core/settings.js` (`hintMappingShown`), `src/options/config-io.js`, `tests/unit/ui/done-hint.spec.js`, `tests/e2e/intercept.spec.js`, `tests/e2e/helpers/chat.js`.
@@ -203,3 +214,5 @@
 **Сделать:** кнопка «Скачать маппинг» переезжает в меню «Ещё ▾» как «Сохранить ключ восстановления» (testid сохранён); при закрытии done-экрана без сохранения — одноразовая подсказка с кнопками «Сохранить»/«Понятно», флаг `hintMappingShown` в настройках (не экспортируется).
 
 **Приёмка:** К16 (меню и подсказка), К13.
+
+**Статус:** реализовано, ждёт коммита координатора. `hintMappingShown` (не экспортируется), `done-hint.js`, меню «Ещё ▾» с `btn-download-mapping`, подсказка `mapping-hint`, флаг из `content/flow.js`; тесты `done-hint`, `settings`, e2e `intercept.spec.js` (+2), контракт DOM в `tests/e2e/helpers/chat.js`.

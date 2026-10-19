@@ -2,8 +2,9 @@
 // (нет host_permissions и статических content_scripts); e2e-сборка добавляет host_permissions для Playwright.
 // Сборки — во временные каталоги os.tmpdir(), dist/ не затрагивается. Сети не требуется.
 import { describe, it, expect, afterAll } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { zipSync, strToU8 } from 'fflate';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,10 +15,11 @@ afterAll(() => {
   for (const d of tmp) rmSync(d, { recursive: true, force: true });
 });
 
-/** Собирает расширение в новый временный каталог и возвращает его манифест. */
-function buildManifest(args) {
+/** Собирает расширение в новый временный каталог и возвращает его манифест (dir — каталог сборки). */
+function buildManifest(args, out = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'docx-anon-manifest-'));
   tmp.push(dir);
+  out.dir = dir;
   execFileSync(process.execPath, ['scripts/build.mjs', ...args, `--dist=${dir}`], { stdio: 'pipe' });
   return JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
 }
@@ -33,6 +35,13 @@ describe('manifest.json репозитория', () => {
     expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
     expect(manifest.permissions).toEqual(expect.arrayContaining(['storage', 'offscreen', 'scripting', 'activeTab']));
   });
+
+  it('минимальная версия Chrome ≥ 132: pdf.js 6 читает CMaps и шрифты через Response.bytes() (версия 0.3, спайк S1)', () => {
+    expect(Number(manifest.minimum_chrome_version)).toBeGreaterThanOrEqual(132);
+    // CSP не ослаблена ради pdf.js: свои скрипты, wasm ORT, fetch только к своему пакету
+    expect(manifest.content_security_policy.extension_pages).toContain("script-src 'self' 'wasm-unsafe-eval'");
+    expect(manifest.content_security_policy.extension_pages).toContain("connect-src 'self'");
+  });
 });
 
 describe('сборка', () => {
@@ -41,10 +50,43 @@ describe('сборка', () => {
     expect(e2e.host_permissions).toEqual(['<all_urls>']);
     expect(e2e.optional_host_permissions).toEqual(['<all_urls>']);
     expect(e2e.version).toBe(pkg.version);
-    const release = buildManifest([]);
+    const lite = {};
+    const release = buildManifest([], lite);
+    expect(existsSync(join(lite.dir, 'models')), 'лёгкая сборка без models/ (WP10-C)').toBe(false);
     expect(release).not.toHaveProperty('host_permissions');
     expect(release).not.toHaveProperty('content_scripts');
     expect(release.optional_host_permissions).toEqual(['<all_urls>']);
     expect(release.version).toBe(pkg.version);
   }, 60000);
+});
+
+// Встроенная модель NER (версия 0.3, WP10-C, К15): --with-model=<zip> принимает только пакеты из KNOWN_PACKS
+const MODEL_ZIP = 'release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip';
+describe('сборка с моделью', () => {
+  it('пакет не из KNOWN_PACKS — сборка падает с понятным текстом', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'docx-anon-manifest-'));
+    tmp.push(dir);
+    const fake = join(dir, 'docx-anonymizer-ner-fake-0.0.1.zip');
+    writeFileSync(fake, zipSync({ 'pack.json': strToU8('{"id":"fake"}') }));
+    const r = spawnSync(process.execPath, ['scripts/build.mjs', `--with-model=${fake}`, `--dist=${join(dir, 'out')}`], { encoding: 'utf8' });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('не в KNOWN_PACKS');
+    expect(existsSync(join(dir, 'out', 'manifest.json'))).toBe(false);
+  }, 60000);
+
+  it.skipIf(!existsSync(MODEL_ZIP))(
+    'настоящий пакет — models/index.json с описанием и сам zip',
+    () => {
+      const b = {};
+      buildManifest([`--with-model=${MODEL_ZIP}`], b);
+      const index = JSON.parse(readFileSync(join(b.dir, 'models/index.json'), 'utf8'));
+      expect(index).toHaveLength(1);
+      expect(Object.keys(index[0])).toEqual(['file', 'id', 'version', 'sha256', 'size']);
+      expect(index[0].file).toBe('docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip');
+      expect(index[0].id).toBe('rubert-tiny2-ner-ruen');
+      expect(readFileSync(join(b.dir, 'models', index[0].file)).equals(readFileSync(MODEL_ZIP))).toBe(true);
+      expect(readFileSync(join(b.dir, 'background.js'), 'utf8')).toContain(index[0].sha256);
+    },
+    60000,
+  );
 });

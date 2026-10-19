@@ -9,6 +9,16 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export const DIST = resolve('dist-e2e');
+/**
+ * Встроенная модель NER (WP10-C): описание из dist-e2e/models/index.json полной сборки
+ * (`node scripts/build.mjs --e2e --with-model=<zip>`) или null — лёгкая. Гейт tests/e2e/bundled-model.spec.js; при полной
+ * сборке модель ставится сама, поэтому сценарии ручного импорта (model-pack, ner) пропускаются.
+ * @type {{file: string, id: string, version: string, sha256: string, size: number} | null}
+ */
+export const BUNDLED = (() => {
+  const p = join(DIST, 'models/index.json');
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8'))[0] || null : null;
+})();
 /** Каталог профиля каждого контекста: в нём Chromium пишет DevToolsActivePort (helpers/network.js, К6). */
 export const profileDirs = new WeakMap();
 

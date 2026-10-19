@@ -1,0 +1,102 @@
+[
+  {
+    "key": "ipInn",
+    "category": "INN",
+    "value": "772816897110"
+  },
+  {
+    "key": "ogrnip",
+    "category": "OGRN",
+    "value": "304774612345679"
+  },
+  {
+    "key": "co",
+    "category": "COMPANY",
+    "value": "Лунный свет"
+  },
+  {
+    "key": "coInn",
+    "category": "INN",
+    "value": "7707123458"
+  },
+  {
+    "key": "coKpp",
+    "category": "KPP",
+    "value": "770701001"
+  },
+  {
+    "key": "coOgrn",
+    "category": "OGRN",
+    "value": "1027707123454"
+  },
+  {
+    "key": "rs",
+    "category": "ACCOUNT",
+    "value": "40802810700000077777"
+  },
+  {
+    "key": "ks",
+    "category": "ACCOUNT",
+    "value": "30101810400000000225"
+  },
+  {
+    "key": "bik",
+    "category": "BIK",
+    "value": "044525225"
+  },
+  {
+    "key": "ipPerson",
+    "category": "PERSON",
+    "value": "Кузнецов Андрей Николаевич"
+  },
+  {
+    "key": "ipPersonGen",
+    "category": "PERSON",
+    "value": "Кузнецова Андрея Николаевича"
+  },
+  {
+    "key": "ipShort",
+    "category": "PERSON",
+    "value": "Кузнецов А.Н."
+  },
+  {
+    "key": "dirGen",
+    "category": "PERSON",
+    "value": "Белова Марина Игоревна"
+  },
+  {
+    "key": "dirShort",
+    "category": "PERSON",
+    "value": "Белова М.И."
+  },
+  {
+    "key": "phone",
+    "category": "PHONE",
+    "value": "+7 (916) 555-01-23"
+  },
+  {
+    "key": "email",
+    "category": "EMAIL",
+    "value": "kuznetsov.an@example.ru"
+  },
+  {
+    "key": "coEmail",
+    "category": "EMAIL",
+    "value": "office@lunny-svet.example"
+  },
+  {
+    "key": "addr",
+    "category": "ADDRESS",
+    "value": "199034, г. Санкт-Петербург, Университетская наб., д. 7, кв. 12"
+  },
+  {
+    "key": "coAddr",
+    "category": "ADDRESS",
+    "value": "125009, г. Москва, Газетный пер., д. 3, стр. 1"
+  },
+  {
+    "key": "passport",
+    "category": "PASSPORT",
+    "value": "40 12 765432"
+  }
+]

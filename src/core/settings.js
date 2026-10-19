@@ -33,6 +33,7 @@ function defaultCategories() {
  * @property {boolean} nerEnabled
  * @property {number} nerThreshold
  * @property {string} nerModel           id установленного пакета модели NER ('' — нет; WP8), не экспортируется
+ * @property {string} bundledModelSha    sha256 встроенного пакета, который профиль уже обработал ('' — ни одного; WP10-C, Ц7), не экспортируется
  * @property {boolean} keepMetadata
  * @property {boolean} stripEmbedded
  * @property {number} maxFileSizeMB
@@ -41,11 +42,13 @@ function defaultCategories() {
  * @property {boolean} govEntities
  * @property {boolean} dictNames          словарный детектор ФИО третьих лиц (WP7, FR-23)
  * @property {Record<string, {x: number, y: number}>} panelPosition
+ * @property {boolean} hintMappingShown   подсказка о ключе восстановления уже показана (WP10-D, FR-28); не экспортируется
  * @property {object[]} customCategories   CustomCategory (FR-44)
  * @property {{id: string, name: {ru: string, en: string}, builtin: boolean, values: object}[]} profiles
  * @property {string} activeProfile
  * @property {'folder'|'zip'|'files'} batchOutput
  * @property {string} outputSuffix
+ * @property {'markdown'|'text'|'off'} pdfMode  PDF (версия 0.3): в чат уходит .anon.md / .anon.txt; 'off' — PDF не перехватывается
  */
 
 /** @returns {Settings} */
@@ -64,6 +67,8 @@ export function defaultSettings() {
     // порог NER = recommendedThreshold пакета rubert-tiny2-ner-ruen (WP9, калибровка tools/ner-train/calibrate.py; docs/contracts.md §6.7)
     nerThreshold: 0.7,
     nerModel: '',
+    // WP10-C: пишет только background по ответу MODEL_INSTALLED; удаление модели пользователем поле не трогает (модель не вернётся сама)
+    bundledModelSha: '',
     keepMetadata: false,
     stripEmbedded: false,
     maxFileSizeMB: 50,
@@ -72,6 +77,7 @@ export function defaultSettings() {
     govEntities: true,
     dictNames: true,
     panelPosition: {},
+    hintMappingShown: false,
     customCategories: [],
     profiles: [
       { id: 'llm', name: { ru: 'Для LLM', en: 'For LLM' }, builtin: true, values: {} },
@@ -89,6 +95,7 @@ export function defaultSettings() {
     activeProfile: 'llm',
     batchOutput: 'folder',
     outputSuffix: '.anon',
+    pdfMode: 'markdown',
   };
 }
 
@@ -107,6 +114,7 @@ export const VALIDATORS = Object.freeze({
   nerThreshold: (v) => typeof v === 'number' && v >= 0 && v <= 1,
   // = PACK_ID_RE из core/ner/pack.js (не импортируется, чтобы не тянуть разбор пакета в content.js; равенство — в тесте)
   nerModel: (v) => v === '' || (typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,40}$/.test(v)),
+  bundledModelSha: (v) => v === '' || (typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)),
   keepMetadata: (v) => typeof v === 'boolean',
   stripEmbedded: (v) => typeof v === 'boolean',
   maxFileSizeMB: (v) => Number.isInteger(v) && v >= 1 && v <= 100,
@@ -115,11 +123,13 @@ export const VALIDATORS = Object.freeze({
   govEntities: (v) => typeof v === 'boolean',
   dictNames: (v) => typeof v === 'boolean',
   panelPosition: (v) => isPlainObject(v),
+  hintMappingShown: (v) => typeof v === 'boolean',
   customCategories: (v) => Array.isArray(v) && v.length <= 100 && v.every((x) => isPlainObject(x) && typeof x.id === 'string'),
   profiles: (v) => Array.isArray(v) && v.every((x) => isPlainObject(x) && typeof x.id === 'string'),
   activeProfile: (v) => typeof v === 'string',
   batchOutput: (v) => ['folder', 'zip', 'files'].includes(v),
   outputSuffix: (v) => typeof v === 'string' && v.length <= 32 && !/[\\/:*?"<>|]/.test(v),
+  pdfMode: (v) => ['markdown', 'text', 'off'].includes(v),
 });
 
 /**

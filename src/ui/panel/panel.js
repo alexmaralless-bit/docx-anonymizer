@@ -44,11 +44,13 @@ function logo() {
  * @property {() => void} onDisableSite
  * @property {(pos: {x: number, y: number}) => void} onPosition
  * @property {() => void} [onMappingHintShown]  подсказка о ключе восстановления показана (WP10-D): сохранить флаг hintMappingShown
+ * @property {() => void} [onDismissNerHint]  подсказка «установите модель NER» закрыта (WP10-C): больше не показывать на странице
  */
 
 export class Panel {
   /**
-   * @param {{lang: 'ru'|'en', catalog: any, origin: string, position?: {x: number, y: number}, openShadow?: boolean, handlers: PanelHandlers}} o
+   * @param {{lang: 'ru'|'en', catalog: any, origin: string, position?: {x: number, y: number}, openShadow?: boolean, handlers: PanelHandlers,
+   *   nerHint?: boolean}} o  nerHint — показать подсказку о модели NER (WP10-C: модели нет, встроенная не ставилась)
    */
   constructor(o) {
     this.o = o;
@@ -220,7 +222,19 @@ export class Panel {
     this.updateChrome();
   }
 
-  /** @param {number} i @param {{entities: any[], warnings?: any[], restored?: boolean, api: any}} d */
+  dismissNerHint() {
+    this.nerHintDismissed = true;
+    // вид неактивного файла может быть вне shadow-дерева — элементы храним сами
+    for (const el of this.nerHints || []) {
+      const box = el.parentElement;
+      el.remove();
+      if (box?.classList.contains('warns') && !box.childElementCount) box.remove();
+    }
+    this.nerHints = [];
+    this.o.handlers.onDismissNerHint?.();
+  }
+
+  /** @param {number} i @param {{entities: any[], warnings?: any[], restored?: boolean, kind?: 'docx'|'pdf', api: any}} d */
   setReady(i, d) {
     const f = this.files[i];
     if (!f) return;
@@ -230,6 +244,28 @@ export class Panel {
     clear(f.view);
     const warns = [];
     if (d.restored) warns.push(h('div', { class: 'note', text: this.t('restored'), 'data-testid': 'restored-note' }));
+    // WP10-C (К16): модели NER нет — закрываемая подсказка; закрыта на любом файле — исчезает со всех и не возвращается
+    if (this.o.nerHint && !this.nerHintDismissed) {
+      const hint = h(
+        'div',
+        { class: 'note', 'data-testid': 'ner-hint', style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0' } },
+        h('span', { text: this.t('nerHint'), style: { flex: '1' } }),
+        h('button', {
+          class: 'x',
+          type: 'button',
+          text: '×',
+          title: this.t('close'),
+          'aria-label': this.t('close'),
+          'data-testid': 'ner-hint-close',
+          style: { width: '24px', height: '24px', fontSize: '16px' },
+          onClick: () => this.dismissNerHint(),
+        }),
+      );
+      (this.nerHints ||= []).push(hint);
+      warns.push(hint);
+    }
+    // PDF (версия 0.3): в чат уйдёт текст, а не PDF — объясняем заранее
+    if (d.kind === 'pdf') warns.push(h('div', { class: 'note', text: this.t('pdfNote'), 'data-testid': 'pdf-note' }));
     for (const w of d.warnings || []) {
       const reason = w.details?.reason === 'MODEL_LOAD_FAILED' ? 'MODEL_LOAD_FAILED' : 'INFERENCE_FAILED';
       const text =
@@ -237,7 +273,9 @@ export class Panel {
           ? this.t('warnEmbedded', { n: w.count ?? 0 })
           : w.code === 'NER_FAILED' // WP8: сбой модели NER не мешает результату правил (NFR-13)
             ? this.t('warnNer', { reason: this.t(`nerReason_${reason}`) })
-            : this.t('warnGeneric', { code: w.code });
+            : w.code === 'PDF_PAGES_NO_TEXT' // версия 0.3: смешанный PDF — страницы без текстового слоя
+              ? this.t('warnPdfPages', { pages: (w.details?.pages || []).join(', ') })
+              : this.t('warnGeneric', { code: w.code });
       warns.push(h('div', { class: 'warn', text }));
     }
     if (warns.length) f.view.append(h('div', { class: 'warns' }, ...warns));
@@ -341,7 +379,8 @@ export class Panel {
     if (this.phase !== 'review') return false;
     if (this.files.some((f) => f.state === 'queued' || f.state === 'analyzing')) return false;
     if (this.files.some((f) => f.state === 'error' && !f.asIs)) return false;
-    return this.readyCount > 0;
+    // «Загрузить как есть» у всех файлов (например, один скан PDF, К5) — тоже решение: уйдут оригиналы
+    return this.readyCount > 0 || this.files.some((f) => f.asIs);
   }
   isAsIs(i) {
     return !!this.files[i]?.asIs;

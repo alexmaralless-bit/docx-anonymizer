@@ -60,6 +60,12 @@ export const OPTIONS_DICT = {
     dict_names: 'Искать ФИО по словарю имён и фамилий',
     dict_names_hint: 'Находит имена третьих лиц в тексте без подписи «в лице». Не зависит от нейросетевого распознавания.',
     max_size: 'Максимальный размер файла, МБ',
+    pdf_mode: 'PDF с текстовым слоем',
+    pdf_mode_markdown: 'Отправлять текстом Markdown (.anon.md)',
+    pdf_mode_text: 'Отправлять простым текстом (.anon.txt)',
+    pdf_mode_off: 'Не перехватывать PDF',
+    pdf_mode_hint:
+      'В чат уходит извлечённый текст с плейсхолдерами, а не PDF: подставить «[ФИО_1]» во вшитые шрифты PDF нельзя. Сканы без текстового слоя не обрабатываются — их можно загрузить как есть.',
     ui_language: 'Язык интерфейса',
     ui_auto: 'Как в браузере',
 
@@ -147,7 +153,7 @@ export const OPTIONS_DICT = {
     nav_ner: 'Модель NER',
     ner_h: 'Распознавание имён моделью (NER)',
     ner_hint:
-      'Необязательный пакет нейросетевой модели дополняет правила и словари: находит людей, организации и места (как адрес) без меток. Пакет скачивается отдельно и импортируется здесь.',
+      'Нейросетевая модель дополняет правила и словари: находит людей, организации и места (как адрес) без меток. В полном архиве расширения модель уже есть и ставится сама при первом запуске; для лёгкого архива пакет скачивается отдельно и импортируется здесь.',
     ner_enabled: 'Использовать модель при анализе',
     ner_enabled_hint: 'Действует, только когда пакет модели установлен.',
     ner_threshold: 'Порог уверенности модели (0–1)',
@@ -160,8 +166,16 @@ export const OPTIONS_DICT = {
     ner_import: 'Импортировать пакет…',
     ner_remove: 'Удалить модель',
     ner_releases: 'Где скачать пакет: GitHub Releases',
+    // WP10-C: встроенная модель полного архива и онбординг лёгкого
+    ner_bundled_installing: 'Встроенная модель устанавливается…',
+    ner_bundled_restore: 'Восстановить встроенную модель',
+    ner_bundled_restoring: 'Встроенная модель устанавливается заново…',
+    ner_onboard_h: 'Как подключить модель — три шага',
+    ner_step_1: 'Скачайте файл пакета docx-anonymizer-ner-….zip (≈ 28 МБ) со страницы релизов проекта.',
+    ner_step_2: 'Нажмите «Импортировать пакет…» и выберите скачанный файл — расширение проверит контрольные суммы и сохранит модель в хранилище браузера.',
+    ner_step_3: 'Готово: модель работает локально при каждом анализе, скачанный файл больше не нужен.',
     ner_privacy:
-      'Модель работает локально: файлы пакета лежат в хранилище браузера, документы и результаты никуда не отправляются. Само расширение ничего не скачивает — пакет вы выбираете вручную.',
+      'Модель работает локально: файлы пакета лежат в хранилище браузера, документы и результаты никуда не отправляются. Само расширение ничего не скачивает из сети — встроенная модель берётся из архива расширения, другой пакет вы выбираете вручную.',
     ner_unverified_confirm:
       'Пакет «{name}» {version} не входит в список опубликованных проектом. Целостность файлов проверена, происхождение — нет. Установить?',
     ner_install: 'Установить',
@@ -242,6 +256,12 @@ export const OPTIONS_DICT = {
     dict_names: 'Find names using the first-name and surname dictionary',
     dict_names_hint: 'Finds names of third persons in the text without a “represented by” label. Does not depend on neural recognition.',
     max_size: 'Maximum file size, MB',
+    pdf_mode: 'PDF with a text layer',
+    pdf_mode_markdown: 'Send as Markdown text (.anon.md)',
+    pdf_mode_text: 'Send as plain text (.anon.txt)',
+    pdf_mode_off: 'Do not intercept PDF',
+    pdf_mode_hint:
+      'The chat receives the extracted text with placeholders, not the PDF: “[NAME_1]” cannot be typeset in the fonts embedded in a PDF. Scans without a text layer are not processed — you can upload them as is.',
     ui_language: 'Interface language',
     ui_auto: 'Same as the browser',
 
@@ -329,7 +349,7 @@ export const OPTIONS_DICT = {
     nav_ner: 'NER model',
     ner_h: 'Name recognition by a model (NER)',
     ner_hint:
-      'An optional neural model pack complements rules and dictionaries: it finds people, organizations and places (as addresses) without labels. The pack is downloaded separately and imported here.',
+      'A neural model complements rules and dictionaries: it finds people, organizations and places (as addresses) without labels. The full extension archive already contains the model and installs it on first run; for the lite archive the pack is downloaded separately and imported here.',
     ner_enabled: 'Use the model during analysis',
     ner_enabled_hint: 'Takes effect only when a model pack is installed.',
     ner_threshold: 'Model confidence threshold (0–1)',
@@ -342,8 +362,16 @@ export const OPTIONS_DICT = {
     ner_import: 'Import pack…',
     ner_remove: 'Remove model',
     ner_releases: 'Where to download the pack: GitHub Releases',
+    // WP10-C: built-in model of the full archive and onboarding for the lite one
+    ner_bundled_installing: 'The built-in model is being installed…',
+    ner_bundled_restore: 'Restore the built-in model',
+    ner_bundled_restoring: 'Reinstalling the built-in model…',
+    ner_onboard_h: 'How to add the model — three steps',
+    ner_step_1: 'Download the pack file docx-anonymizer-ner-….zip (≈ 28 MB) from the project releases page.',
+    ner_step_2: 'Press “Import pack…” and choose the downloaded file — the extension verifies the checksums and stores the model in browser storage.',
+    ner_step_3: 'Done: the model runs locally on every analysis; the downloaded file is no longer needed.',
     ner_privacy:
-      'The model runs locally: pack files are kept in browser storage, documents and results are not sent anywhere. The extension downloads nothing itself — you pick the pack file manually.',
+      'The model runs locally: pack files are kept in browser storage, documents and results are not sent anywhere. The extension downloads nothing from the network — the built-in model comes from the extension archive, any other pack you pick manually.',
     ner_unverified_confirm: 'Pack “{name}” {version} is not on the list published by the project. File integrity is verified, its origin is not. Install?',
     ner_install: 'Install',
     ner_importing: 'Checking and installing the pack…',

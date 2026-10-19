@@ -1,0 +1,13 @@
+## SERVICES AGREEMENT
+
+This Agreement is made between Northwind Solutions Ltd (EIN 12-3456789), represented by John Michael Smith, and Contoso Holdings LLC, represented by Emily Rose Carter (together, the "Parties").
+
+- Notices to J. M. Smith at john.smith@northwind.example, +1 (415) 555-0132, 500 Market Street, Suite 210, San Francisco, CA 94105. Notices to Emily Rose Carter at legal@contoso-holdings.example, +44 20 7946 0958, 221 Baker Street, London NW1 6XE.
+
+- Payments to IBAN GB29NWBK60161331926819, SWIFT NWBKGB2L. Contractor SSN 078-05-1120. Terms at https://www.northwind.example/terms.
+
+| Northwind Solutions Ltd | Contoso Holdings LLC |
+| --- | --- |
+| EIN 12-3456789 | 221 Baker Street, London NW1 6XE |
+| 500 Market Street, Suite 210, San Francisco, CA 94105 |  |
+| By: J. M. Smith | By: Emily Rose Carter |

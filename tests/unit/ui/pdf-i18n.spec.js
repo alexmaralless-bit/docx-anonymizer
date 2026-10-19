@@ -1,0 +1,33 @@
+// Строки PDF (версия 0.3) в словарях панели, общих строк и настроек: ru/en с одинаковыми ключами, коды ошибок протокола
+// имеют тексты, подсказка про скан понятна.
+import { describe, it, expect } from 'vitest';
+import { panel } from '../../../src/ui/i18n/panel.js';
+import { common } from '../../../src/ui/i18n/common.js';
+import { OPTIONS_DICT as options } from '../../../src/ui/i18n/options.js';
+import { ERROR_CODES, STAGES } from '../../../src/shared/protocol.js';
+import { ERROR_CODES as CORE_CODES } from '../../../src/core/errors.js';
+
+const keys = (d) => Object.keys(d).sort();
+
+describe('i18n PDF', () => {
+  it('ru и en совпадают по ключам: панель, общие строки, настройки', () => {
+    for (const [name, d] of Object.entries({ panel, common, options })) expect(keys(d.en), name).toEqual(keys(d.ru));
+  });
+  it('новые строки есть и не пусты', () => {
+    for (const lang of ['ru', 'en']) {
+      for (const k of ['warnPdfPages', 'pdfNote']) expect(panel[lang][k], `${lang}.${k}`).toBeTruthy();
+      for (const k of ['pdf_mode', 'pdf_mode_markdown', 'pdf_mode_text', 'pdf_mode_off', 'pdf_mode_hint'])
+        expect(options[lang][k], `${lang}.${k}`).toBeTruthy();
+      for (const k of ['stage.pdf', 'err.PDF_INVALID', 'err.PDF_ENCRYPTED', 'err.PDF_EMPTY', 'err.PDF_NO_TEXT'])
+        expect(common[lang][k], `${lang}.${k}`).toBeTruthy();
+    }
+    expect(common.ru['err.PDF_NO_TEXT']).toMatch(/скан/);
+    expect(common.en['err.PDF_NO_TEXT']).toMatch(/scan/);
+    expect(panel.ru.warnPdfPages).toContain('{pages}');
+  });
+  it('у каждого кода ошибки протокола и стадии есть текст; коды ядра и протокола совпадают', () => {
+    for (const code of ERROR_CODES) expect(common.ru[`err.${code}`], code).toBeTruthy();
+    for (const st of STAGES) expect(common.ru[`stage.${st}`], st).toBeTruthy();
+    expect(Object.values(CORE_CODES).sort()).toEqual([...ERROR_CODES].sort());
+  });
+});

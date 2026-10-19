@@ -9,6 +9,11 @@ import {
   fileSignature,
   formatSize,
   DOCX_MIME,
+  PDF_MIME,
+  fileKind,
+  isSupported,
+  hasSupported,
+  resultType,
 } from '../../../src/content/files.js';
 import { siteState } from '../../../src/ui/components/site-state.js';
 import { defaultSettings } from '../../../src/core/settings.js';
@@ -76,5 +81,33 @@ describe('состояние сайта для popup и бейджа (FR-43)', (
   });
   it('host и origin', () => {
     expect(siteState(on, 'https://chatgpt.com/c/1')).toMatchObject({ host: 'chatgpt.com', origin: 'https://chatgpt.com' });
+  });
+});
+
+describe('PDF (версия 0.3)', () => {
+  const md = 'text/markdown';
+  it('вид файла и настройка pdfMode', () => {
+    expect(fileKind({ name: 'a.PDF', type: '' })).toBe('pdf');
+    expect(fileKind({ name: 'скан', type: PDF_MIME })).toBe('pdf');
+    expect(fileKind({ name: 'a.docx', type: '' })).toBe('docx');
+    expect(fileKind({ name: 'a.txt', type: 'text/plain' })).toBe(null);
+    expect(isSupported({ name: 'a.pdf' }, { pdfMode: 'markdown' })).toBe(true);
+    expect(isSupported({ name: 'a.pdf' }, { pdfMode: 'text' })).toBe(true);
+    expect(isSupported({ name: 'a.pdf' }, { pdfMode: 'off' })).toBe(false);
+    expect(isSupported({ name: 'a.pdf' }, defaultSettings())).toBe(true);
+    expect(isSupported({ name: 'a.docx' }, { pdfMode: 'off' })).toBe(true);
+    expect(isSupported({ name: 'a.anon.md' }, defaultSettings())).toBe(false);
+    expect(hasSupported([{ name: 'a.pdf' }, { name: 'b.txt' }], { pdfMode: 'off' })).toBe(false);
+    expect(hasSupported([{ name: 'a.pdf' }], { pdfMode: 'markdown' })).toBe(true);
+  });
+  it('имя и тип результата, имя маппинга', () => {
+    expect(makeResultName('a.pdf', '.anon', { ext: '.md' })).toBe('a.anon.md');
+    expect(makeResultName('Договор.PDF', '.anon', { ext: '.txt' })).toBe('Договор.anon.txt');
+    expect(mappingFileName('a.anon.md')).toBe('a.mapping.json');
+    expect(mappingFileName('a.anon.txt')).toBe('a.mapping.json');
+    expect(resultType({ type: PDF_MIME }, md)).toBe(md);
+    expect(resultType({ type: '' }, 'text/plain')).toBe('text/plain');
+    expect(resultType({ type: 'application/vnd.ms-word.document.macroEnabled.12' }, DOCX_MIME)).toBe('application/vnd.ms-word.document.macroEnabled.12');
+    expect(resultType({ type: '' })).toBe(DOCX_MIME);
   });
 });

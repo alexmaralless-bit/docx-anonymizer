@@ -140,17 +140,27 @@ test.describe('главный сценарий', () => {
     await expect(panel(page).host).toHaveCount(0);
   });
 
-  wp3Test('[a.docx, b.pdf, c.docx] → [a.anon.docx, b.pdf, c.anon.docx], порядок сохранён', async ({ context, extensionId, site }) => {
-    await enableIntercept(context, extensionId, site);
-    const page = await openChat(context, site);
-    await page.setInputFiles('#multi-input', [mk('a.docx', DOCX), mk('b.pdf', PDF), mk('c.docx', DOCX)]);
-    await panel(page).anonymize.click({ timeout: 60000 });
-    const list = await waitReceived(page, 3, 60000);
-    expect(list.map((x) => x.name)).toEqual(['a.anon.docx', 'b.pdf', 'c.anon.docx']);
-    expect(list[1].sha256).toBe(sha256(PDF)); // не-docx идёт без изменений
-    await expectAnonymized(page, 0);
-    await expectAnonymized(page, 2);
-  });
+  // Версия 0.3: PDF тоже перехватывается; PDF без текста (здесь — без страниц) получает вкладку с ошибкой,
+  // и «Загрузить как есть» отправляет его без изменений (К11 — единственное обновлённое ожидание 0.2)
+  wp3Test(
+    '[a.docx, b.pdf, c.docx] → PDF без текста: «Загрузить как есть» → [a.anon.docx, b.pdf, c.anon.docx], порядок сохранён',
+    async ({ context, extensionId, site }) => {
+      await enableIntercept(context, extensionId, site);
+      const page = await openChat(context, site);
+      await page.setInputFiles('#multi-input', [mk('a.docx', DOCX), mk('b.pdf', PDF), mk('c.docx', DOCX)]);
+      const ui = panel(page);
+      await expect(ui.tabs).toHaveCount(3);
+      await ui.tabs.nth(1).click();
+      await expect(ui.host.locator('.fview.active [data-testid="error-message"]')).toBeVisible({ timeout: 60000 });
+      await ui.host.locator('.fview.active [data-testid="btn-asis"]').click();
+      await ui.anonymize.click({ timeout: 60000 });
+      const list = await waitReceived(page, 3, 60000);
+      expect(list.map((x) => x.name)).toEqual(['a.anon.docx', 'b.pdf', 'c.anon.docx']);
+      expect(list[1].sha256).toBe(sha256(PDF)); // не-docx идёт без изменений
+      await expectAnonymized(page, 0);
+      await expectAnonymized(page, 2);
+    },
+  );
 
   wp3Test('drop на зону чата → панель → анонимизированный файл', async ({ context, extensionId, site }) => {
     await enableIntercept(context, extensionId, site);

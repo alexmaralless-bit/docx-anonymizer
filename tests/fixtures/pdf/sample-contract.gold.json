@@ -1,0 +1,157 @@
+[
+  {
+    "key": "company1",
+    "category": "COMPANY",
+    "value": "Ромашка"
+  },
+  {
+    "key": "company2",
+    "category": "COMPANY",
+    "value": "Вектор-М"
+  },
+  {
+    "key": "person1",
+    "category": "PERSON",
+    "value": "Иванов Пётр Сергеевич"
+  },
+  {
+    "key": "person1Gen",
+    "category": "PERSON",
+    "value": "Иванова Петра Сергеевича"
+  },
+  {
+    "key": "person1Short",
+    "category": "PERSON",
+    "value": "Иванов П.С."
+  },
+  {
+    "key": "person1ShortGen",
+    "category": "PERSON",
+    "value": "Иванова П.С."
+  },
+  {
+    "key": "person2Gen",
+    "category": "PERSON",
+    "value": "Сидоровой Анны Викторовны"
+  },
+  {
+    "key": "person2Short",
+    "category": "PERSON",
+    "value": "Сидорова А.В."
+  },
+  {
+    "key": "author1",
+    "category": "PERSON",
+    "value": "Петров Олег"
+  },
+  {
+    "key": "author2",
+    "category": "PERSON",
+    "value": "Сидорова Анна"
+  },
+  {
+    "key": "inn1",
+    "category": "OTHER",
+    "value": "7736050003"
+  },
+  {
+    "key": "inn2",
+    "category": "OTHER",
+    "value": "500400123402"
+  },
+  {
+    "key": "kpp1",
+    "category": "OTHER",
+    "value": "773601001"
+  },
+  {
+    "key": "kpp2",
+    "category": "OTHER",
+    "value": "500401001"
+  },
+  {
+    "key": "ogrn1",
+    "category": "OTHER",
+    "value": "1025004012340"
+  },
+  {
+    "key": "ogrn2",
+    "category": "OTHER",
+    "value": "1127746123450"
+  },
+  {
+    "key": "bik",
+    "category": "OTHER",
+    "value": "044525901"
+  },
+  {
+    "key": "rs1",
+    "category": "OTHER",
+    "value": "40702810700000012345"
+  },
+  {
+    "key": "rs2",
+    "category": "OTHER",
+    "value": "40702810300000054321"
+  },
+  {
+    "key": "ks",
+    "category": "OTHER",
+    "value": "30101810300000000901"
+  },
+  {
+    "key": "snils",
+    "category": "OTHER",
+    "value": "112-233-445 95"
+  },
+  {
+    "key": "passport",
+    "category": "OTHER",
+    "value": "45 05 123456"
+  },
+  {
+    "key": "phone1",
+    "category": "OTHER",
+    "value": "+7 (495) 123-45-67"
+  },
+  {
+    "key": "phone2",
+    "category": "OTHER",
+    "value": "8-900-123-45-67"
+  },
+  {
+    "key": "email1",
+    "category": "OTHER",
+    "value": "p.ivanov@romashka.ru"
+  },
+  {
+    "key": "email2",
+    "category": "OTHER",
+    "value": "info@romashka.ru"
+  },
+  {
+    "key": "email3",
+    "category": "OTHER",
+    "value": "info@vector-m.ru"
+  },
+  {
+    "key": "emailOld",
+    "category": "OTHER",
+    "value": "old.mail@romashka.ru"
+  },
+  {
+    "key": "url1",
+    "category": "OTHER",
+    "value": "https://romashka.ru/contract"
+  },
+  {
+    "key": "address1",
+    "category": "OTHER",
+    "value": "123456, г. Москва, ул. Ленина, д. 1, офис 5"
+  },
+  {
+    "key": "address2",
+    "category": "OTHER",
+    "value": "141000, Московская обл., г. Мытищи, пр-т Мира, д. 10, корп. 2"
+  }
+]

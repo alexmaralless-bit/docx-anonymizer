@@ -6,6 +6,11 @@ export const ERROR_CODES = Object.freeze({
   PARSE_FAILED: 'PARSE_FAILED',
   HOST_UNAVAILABLE: 'HOST_UNAVAILABLE',
   MODEL_LOAD_FAILED: 'MODEL_LOAD_FAILED',
+  // PDF (версия 0.3, К5): повреждён или не PDF, защищён паролем, без страниц, без текстового слоя (скан)
+  PDF_INVALID: 'PDF_INVALID',
+  PDF_ENCRYPTED: 'PDF_ENCRYPTED',
+  PDF_EMPTY: 'PDF_EMPTY',
+  PDF_NO_TEXT: 'PDF_NO_TEXT',
   INTERNAL: 'INTERNAL',
 });
 

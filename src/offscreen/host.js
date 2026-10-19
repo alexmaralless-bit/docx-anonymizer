@@ -4,6 +4,8 @@
 // offscreen-документ не имеет доступа к chrome.storage.
 import {
   parseDocx,
+  fromText,
+  isPdf,
   analyze,
   applyDecisions,
   mergeDecisions,
@@ -19,11 +21,18 @@ import {
   summarizeSession,
 } from '../core/index.js';
 import { MSG, ChunkAssembler, postChunked, errorMessage, sha256Hex } from '../shared/protocol.js';
+import { ModelStoreError } from '../shared/model-store.js';
 
 /**
  * @param {{post: (clientId: string, msg: object) => void, nerProvider?: any, toolVersion?: string,
- *   createNerProvider?: (settings: import('../core/settings.js').Settings) => import('../core/contracts/ner.js').NerProvider}} env
- *   nerProvider — готовый провайдер (тесты; имеет приоритет), createNerProvider — синхронная фабрика по settings.nerModel (worker.js)
+ *   createNerProvider?: (settings: import('../core/settings.js').Settings) => import('../core/contracts/ner.js').NerProvider,
+ *   extractPdf?: (bytes: Uint8Array, opts: {onProgress?: (percent: number) => void}) => Promise<import('../core/pdf/layout.js').Layout>,
+ *   readPackageFile?: (url: string) => Promise<Uint8Array>,
+ *   modelStore?: {listInstalled: () => Promise<any[]>, inspectPack: (bytes: Uint8Array, opts?: object) => Promise<any>, install: (bytes: Uint8Array, opts?: object) => Promise<any>}}} env
+ *   nerProvider — готовый провайдер (тесты; имеет приоритет), createNerProvider — синхронная фабрика по settings.nerModel (worker.js),
+ *   extractPdf — извлечение текста PDF (версия 0.3; worker.js — pdf-loader.js, тесты — pdf.js в Node),
+ *   readPackageFile и modelStore — установка встроенной модели NER из архива расширения (WP10-C, MODEL_INSTALL; worker.js —
+ *   offscreen/package-fetch.js и shared/model-store.js, тесты — фейки)
  */
 export function createHost(env) {
   registerBuiltinDetectors();
@@ -37,6 +46,8 @@ export function createHost(env) {
   /** @type {Map<string, PlaceholderAllocator>} */
   const batches = new Map();
   let docSeq = 0;
+  /** Установки встроенной модели идут строго по очереди: повторный MODEL_INSTALL дождётся первого и ответит `present`. */
+  let installChain = Promise.resolve();
 
   /**
    * @param {string} clientId
@@ -85,6 +96,13 @@ export function createHost(env) {
           post({ type: MSG.DEANON_RESULT, requestId, text: r.text, unresolved: r.unresolved, replaced: r.replaced, declined: r.declined });
           return;
         }
+        case MSG.GET_MAPPING: {
+          // WP10-B (FR-36а): страница восстановления берёт карту сессии и восстанавливает файл у себя
+          const mapping = getSession(msg.docId).lastMapping;
+          if (!mapping) throw new CoreError('INTERNAL', 'Маппинг не найден: сначала примените замены');
+          post({ type: MSG.MAPPING, requestId, docId: msg.docId, mapping });
+          return;
+        }
         case MSG.DISCARD:
           sessions.delete(msg.docId);
           post({ type: MSG.ACK, requestId });
@@ -114,6 +132,11 @@ export function createHost(env) {
           resetNer();
           post({ type: MSG.ACK, requestId });
           return;
+        case MSG.MODEL_INSTALL: {
+          const job = installChain.then(() => onModelInstall(msg, post));
+          installChain = job.catch(() => {});
+          return await job;
+        }
         default:
           throw new CoreError('INTERNAL', `Неизвестный тип сообщения ${msg.type}`);
       }
@@ -139,14 +162,21 @@ export function createHost(env) {
         return;
       }
     }
-    progress('unzip', 0);
-    const doc = parseDocx(bytes);
-    progress('parse', 100);
+    // Точка ветвления (версия 0.3): PDF — по сигнатуре %PDF- или по имени .pdf, иначе DOCX
+    const kind = isPdf(bytes) || /\.pdf$/i.test(u.begin.name || '') ? 'pdf' : 'docx';
+    let doc;
+    if (kind === 'pdf') doc = await parsePdf(bytes, u.begin.name, progress);
+    else {
+      progress('unzip', 0);
+      doc = parseDocx(bytes);
+      progress('parse', 100);
+    }
     const allocator = msg.batchId ? batches.get(msg.batchId) : undefined;
     const analysis = await analyze(doc, settings, { nerProvider: providerFor(settings), allocator, onProgress: progress });
     const docId = `d${++docSeq}`;
     const session = {
       docId,
+      kind,
       name: u.begin.name,
       sha256,
       size: bytes.length,
@@ -195,7 +225,9 @@ export function createHost(env) {
     s.groups = mergeDecisions(s.groups, msg.decisions || []);
     progress('apply', 0);
     const opts = msg.options || {};
-    const resultName = makeResultName(s.name, settings.outputSuffix);
+    // PDF → текст (версия 0.3): .anon.md или .anon.txt по pdfMode настроек сессии
+    const textFormat = settings.pdfMode === 'text' ? 'txt' : 'md';
+    const resultName = makeResultName(s.name, settings.outputSuffix, s.kind === 'pdf' ? { ext: `.${textFormat}` } : {});
     const r = applyDecisions(s.doc, s.groups, {
       mode: msg.mode || settings.mode,
       placeholderLanguage: s.analysis.placeholderLanguage,
@@ -204,11 +236,27 @@ export function createHost(env) {
       stripEmbedded: opts.stripEmbedded ?? settings.stripEmbedded,
       document: { name: s.name, sha256: s.sha256, resultName },
       toolVersion: env.toolVersion,
+      textFormat,
     });
     s.lastMapping = r.mapping;
     progress('zip', 100);
-    postChunked(post, { requestId, kind: 'RESULT', bytes: r.docxBytes, meta: { name: resultName, docId: s.docId } });
+    postChunked(post, { requestId, kind: 'RESULT', bytes: r.bytes, meta: { name: resultName, docId: s.docId, mime: r.mime } });
     post({ type: MSG.RESULT_END, requestId, docId: s.docId, mapping: r.mapping, stats: r.stats });
+  }
+
+  /**
+   * PDF → текстовая модель (версия 0.3): извлечение и разметка в env.extractPdf (pdf.js в воркере), затем fromText.
+   * Без сигнатуры %PDF- — PDF_INVALID; без extractPdf (сборка без pdf.js) — INTERNAL.
+   */
+  async function parsePdf(bytes, name, progress) {
+    if (!isPdf(bytes)) throw new CoreError('PDF_INVALID', 'Файл повреждён или не является PDF');
+    if (!env.extractPdf) throw new CoreError('INTERNAL', 'PDF недоступен');
+    progress('pdf', 0);
+    const layout = await env.extractPdf(bytes, { onProgress: (p) => progress('pdf', p) });
+    const doc = fromText(layout.blocks, { name, size: bytes.length, format: 'pdf' });
+    doc.warnings.push(...(layout.warnings || []));
+    progress('parse', 100);
+    return doc;
   }
 
   /**
@@ -223,6 +271,38 @@ export function createHost(env) {
       ner = { modelId: settings.nerModel, provider: env.createNerProvider(settings) };
     }
     return ner.provider;
+  }
+
+  /**
+   * Встроенная модель NER (WP10-C, Ц7, docs/contracts.md §6.8): zip из архива расширения → проверка → OPFS.
+   * Ставится только проверенный пакет (sha256 из KNOWN_PACKS) с теми id и sha, что запечены в сборку; чужие пакеты
+   * в хранилище не трогаются (выбор пользователя — забота background и страницы настроек). Ответ — MODEL_INSTALLED.
+   * Ошибки хранилища/чтения → status 'failed' с кодом ModelStoreError; прочее — ERROR.
+   */
+  async function onModelInstall(msg, post) {
+    const { requestId } = msg;
+    if (!env.modelStore || !env.readPackageFile) throw new CoreError('INTERNAL', 'Установка встроенной модели недоступна');
+    const base = { type: MSG.MODEL_INSTALLED, requestId, id: msg.id, sha256: msg.sha256, version: msg.version };
+    const failed = (code) => post({ ...base, status: 'failed', code });
+    const t0 = Date.now();
+    try {
+      // тот же пакет уже стоит (повторный запуск, ручной импорт того же zip) — файлы не переписываем
+      const list = await env.modelStore.listInstalled();
+      if (list.some((m) => m.id === msg.id && m.packSha256 === msg.sha256)) {
+        post({ ...base, status: 'present' });
+        return;
+      }
+      const bytes = await env.readPackageFile(msg.url);
+      const info = await env.modelStore.inspectPack(bytes, { extensionVersion: msg.extensionVersion });
+      if (info.verified !== true) return failed('UNVERIFIED');
+      if (info.packSha256 !== msg.sha256 || info.manifest?.id !== msg.id) return failed('MISMATCH');
+      const rec = await env.modelStore.install(bytes, { verified: true, extensionVersion: msg.extensionVersion });
+      resetNer(); // как MODEL_CHANGED: следующий анализ создаст провайдер по новым файлам
+      post({ ...base, status: 'installed', version: rec.version ?? msg.version, bytes: rec.bytes, ms: Date.now() - t0 });
+    } catch (e) {
+      if (e instanceof ModelStoreError) return failed(e.code);
+      throw e;
+    }
   }
 
   function resetNer() {
@@ -246,6 +326,7 @@ export function createHost(env) {
       requestId,
       docId: s.docId,
       name: s.name,
+      kind: s.kind,
       language: s.analysis.language,
       placeholderLanguage: s.analysis.placeholderLanguage,
       entities: s.groups.map((g) => toProtocolEntity(s.doc, g)),
@@ -286,8 +367,15 @@ export function toProtocolEntity(doc, g) {
   };
 }
 
-/** 'договор.docx' → 'договор.anon.docx' */
-export function makeResultName(name, suffix = '.anon') {
+/**
+ * 'договор.docx' → 'договор.anon.docx'; с `ext` (PDF, версия 0.3): 'договор.pdf' → 'договор.anon.md'.
+ * @param {string} name @param {string} [suffix] @param {{ext?: string}} [opts]
+ */
+export function makeResultName(name, suffix = '.anon', opts = {}) {
+  if (opts.ext) {
+    const base = String(name || 'document').replace(/\.(docx|docm|pdf)$/i, '') || 'document';
+    return `${base}${suffix}${opts.ext}`;
+  }
   const m = /^(.*?)(\.(docx|docm))?$/i.exec(name || 'document.docx');
   const base = m?.[1] || 'document';
   const ext = m?.[2] || '.docx';

@@ -2,10 +2,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { packRelease, FIXED_TIME } from '../../scripts/pack.mjs';
+import { KNOWN_PACKS } from '../../src/core/ner/known-packs.js';
 import RU_SURNAMES from '../../src/core/detect/names/dict/ru-surnames.js';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -15,7 +17,7 @@ let zip;
 
 beforeAll(() => {
   out = mkdtempSync(join(tmpdir(), 'docx-anon-pack-test-'));
-  first = packRelease({ outDir: out });
+  first = packRelease({ outDir: out }).lite;
   zip = unzipSync(new Uint8Array(readFileSync(first.file)));
 }, 60000);
 afterAll(() => rmSync(out, { recursive: true, force: true }));
@@ -90,6 +92,22 @@ describe('архив релиза', () => {
       expect(has(strFromU8(zip[f])), f).toBe(false);
   });
 
+  it('pdf.js (версия 0.3, К8): vendor/pdfjs/ с CMaps и шрифтами ≤ 6 МБ, не в worker.js; архив ≤ 12 МБ', () => {
+    for (const f of ['vendor/pdfjs/pdf.mjs', 'vendor/pdfjs/pdf.worker.mjs', 'vendor/pdfjs/LICENSE']) expect(zip[f], f).toBeDefined();
+    const names = Object.keys(zip).filter((n) => n.startsWith('vendor/pdfjs/'));
+    expect(names.filter((n) => /^vendor\/pdfjs\/cmaps\/.+\.bcmap$/.test(n)).length).toBeGreaterThanOrEqual(150);
+    expect(names.filter((n) => /^vendor\/pdfjs\/standard_fonts\/.+\.(pfb|ttf)$/.test(n)).length).toBeGreaterThanOrEqual(10);
+    const vendorBytes = names.reduce((n, f) => n + zip[f].length, 0);
+    console.log(`vendor/pdfjs: ${names.length} файлов, ${vendorBytes} байт; архив ${first.size} байт`);
+    expect(vendorBytes).toBeLessThanOrEqual(6 * 1024 * 1024);
+    expect(first.size).toBeLessThanOrEqual(12 * 1024 * 1024);
+    expect(strFromU8(zip['vendor/pdfjs/LICENSE'])).toMatch(/Apache License/);
+    // pdf.js грузится лениво из vendor/, а не бандлится в воркер ядра (бюджет К15)
+    const worker = strFromU8(zip['offscreen/worker.js']);
+    expect(worker).not.toMatch(/\n\/\/ node_modules\/pdfjs-dist\//);
+    expect(worker).toContain('vendor/pdfjs/');
+  });
+
   it('иконки — PNG ожидаемых размеров', () => {
     for (const size of [16, 32, 48, 128]) {
       const b = zip[`icons/icon-${size}.png`];
@@ -132,8 +150,72 @@ describe('архив релиза', () => {
   });
 
   it('архив воспроизводим: повторная сборка даёт те же байты', () => {
-    const again = packRelease({ outDir: join(out, 'again') });
+    const again = packRelease({ outDir: join(out, 'again') }).lite;
     expect(again.sha256).toBe(first.sha256);
     expect(again.size).toBe(first.size);
   }, 60000);
+});
+
+// Полный архив (версия 0.3, WP10-C, К15): модель NER в models/ — только если локально есть опубликованный zip пакета
+// (`npm run pack:model`; в git и CI его нет — там собирается только лёгкий архив).
+const MODEL_ZIP = 'release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip';
+describe.skipIf(!existsSync(MODEL_ZIP))('полный архив', () => {
+  let dir;
+  let res;
+  let fullZip;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'docx-anon-pack-full-'));
+    res = packRelease({ outDir: dir, modelZip: MODEL_ZIP });
+    fullZip = unzipSync(new Uint8Array(readFileSync(res.full.file)));
+  }, 120000);
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('называется <имя>-full.zip, рядом лёгкий того же кода', () => {
+    expect(res.full.name).toBe(`docx-anonymizer-${pkg.version}-full.zip`);
+    expect(res.lite.name).toBe(`docx-anonymizer-${pkg.version}.zip`);
+    expect(existsSync(res.full.file)).toBe(true);
+    expect(res.full.size).toBeGreaterThan(res.lite.size);
+  });
+
+  it('models/index.json + models/<file>: sha256 из KNOWN_PACKS и равен sha байтов записи; zip пакета без изменений', () => {
+    const index = JSON.parse(strFromU8(fullZip['models/index.json']));
+    expect(index).toHaveLength(1);
+    expect(Object.keys(index[0])).toEqual(['file', 'id', 'version', 'sha256', 'size']);
+    const entry = fullZip[`models/${index[0].file}`];
+    expect(entry, index[0].file).toBeDefined();
+    const known = KNOWN_PACKS.find((p) => p.id === index[0].id);
+    expect(index[0].sha256).toBe(known.sha256);
+    expect(createHash('sha256').update(entry).digest('hex')).toBe(index[0].sha256);
+    expect(entry.length).toBe(index[0].size);
+    expect(Buffer.from(entry).equals(readFileSync(MODEL_ZIP))).toBe(true);
+    // ничего другого в models/ нет
+    expect(
+      Object.keys(fullZip)
+        .filter((n) => n.startsWith('models/'))
+        .sort(),
+    ).toEqual(['models/index.json', `models/${index[0].file}`].sort());
+  });
+
+  it('описание запечено в background.js полного архива; лёгкий — без models/ и без id', () => {
+    const index = JSON.parse(strFromU8(fullZip['models/index.json']));
+    // id — строковым литералом (в комментарии settings.js id пакета упоминается и в лёгкой сборке)
+    expect(strFromU8(fullZip['background.js'])).toContain(index[0].sha256);
+    expect(strFromU8(fullZip['background.js'])).toContain(`"${index[0].id}"`);
+    const lite = unzipSync(new Uint8Array(readFileSync(res.lite.file)));
+    expect(Object.keys(lite).filter((n) => /^models\//.test(n))).toEqual([]);
+    expect(strFromU8(lite['background.js'])).not.toContain(`"${index[0].id}"`);
+    expect(strFromU8(lite['background.js'])).not.toContain(index[0].sha256);
+    expect(res.lite.sha256).toBe(first.sha256); // лёгкий архив тот же, что без модели
+  });
+
+  it('в полном архиве нет исходников, тестов, зависимостей и sourcemaps', () => {
+    const names = Object.keys(fullZip);
+    expect(names.filter((n) => /\.map$|^src\/|^tests\/|node_modules|^docs\/|^scripts\/|package/.test(n))).toEqual([]);
+  });
+
+  it('полный архив воспроизводим', () => {
+    const again = packRelease({ outDir: join(dir, 'again'), modelZip: MODEL_ZIP });
+    expect(again.full.sha256).toBe(res.full.sha256);
+    expect(again.full.size).toBe(res.full.size);
+  }, 120000);
 });

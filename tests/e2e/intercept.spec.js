@@ -2,7 +2,7 @@
 // отдаётся через page.route под origin http://intercept.test, внешней сети нет.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { test, expect } from './fixtures.js';
+import { test, expect, BUNDLED } from './fixtures.js';
 import { makeDocx, para, run, unzipText } from '../helpers/docx.js';
 
 const ORIGIN = 'http://intercept.test';
@@ -106,14 +106,21 @@ test.describe('перехват на сайте', () => {
     expect(await dump(page)).toEqual([]);
   });
 
-  test('multiple: [a.docx, b.pdf, c.docx] → [a.anon.docx, b.pdf, c.anon.docx], вкладки по файлам (FR-06)', async ({ context, extensionId }) => {
+  test('multiple: [a.docx, b.pdf, c.docx] → [a.anon.docx, b.pdf, c.anon.docx], вкладки по файлам (FR-06), PDF без текста — как есть', async ({
+    context,
+    extensionId,
+  }) => {
     const page = await setup(context, extensionId);
     await page.setInputFiles('#multi', [
       docxFile('a.docx'),
       { name: 'b.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 test') },
       docxFile('c.docx'),
     ]);
-    await expect(page.getByTestId('file-tab')).toHaveCount(2);
+    // версия 0.3: PDF тоже перехватывается — без текстового слоя он получает вкладку с ошибкой и уходит «как есть» (К11)
+    await expect(page.getByTestId('file-tab')).toHaveCount(3);
+    await page.getByTestId('file-tab').nth(1).click();
+    await expect(page.locator('.fview.active [data-testid="error-message"]')).toBeVisible({ timeout: 40000 });
+    await page.locator('.fview.active [data-testid="btn-asis"]').click();
     await expect(page.getByTestId('btn-anonymize')).toBeEnabled({ timeout: 40000 });
     await page.getByTestId('btn-anonymize').click();
     await expect(page.getByTestId('done-title')).toBeVisible({ timeout: 30000 });
@@ -368,4 +375,36 @@ test('скриншоты панели для портфолио (E2E_SHOTS=ка�
   await opt.reload();
   await opt.waitForTimeout(600);
   await opt.screenshot({ path: `${process.env.E2E_SHOTS}/options.png`, fullPage: true });
+});
+
+// WP10-C (К16): лёгкая сборка без модели — закрываемая подсказка о модели NER в панели; закрыта — до перезагрузки страницы не возвращается
+test('панель: подсказка «установите модель NER», «×» убирает, второй файл — без подсказки', async ({ context, extensionId }) => {
+  test.skip(!!BUNDLED, 'полная сборка: модель встроена');
+  const page = await setup(context, extensionId, { extra: { hintMappingShown: true } });
+  await page.setInputFiles('#single', docxFile());
+  await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+  const hint = page.getByTestId('ner-hint');
+  await expect(hint).toBeVisible();
+  await expect(hint).toContainText('Установите модель NER в настройках расширения');
+  await page.getByTestId('ner-hint-close').click();
+  await expect(hint).toHaveCount(0);
+  await expect(page.getByTestId('pv-summary')).toBeVisible(); // панель на месте
+  await page.getByTestId('btn-cancel').click();
+  await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+
+  await page.setInputFiles('#single', docxFile('второй.docx'));
+  await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId('ner-hint')).toHaveCount(0);
+  await page.getByTestId('btn-cancel').click();
+  await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+
+  // с установленной моделью подсказки нет и на новой странице
+  const ext = await context.newPage();
+  await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+  await setSettings(ext, true, { hintMappingShown: true, nerModel: 'some-pack' });
+  await ext.close();
+  await page.reload();
+  await page.setInputFiles('#single', docxFile('третий.docx'));
+  await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId('ner-hint')).toHaveCount(0);
 });

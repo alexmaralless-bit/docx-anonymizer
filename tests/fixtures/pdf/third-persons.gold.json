@@ -1,0 +1,102 @@
+[
+  {
+    "key": "a",
+    "category": "COMPANY",
+    "value": "Кедровый Бор"
+  },
+  {
+    "key": "b",
+    "category": "COMPANY",
+    "value": "Лесная Гавань"
+  },
+  {
+    "key": "aInn",
+    "category": "INN",
+    "value": "6632001112"
+  },
+  {
+    "key": "bInn",
+    "category": "INN",
+    "value": "5904002226"
+  },
+  {
+    "key": "aDirGen",
+    "category": "PERSON",
+    "value": "Сафиной Гульнары Рашитовны"
+  },
+  {
+    "key": "aDirShort",
+    "category": "PERSON",
+    "value": "Сафина Г.Р."
+  },
+  {
+    "key": "bDirGen",
+    "category": "PERSON",
+    "value": "Горбунова Святослава Игоревича"
+  },
+  {
+    "key": "bDirShort",
+    "category": "PERSON",
+    "value": "Горбунов С.И."
+  },
+  {
+    "key": "t1",
+    "category": "PERSON",
+    "value": "Тимофеем Бойко"
+  },
+  {
+    "key": "t2dat",
+    "category": "PERSON",
+    "value": "Зульфие Хасановой"
+  },
+  {
+    "key": "t2nom",
+    "category": "PERSON",
+    "value": "Зульфия Хасанова"
+  },
+  {
+    "key": "t3",
+    "category": "PERSON",
+    "value": "Прохору Шевчуку"
+  },
+  {
+    "key": "t4",
+    "category": "PERSON",
+    "value": "Есения Павловская"
+  },
+  {
+    "key": "t5",
+    "category": "PERSON",
+    "value": "Римский-Корсаков Николай"
+  },
+  {
+    "key": "t6",
+    "category": "PERSON",
+    "value": "Аделине Мухаметзяновой"
+  },
+  {
+    "key": "t7",
+    "category": "PERSON",
+    "value": "Ефимом Борисовичем"
+  },
+  {
+    "key": "t8",
+    "category": "PERSON",
+    "value": "Ковалёва Алёна"
+  },
+  {
+    "key": "t9",
+    "category": "PERSON",
+    "value": "Oliver Hart"
+  },
+  {
+    "key": "t10",
+    "category": "PERSON",
+    "value": "Brenda Collins"
+  },
+  {
+    "key": "t11gen",
+    "category": "PERSON",
+    "value": "Прохора Шевчука"
+  }
+]

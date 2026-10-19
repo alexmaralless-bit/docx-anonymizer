@@ -14,10 +14,14 @@
     { "$ref": "#/$defs/DISCARD" },
     { "$ref": "#/$defs/LIST_SESSIONS" },
     { "$ref": "#/$defs/DEANON" },
+    { "$ref": "#/$defs/GET_MAPPING" },
     { "$ref": "#/$defs/BATCH_BEGIN" },
     { "$ref": "#/$defs/BATCH_END" },
     { "$ref": "#/$defs/CATALOG_CHANGED" },
     { "$ref": "#/$defs/MODEL_CHANGED" },
+    { "$ref": "#/$defs/MODEL_BOOTSTRAP" },
+    { "$ref": "#/$defs/MODEL_INSTALL" },
+    { "$ref": "#/$defs/MODEL_INSTALLED" },
     { "$ref": "#/$defs/PROGRESS" },
     { "$ref": "#/$defs/ENTITIES" },
     { "$ref": "#/$defs/TEXT" },
@@ -27,13 +31,28 @@
     { "$ref": "#/$defs/ERROR" },
     { "$ref": "#/$defs/SESSIONS" },
     { "$ref": "#/$defs/DEANON_RESULT" },
+    { "$ref": "#/$defs/MAPPING" },
     { "$ref": "#/$defs/ACK" }
   ],
   "$defs": {
     "requestId": { "type": "string", "minLength": 1 },
     "base64": { "type": "string", "pattern": "^[A-Za-z0-9+/]*={0,2}$" },
-    "stage": { "enum": ["receiving", "unzip", "parse", "detect", "ner", "kb", "apply", "zip", "sending"] },
-    "errorCode": { "enum": ["NOT_DOCX", "ENCRYPTED", "TOO_LARGE", "PARSE_FAILED", "HOST_UNAVAILABLE", "MODEL_LOAD_FAILED", "INTERNAL"] },
+    "stage": { "enum": ["receiving", "unzip", "parse", "pdf", "detect", "ner", "kb", "apply", "zip", "sending"] },
+    "errorCode": {
+      "enum": [
+        "NOT_DOCX",
+        "ENCRYPTED",
+        "TOO_LARGE",
+        "PARSE_FAILED",
+        "HOST_UNAVAILABLE",
+        "MODEL_LOAD_FAILED",
+        "PDF_INVALID",
+        "PDF_ENCRYPTED",
+        "PDF_EMPTY",
+        "PDF_NO_TEXT",
+        "INTERNAL"
+      ]
+    },
 
     "FILE_BEGIN": {
       "type": "object",
@@ -146,6 +165,11 @@
         "decline": { "type": "boolean" }
       }
     },
+    "GET_MAPPING": {
+      "type": "object",
+      "required": ["type", "requestId", "docId"],
+      "properties": { "type": { "const": "GET_MAPPING" }, "requestId": { "$ref": "#/$defs/requestId" }, "docId": { "type": "string", "minLength": 1 } }
+    },
     "BATCH_BEGIN": {
       "type": "object",
       "required": ["type", "requestId", "batchId"],
@@ -169,6 +193,42 @@
         "type": { "const": "MODEL_CHANGED" },
         "requestId": { "$ref": "#/$defs/requestId" },
         "modelId": { "type": "string", "pattern": "^([a-z0-9][a-z0-9-]{1,40})?$" }
+      }
+    },
+    "MODEL_BOOTSTRAP": {
+      "type": "object",
+      "description": "Поставить встроенный пакет модели заново (WP10-C, кнопка «Восстановить встроенную модель»). Клиент → background, ответ — ACK сразу; установка идёт в фоне.",
+      "required": ["type", "requestId"],
+      "properties": { "type": { "const": "MODEL_BOOTSTRAP" }, "requestId": { "$ref": "#/$defs/requestId" } }
+    },
+    "MODEL_INSTALL": {
+      "type": "object",
+      "description": "Background → offscreen (clientId 'bootstrap', WP10-C): установить пакет модели из архива расширения (chrome-extension://…/models/<file>). Ответ — MODEL_INSTALLED.",
+      "required": ["type", "requestId", "url", "id", "sha256"],
+      "properties": {
+        "type": { "const": "MODEL_INSTALL" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "url": { "type": "string", "pattern": "^chrome-extension://" },
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "version": { "type": "string" },
+        "extensionVersion": { "type": "string" }
+      }
+    },
+    "MODEL_INSTALLED": {
+      "type": "object",
+      "description": "Итог MODEL_INSTALL (WP10-C): installed — записан в OPFS, present — уже стоит тот же sha, failed — не установлен (code — ModelStoreError, UNVERIFIED или MISMATCH).",
+      "required": ["type", "requestId", "status", "id", "sha256"],
+      "properties": {
+        "type": { "const": "MODEL_INSTALLED" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "status": { "enum": ["installed", "present", "failed"] },
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "version": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "ms": { "type": "number", "minimum": 0 },
+        "code": { "type": "string", "pattern": "^[A-Z_]+$" }
       }
     },
 
@@ -223,6 +283,7 @@
         "requestId": { "$ref": "#/$defs/requestId" },
         "docId": { "type": "string", "pattern": "^d\\d+$" },
         "name": { "type": "string" },
+        "kind": { "enum": ["docx", "pdf"] },
         "language": { "enum": ["ru", "en", "both"] },
         "placeholderLanguage": { "enum": ["ru", "en"] },
         "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } },
@@ -266,7 +327,8 @@
       "properties": {
         "type": { "const": "RESULT_BEGIN" },
         "requestId": { "$ref": "#/$defs/requestId" },
-        "name": { "type": "string", "pattern": "\\.(docx|docm)$" },
+        "name": { "type": "string", "pattern": "\\.(docx|docm|md|txt)$" },
+        "mime": { "type": "string", "pattern": "^[a-z]+/[a-z0-9.+-]+$" },
         "size": { "type": "integer", "minimum": 1 },
         "chunks": { "type": "integer", "minimum": 1 },
         "docId": { "type": "string" }
@@ -361,6 +423,16 @@
             }
           }
         }
+      }
+    },
+    "MAPPING": {
+      "type": "object",
+      "required": ["type", "requestId", "docId", "mapping"],
+      "properties": {
+        "type": { "const": "MAPPING" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "docId": { "type": "string" },
+        "mapping": { "$ref": "mapping.schema.json" }
       }
     },
     "ACK": {

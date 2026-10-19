@@ -106,13 +106,20 @@ export function findPartyZones(doc) {
     for (let i = h + 1; i < n; i++) block.add(paras[i].pid);
   } else {
     for (let i = Math.floor(n * 0.75); i < n; i++) block.add(paras[i].pid);
-    const part = doc.parts.get(MAIN);
-    if (part) {
-      for (const r of tableRanges(part.xml)) {
-        const inside = paras.filter((p) => p.pos >= r.start && p.pos < r.end);
-        const labels = inside.reduce((acc, p) => acc + (textOf(p).match(TABLE_LABEL_RE) || []).length, 0);
-        if (labels >= 2) for (const p of inside) block.add(p.pid);
-      }
+    // Таблицы: в DOCX — диапазоны w:tbl в XML части; в текстовой модели PDF (0.3, core/text/model.js) — doc.tables с pid ячеек
+    const part = doc.parts?.get(MAIN);
+    /** @type {any[][]} */
+    const tables = doc.tables
+      ? doc.tables.map((t) => {
+          const pids = new Set(t.pids);
+          return paras.filter((p) => pids.has(p.pid));
+        })
+      : part
+        ? tableRanges(part.xml).map((r) => paras.filter((p) => p.pos >= r.start && p.pos < r.end))
+        : [];
+    for (const inside of tables) {
+      const labels = inside.reduce((acc, p) => acc + (textOf(p).match(TABLE_LABEL_RE) || []).length, 0);
+      if (labels >= 2) for (const p of inside) block.add(p.pid);
     }
   }
   const first = paras.findIndex((p) => /^\s*1\.(?!\d)/.test(textOf(p)));

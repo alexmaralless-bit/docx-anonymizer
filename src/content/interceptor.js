@@ -1,15 +1,17 @@
 // Перехват выбора файла (FR-01), drag&drop (FR-02) и вставки (FR-03). FR-05: подмена через DataTransfer.
 // Обработчики вешаются на window в фазе capture — раньше обработчиков страницы (content script на document_start).
-import { hasDocx, isDocx, fileSignature } from './files.js';
+import { isDocx, fileSignature } from './files.js';
 
 const isFileInput = (n) => !!n && n.tagName === 'INPUT' && /** @type {HTMLInputElement} */ (n).type === 'file';
 
 /**
  * @param {{run: (files: File[]) => Promise<{action: string, files: File[]}>}} flow
- * @param {{win?: Window}} [env]
+ * @param {{win?: Window, isSupported?: (file: File) => boolean}} [env]
+ *   isSupported — какие файлы обрабатывать (content.js: DOCX и PDF по pdfMode, версия 0.3); по умолчанию — только DOCX
  */
 export function createInterceptor(flow, env = {}) {
   const win = env.win || window;
+  const supported = env.isSupported || isDocx;
   const doc = win.document;
   let bypass = false; // наши собственные события не перехватываем повторно (FR-05)
   const produced = new Set(); // сигнатуры файлов, которые мы сами подставили
@@ -21,7 +23,7 @@ export function createInterceptor(flow, env = {}) {
   const pendingNodes = new Set();
   let attached = false;
 
-  const needsProcessing = (files) => hasDocx(files) && !files.filter(isDocx).every((f) => produced.has(fileSignature(f)));
+  const needsProcessing = (files) => files.some(supported) && !files.filter(supported).every((f) => produced.has(fileSignature(f)));
 
   function withBypass(fn) {
     bypass = true;

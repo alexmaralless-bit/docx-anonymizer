@@ -1,0 +1,82 @@
+[
+  {
+    "key": "a",
+    "category": "COMPANY",
+    "value": "Northwind Solutions"
+  },
+  {
+    "key": "b",
+    "category": "COMPANY",
+    "value": "Contoso Holdings"
+  },
+  {
+    "key": "aEin",
+    "category": "TAXID",
+    "value": "12-3456789"
+  },
+  {
+    "key": "pA",
+    "category": "PERSON",
+    "value": "John Michael Smith"
+  },
+  {
+    "key": "pAShort",
+    "category": "PERSON",
+    "value": "J. M. Smith"
+  },
+  {
+    "key": "pB",
+    "category": "PERSON",
+    "value": "Emily Rose Carter"
+  },
+  {
+    "key": "iban",
+    "category": "IBAN",
+    "value": "GB29NWBK60161331926819"
+  },
+  {
+    "key": "swift",
+    "category": "SWIFT",
+    "value": "NWBKGB2L"
+  },
+  {
+    "key": "mailA",
+    "category": "EMAIL",
+    "value": "john.smith@northwind.example"
+  },
+  {
+    "key": "mailB",
+    "category": "EMAIL",
+    "value": "legal@contoso-holdings.example"
+  },
+  {
+    "key": "phoneA",
+    "category": "PHONE",
+    "value": "+1 (415) 555-0132"
+  },
+  {
+    "key": "phoneB",
+    "category": "PHONE",
+    "value": "+44 20 7946 0958"
+  },
+  {
+    "key": "addrA",
+    "category": "ADDRESS",
+    "value": "500 Market Street, Suite 210, San Francisco, CA 94105"
+  },
+  {
+    "key": "addrB",
+    "category": "ADDRESS",
+    "value": "221 Baker Street, London NW1 6XE"
+  },
+  {
+    "key": "ssn",
+    "category": "SSN",
+    "value": "078-05-1120"
+  },
+  {
+    "key": "site",
+    "category": "URL",
+    "value": "https://www.northwind.example/terms"
+  }
+]

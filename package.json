@@ -21,6 +21,7 @@
     "format": "prettier --write .",
     "sample": "node scripts/make-sample.mjs",
     "gen-fixtures": "node scripts/gen-fixtures.mjs",
+    "gen-pdf-fixtures": "node scripts/gen-pdf-fixtures.mjs",
     "gen-ner-eval": "node scripts/gen-ner-eval.mjs",
     "bench-ner": "node scripts/bench-ner.mjs",
     "dicts": "node scripts/make-dicts.mjs",

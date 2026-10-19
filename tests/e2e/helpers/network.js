@@ -100,7 +100,10 @@ export function externalRequests(urls, allowedOrigins = []) {
   return urls.filter((u) => /^https?:/i.test(u) && !allowedOrigins.some((o) => u === o || u.startsWith(o + '/')));
 }
 
-/** Запросы offscreen-документа и его воркера (offscreen.html/js, worker.js, vendor/*.wasm) — доказательство, что запись их видит. */
+/**
+ * Запросы offscreen-документа и его воркера (offscreen.html/js, worker.js, vendor/*.wasm, models/*.zip встроенной модели — WP10-C)
+ * — доказательство, что запись их видит.
+ */
 export function offscreenRequests(urls) {
-  return urls.filter((u) => /^chrome-extension:\/\/[^/]+\/(offscreen\/|vendor\/)/.test(u));
+  return urls.filter((u) => /^chrome-extension:\/\/[^/]+\/(offscreen\/|vendor\/|models\/)/.test(u));
 }

@@ -295,6 +295,19 @@ function processingSection() {
       ),
     ),
     h('div', { class: 'field' }, h('label', { for: 'max-size' }, t('max_size')), size),
+    // версия 0.3: PDF с текстовым слоем уходит в чат текстом (.anon.md / .anon.txt) или не перехватывается
+    selectField(
+      t('pdf_mode'),
+      [
+        ['markdown', t('pdf_mode_markdown')],
+        ['text', t('pdf_mode_text')],
+        ['off', t('pdf_mode_off')],
+      ],
+      settings.pdfMode,
+      (v, el) => save({ pdfMode: v }, el),
+      'pdf-mode',
+    ),
+    h('p', { class: 'sec-hint', dataset: { testid: 'pdf-mode-hint' } }, t('pdf_mode_hint')),
     h(
       'div',
       { class: 'stack' },
@@ -311,6 +324,8 @@ function processingSection() {
 
 const RELEASES_URL = 'https://github.com/alexmaralless-bit/docx-anonymizer/releases';
 const EXT_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0';
+/** Встроенный пакет модели полной сборки ({file, id, version, sha256, size}) или null — лёгкая (WP10-C, scripts/build.mjs --with-model). */
+const BUNDLED = typeof __BUNDLED_MODEL__ !== 'undefined' ? __BUNDLED_MODEL__ : null;
 const NER_ERRORS = new Set(MODEL_STORE_ERROR_CODES);
 
 /** Хост сбрасывает кэш NER-провайдера (MODEL_CHANGED → ACK). Хост недоступен — не страшно: новый воркер прочтёт модель сам. */
@@ -335,11 +350,27 @@ async function notifyModelChanged(modelId) {
 // Сохранение nerModel может перерисовать страницу (onSettingsChanged) посреди импорта — последнее сообщение
 // живёт вне секции и пишется в актуальный элемент.
 const nerNote = { text: '', bad: false, /** @type {HTMLElement|null} */ el: null };
+/** «Восстановить встроенную модель» нажата, установка идёт в фоне (WP10-C): переживает перерисовку страницы. */
+let nerRestoring = false;
+
+/** Восстановление встроенной модели: background ставит пакет из архива расширения сам и отвечает ACK сразу (MSG.MODEL_BOOTSTRAP). */
+async function requestBundledBootstrap() {
+  const client = connectClient();
+  try {
+    await client.request(MSG.MODEL_BOOTSTRAP);
+  } finally {
+    try {
+      client.port.disconnect();
+    } catch {
+      /* порт уже закрыт */
+    }
+  }
+}
 
 function nerSection() {
   const msg = h('div', { class: nerNote.bad ? 'hint err' : 'hint', role: 'status', dataset: { testid: 'ner-msg' } }, nerNote.text);
   nerNote.el = msg;
-  const status = h('div', { class: 'ner-status', dataset: { testid: 'ner-status' } }, t('ner_loading'));
+  const status = h('div', { class: 'ner-status', dataset: { testid: 'ner-status', state: 'loading' } }, t('ner_loading'));
   let installed = [];
   const say = (text, bad = false) => {
     Object.assign(nerNote, { text, bad });
@@ -356,6 +387,7 @@ function nerSection() {
       status.textContent = t('ner_err_UNAVAILABLE');
       importBtn.disabled = true;
       removeBtn.hidden = true;
+      restoreBtn.hidden = true;
       return;
     }
     try {
@@ -365,16 +397,31 @@ function nerSection() {
       fail(e);
     }
     const active = installed.find((m) => m.id === settings.nerModel);
+    // WP10-C (docs/contracts.md §6.3): без активной модели — три состояния. Полная сборка: встроенный пакет ещё не обработан
+    // профилем → «устанавливается» (импорт отключён); обработан, но модель удалена → кнопка «Восстановить». Лёгкая — три шага.
+    const bundledPending = !!BUNDLED && !settings.nerModel && settings.bundledModelSha !== BUNDLED.sha256;
+    const bundledRemoved = !!BUNDLED && !settings.nerModel && settings.bundledModelSha === BUNDLED.sha256;
     if (active) {
+      if (nerRestoring) say(t('ner_imported', label(active))); // «устанавливается заново…» сменяется итогом
+      nerRestoring = false;
       const size = t('ner_size_mb', { n: (active.bytes / (1024 * 1024)).toFixed(1) });
+      status.dataset.state = 'installed';
       status.replaceChildren(
         t('ner_installed', { ...label(active), size }),
         ' · ',
         h('span', { class: active.verified ? 'ner-verified' : 'ner-unverified' }, t(active.verified ? 'ner_verified' : 'ner_unverified')),
       );
+    } else if (bundledPending || (bundledRemoved && nerRestoring)) {
+      status.dataset.state = 'installing';
+      status.textContent = t(bundledPending ? 'ner_bundled_installing' : 'ner_bundled_restoring');
     } else {
+      status.dataset.state = 'none';
       status.textContent = t('ner_not_installed');
     }
+    importBtn.disabled = !active && bundledPending;
+    restoreBtn.hidden = !!active || !bundledRemoved;
+    restoreBtn.disabled = nerRestoring;
+    placeOnboarding(!BUNDLED && !active);
     removeBtn.hidden = !installed.length;
   };
 
@@ -446,6 +493,55 @@ function nerSection() {
     },
     t('ner_remove'),
   );
+  const restoreBtn = h(
+    'button',
+    {
+      type: 'button',
+      class: 'btn',
+      hidden: true,
+      dataset: { testid: 'ner-restore' },
+      onclick: async () => {
+        nerRestoring = true;
+        restoreBtn.disabled = true;
+        status.dataset.state = 'installing';
+        status.textContent = t('ner_bundled_restoring');
+        say(t('ner_bundled_restoring'));
+        try {
+          await requestBundledBootstrap(); // итог придёт сменой настроек (nerModel) → перерисовка карточки
+        } catch (e) {
+          nerRestoring = false;
+          restoreBtn.disabled = false;
+          fail(e);
+        }
+      },
+    },
+    t('ner_bundled_restore'),
+  );
+
+  // Онбординг лёгкой сборки (WP10-C, К16): три шага, пока модели нет. Ссылка на релизы и кнопка импорта — те же элементы,
+  // что в обычном виде карточки (testid не дублируются): переезжают в шаги и обратно.
+  const releasesLink = h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener', dataset: { testid: 'ner-releases-link' } }, t('ner_releases'));
+  const linkHome = h('p', { class: 'hint' });
+  const step1 = h('li', {}, h('span', {}, t('ner_step_1')), ' ');
+  const step2 = h('li', {}, h('span', {}, t('ner_step_2')), h('div', { class: 'row', style: 'margin-top:6px' }));
+  const onboarding = h(
+    'div',
+    { class: 'ner-onboarding', hidden: true, dataset: { testid: 'ner-onboarding' } },
+    h('h3', {}, t('ner_onboard_h')),
+    h('ol', { class: 'steps' }, step1, step2, h('li', {}, t('ner_step_3'))),
+  );
+  const row = h('div', { class: 'row', style: 'margin-top:10px' }, importBtn, file, removeBtn, restoreBtn);
+  function placeOnboarding(on) {
+    onboarding.hidden = !on;
+    if (on) {
+      step1.append(releasesLink);
+      step2.lastElementChild.append(importBtn);
+    } else {
+      linkHome.append(releasesLink);
+      row.prepend(importBtn);
+    }
+  }
+  placeOnboarding(!BUNDLED && !settings.nerModel);
 
   const threshold = h('input', {
     type: 'number',
@@ -469,9 +565,10 @@ function nerSection() {
     toggle(t('ner_enabled'), t('ner_enabled_hint'), settings.nerEnabled, (v, el) => save({ nerEnabled: v }, el), 'ner-enabled'),
     h('div', { class: 'field' }, h('label', { for: 'ner-threshold' }, t('ner_threshold')), threshold),
     h('div', { class: 'field' }, status),
-    h('div', { class: 'row', style: 'margin-top:10px' }, importBtn, file, removeBtn),
+    onboarding,
+    row,
     msg,
-    h('p', { class: 'hint' }, h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener', dataset: { testid: 'ner-releases-link' } }, t('ner_releases'))),
+    linkHome,
     h('p', { class: 'hint', dataset: { testid: 'ner-privacy' } }, t('ner_privacy')),
   );
 }
@@ -1124,6 +1221,8 @@ function renderApp() {
 async function init() {
   settings = await loadSettings();
   renderApp();
+  // Карточки строятся динамически — браузер не прокрутил к якорю при загрузке (options.html#ner из popup, WP10-C)
+  if (location.hash.length > 1) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
   onSettingsChanged((s) => {
     // Изменения из другой вкладки/popup: обновляем состояние и перерисовываем, если пользователь сейчас ничего не вводит
     const same = JSON.stringify(s) === JSON.stringify(settings);

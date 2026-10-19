@@ -103,6 +103,27 @@ describe('protocol: клиент', () => {
   });
 });
 
+describe('protocol: GET_MAPPING / MAPPING (WP10-B)', () => {
+  it('request(GET_MAPPING) резолвится на терминальном MAPPING; тип есть в схеме', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { TERMINAL } = await import('../../src/shared/protocol.js');
+    expect(TERMINAL.has(MSG.MAPPING)).toBe(true);
+    const [clientPort, serverPort] = portPair();
+    serverPort.onMessage.addListener((m) => {
+      if (m.type === MSG.GET_MAPPING) serverPort.postMessage({ type: MSG.MAPPING, requestId: m.requestId, docId: m.docId, mapping: { entries: [] } });
+    });
+    const client = createClient(clientPort);
+    const r = await client.request(MSG.GET_MAPPING, { docId: 'd1' });
+    expect(r).toMatchObject({ type: 'MAPPING', docId: 'd1', mapping: { entries: [] } });
+    expect(client.pendingCount).toBe(0);
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/protocol.schema.json', import.meta.url), 'utf8'));
+    for (const t of ['GET_MAPPING', 'MAPPING']) {
+      expect(schema.$defs[t].properties.type.const).toBe(t);
+      expect(schema.oneOf).toContainEqual({ $ref: `#/$defs/${t}` });
+    }
+  });
+});
+
 describe('protocol: MODEL_CHANGED (WP8)', () => {
   it('тип есть в MSG и в схеме протокола; ответ — терминальный ACK', async () => {
     const { readFileSync } = await import('node:fs');
@@ -112,5 +133,20 @@ describe('protocol: MODEL_CHANGED (WP8)', () => {
     const schema = JSON.parse(readFileSync(new URL('../../schemas/protocol.schema.json', import.meta.url), 'utf8'));
     expect(schema.$defs.MODEL_CHANGED.properties.type.const).toBe('MODEL_CHANGED');
     expect(schema.oneOf).toContainEqual({ $ref: '#/$defs/MODEL_CHANGED' });
+  });
+});
+
+describe('protocol: встроенная модель NER (WP10-C)', () => {
+  it('MODEL_BOOTSTRAP, MODEL_INSTALL, MODEL_INSTALLED объявлены и есть в схеме; MODEL_INSTALLED терминальный', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { TERMINAL } = await import('../../src/shared/protocol.js');
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/protocol.schema.json', import.meta.url), 'utf8'));
+    for (const t of ['MODEL_BOOTSTRAP', 'MODEL_INSTALL', 'MODEL_INSTALLED']) {
+      expect(MSG[t]).toBe(t);
+      expect(schema.$defs[t].properties.type.const).toBe(t);
+      expect(schema.oneOf).toContainEqual({ $ref: `#/$defs/${t}` });
+    }
+    expect(TERMINAL.has('MODEL_INSTALLED')).toBe(true);
+    expect(TERMINAL.has('MODEL_INSTALL')).toBe(false);
   });
 });

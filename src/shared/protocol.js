@@ -19,6 +19,8 @@ export const MSG = Object.freeze({
   LIST_SESSIONS: 'LIST_SESSIONS',
   /** {mappingRef, text, decline?} — decline: склонять ФИО по контексту (FR-37); ответ DEANON_RESULT {…, declined?} */
   DEANON: 'DEANON',
+  /** {docId} — карта замен сессии для восстановления файла на странице (WP10-B, FR-36а); ответ MAPPING {docId, mapping} */
+  GET_MAPPING: 'GET_MAPPING',
   BATCH_BEGIN: 'BATCH_BEGIN',
   BATCH_ADD: 'BATCH_ADD',
   BATCH_END: 'BATCH_END',
@@ -26,6 +28,13 @@ export const MSG = Object.freeze({
   CATALOG_CHANGED: 'CATALOG_CHANGED',
   /** {modelId?} — пакет модели NER установлен/удалён (WP8): хост сбрасывает кэш провайдера; ответ ACK */
   MODEL_CHANGED: 'MODEL_CHANGED',
+  /** {} — поставить встроенный пакет модели заново (WP10-C, кнопка «Восстановить встроенную модель»): background отвечает ACK сразу */
+  MODEL_BOOTSTRAP: 'MODEL_BOOTSTRAP',
+  // bg → offscreen (clientId 'bootstrap', не порт клиента; WP10-C, docs/contracts.md §6.8)
+  /** {url, id, sha256, version, extensionVersion} — установить пакет из архива расширения; ответ MODEL_INSTALLED */
+  MODEL_INSTALL: 'MODEL_INSTALL',
+  /** {status: 'installed'|'present'|'failed', id, sha256, version?, bytes?, ms?, code?} — итог MODEL_INSTALL */
+  MODEL_INSTALLED: 'MODEL_INSTALLED',
   // bg → client
   PROGRESS: 'PROGRESS',
   ENTITIES: 'ENTITIES',
@@ -36,17 +45,34 @@ export const MSG = Object.freeze({
   ERROR: 'ERROR',
   SESSIONS: 'SESSIONS',
   DEANON_RESULT: 'DEANON_RESULT',
+  MAPPING: 'MAPPING',
   BATCH_DONE: 'BATCH_DONE',
-  /** Расширение протокола: подтверждение для DISCARD/CANCEL/CATALOG_CHANGED/MODEL_CHANGED/BATCH_* без данных. */
+  /** Расширение протокола: подтверждение для DISCARD/CANCEL/CATALOG_CHANGED/MODEL_CHANGED/MODEL_BOOTSTRAP/BATCH_* без данных. */
   ACK: 'ACK',
 });
 
-export const STAGES = Object.freeze(['receiving', 'unzip', 'parse', 'detect', 'ner', 'kb', 'apply', 'zip', 'sending']);
+// 'pdf' — извлечение текста PDF (версия 0.3)
+export const STAGES = Object.freeze(['receiving', 'unzip', 'parse', 'pdf', 'detect', 'ner', 'kb', 'apply', 'zip', 'sending']);
 
-export const ERROR_CODES = Object.freeze(['NOT_DOCX', 'ENCRYPTED', 'TOO_LARGE', 'PARSE_FAILED', 'HOST_UNAVAILABLE', 'MODEL_LOAD_FAILED', 'INTERNAL']);
+export const ERROR_CODES = Object.freeze([
+  'NOT_DOCX',
+  'ENCRYPTED',
+  'TOO_LARGE',
+  'PARSE_FAILED',
+  'HOST_UNAVAILABLE',
+  'MODEL_LOAD_FAILED',
+  // PDF (версия 0.3, К5)
+  'PDF_INVALID',
+  'PDF_ENCRYPTED',
+  'PDF_EMPTY',
+  'PDF_NO_TEXT',
+  'INTERNAL',
+]);
 
 /** Сообщения, завершающие запрос (на них резолвится client.request). */
-export const TERMINAL = Object.freeze(new Set(['ENTITIES', 'TEXT', 'RESULT_END', 'SESSIONS', 'DEANON_RESULT', 'BATCH_DONE', 'ACK', 'ERROR']));
+export const TERMINAL = Object.freeze(
+  new Set(['ENTITIES', 'TEXT', 'RESULT_END', 'SESSIONS', 'DEANON_RESULT', 'MAPPING', 'MODEL_INSTALLED', 'BATCH_DONE', 'ACK', 'ERROR']),
+);
 
 /** Ключи runtime.sendMessage между background и offscreen. */
 export const TARGET = Object.freeze({ OFFSCREEN: 'offscreen', BACKGROUND: 'background' });
@@ -230,7 +256,8 @@ export function createClient(port) {
         pending.delete(msg.requestId);
         try {
           const bytes = /** @type {ChunkAssembler} */ (p.assembler).result();
-          p.resolve({ ...msg, name: p.begin.name, bytes });
+          // mime — тип результата (версия 0.3: text/markdown, text/plain для PDF; MIME .docx для DOCX)
+          p.resolve({ ...msg, name: p.begin.name, mime: p.begin.mime, bytes });
         } catch (err) {
           p.reject(err);
         }
@@ -287,7 +314,7 @@ export function createClient(port) {
       return promise;
     },
     /**
-     * Применяет решения. Ответ — {name, bytes, mapping, size, ...RESULT_END}.
+     * Применяет решения. Ответ — {name, mime, bytes, mapping, size, ...RESULT_END}.
      * @param {{docId: string, mode?: string, decisions?: object[], options?: object, onProgress?: Function}} a
      */
     apply(a) {

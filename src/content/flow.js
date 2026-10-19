@@ -8,12 +8,15 @@ import { common } from '../ui/i18n/common.js';
 import { panel as panelDict } from '../ui/i18n/panel.js';
 import { MSG, ProtocolError, makeRequestId } from '../shared/protocol.js';
 import { saveSettingsPatch } from '../shared/settings-store.js';
-import { isDocx, resultType, mappingFileName, isInvalidatedError, makeResultName } from './files.js';
+import { isSupported, resultType, mappingFileName, isInvalidatedError, makeResultName } from './files.js';
 import { Link, contextValid, readOpenShadowFlag } from './runtime.js';
 
 /**
  * @typedef {{action: 'anonymized'|'original'|'cancel', files: File[]}} FlowResult
  */
+
+/** Подсказка «установите модель NER» закрыта крестиком (WP10-C, К16): до перезагрузки страницы больше не показывается. */
+let nerHintDismissed = false;
 
 /**
  * @param {{getSettings: () => import('../core/settings.js').Settings, onInvalidated?: () => void}} deps
@@ -49,8 +52,9 @@ async function runOnce(originals, deps) {
   const catalog = buildCatalog(settings);
   const link = new Link();
   const openShadow = await readOpenShadowFlag();
-  const docxIdx = originals.map((f, i) => (isDocx(f) ? i : -1)).filter((i) => i >= 0);
-  const batchId = docxIdx.length > 1 ? makeRequestId('b') : null;
+  // обрабатываемые файлы: DOCX и PDF (если pdfMode не 'off', версия 0.3); остальные проходят как есть
+  const procIdx = originals.map((f, i) => (isSupported(f, settings) ? i : -1)).filter((i) => i >= 0);
+  const batchId = procIdx.length > 1 ? makeRequestId('b') : null;
 
   /** @type {Map<number, {docId: string, k: number}>} */
   const analyzed = new Map();
@@ -111,9 +115,22 @@ async function runOnce(originals, deps) {
         /* контекст инвалидирован */
       }
     },
+    onDismissNerHint: () => {
+      nerHintDismissed = true;
+    },
+    // WP10-D: подсказка о ключе восстановления показывается один раз — флаг в настройках (localStorage — хранилище сайта)
+    onMappingHintShown: () => {
+      try {
+        saveSettingsPatch({ hintMappingShown: true }).catch(() => {});
+      } catch {
+        /* контекст инвалидирован */
+      }
+    },
   };
 
-  const panel = new Panel({ lang, catalog, origin, position: settings.panelPosition?.[origin], openShadow, handlers });
+  // WP10-C: модели нет и встроенная не ставилась (лёгкая сборка) — закрываемая подсказка в панели
+  const nerHint = !settings.nerModel && !settings.bundledModelSha && !nerHintDismissed;
+  const panel = new Panel({ lang, catalog, origin, position: settings.panelPosition?.[origin], openShadow, handlers, nerHint });
   panel.mount();
 
   function invalidated() {
@@ -127,7 +144,7 @@ async function runOnce(originals, deps) {
     const code = err instanceof ProtocolError ? err.code : 'INTERNAL';
     const limit = settings.maxFileSizeMB;
     const known = tt(`err.${code}`, { limit });
-    panel.setError(docxIdx.indexOf(i), {
+    panel.setError(procIdx.indexOf(i), {
       code,
       message: known.startsWith('err.') ? err.message : known,
       retry: code === 'HOST_UNAVAILABLE' || code === 'INTERNAL',
@@ -135,7 +152,7 @@ async function runOnce(originals, deps) {
   }
 
   async function analyzeOne(i) {
-    const k = docxIdx.indexOf(i);
+    const k = procIdx.indexOf(i);
     const file = originals[i];
     if (file.size > settings.maxFileSizeMB * 1024 * 1024) return fail(i, new ProtocolError('TOO_LARGE', 'too large'));
     try {
@@ -155,6 +172,7 @@ async function runOnce(originals, deps) {
         entities: ent.entities,
         warnings: ent.warnings,
         restored: ent.restoredDecisions,
+        kind: ent.kind,
         api: {
           getText: (from, count) => link.get().request(MSG.GET_TEXT, { docId: ent.docId, from, count }),
           addEntity: async (category, text) => (await link.get().request(MSG.ADD_ENTITY, { docId: ent.docId, category, text, replaceAll: true })).entities,
@@ -184,17 +202,20 @@ async function runOnce(originals, deps) {
       let replacements = 0;
       const out = originals.slice();
       let stepNo = 0;
-      const ready = docxIdx.filter((i) => analyzed.has(i) && panel.getPreview(docxIdx.indexOf(i)));
+      const ready = procIdx.filter((i) => analyzed.has(i) && panel.getPreview(procIdx.indexOf(i)));
       for (const i of ready) {
-        const k = docxIdx.indexOf(i);
+        const k = procIdx.indexOf(i);
         const res = await client.apply({
           docId: analyzed.get(i).docId,
           decisions: panel.getPreview(k).getDecisions(),
           onProgress: (stage, p) => panel.setApplyProgress(stage, Math.round(((stepNo + p / 100) / ready.length) * 100)),
         });
         stepNo++;
-        const file = new File([res.bytes], makeResultName(originals[i].name, settings.outputSuffix), {
-          type: resultType(originals[i]),
+        // имя — по исходному файлу (хост при повторе по sha отдаёт имя прежней сессии), расширение и тип — от хоста:
+        // PDF уходит текстом .anon.md / .anon.txt (версия 0.3)
+        const ext = /\.(md|txt)$/i.exec(res.name || '')?.[0];
+        const file = new File([res.bytes], makeResultName(originals[i].name, settings.outputSuffix, ext ? { ext } : {}), {
+          type: resultType(originals[i], res.mime),
           lastModified: Date.now(),
         });
         out[i] = file;
@@ -211,6 +232,7 @@ async function runOnce(originals, deps) {
         resultFiles: outFiles,
         mappingText: merged ? JSON.stringify(merged, null, 2) : null,
         mappingName: mappingFileName(outFiles[0]?.name),
+        hintMappingShown: deps.getSettings().hintMappingShown,
       });
       decide('anonymized', out);
     } catch (err) {
@@ -226,15 +248,15 @@ async function runOnce(originals, deps) {
     invalidated();
     return result;
   }
-  for (const i of docxIdx) panel.addFile(originals[i].name, originals[i].size);
+  for (const i of procIdx) panel.addFile(originals[i].name, originals[i].size);
   (async () => {
     try {
       if (batchId) await link.get().request(MSG.BATCH_BEGIN, { batchId });
     } catch (err) {
-      for (const i of docxIdx) fail(i, err);
+      for (const i of procIdx) fail(i, err);
       return;
     }
-    for (const i of docxIdx) {
+    for (const i of procIdx) {
       if (closed) return;
       await analyzeOne(i);
     }

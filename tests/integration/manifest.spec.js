@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { zipSync, strToU8 } from 'fflate';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const manifest = JSON.parse(readFileSync('manifest.json', 'utf8'));
@@ -34,6 +35,18 @@ describe('manifest.json репозитория', () => {
     expect(manifest).not.toHaveProperty('content_scripts');
     expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
     expect(manifest.permissions).toEqual(expect.arrayContaining(['storage', 'offscreen', 'scripting', 'activeTab']));
+  });
+
+  it('поле key фиксирует идентификатор расширения: обновление из любой папки сохраняет настройки, доступ к сайтам и модель', () => {
+    // Chrome вычисляет ID распакованного расширения из пути к папке; с key — из открытого ключа (sha256 DER → первые 32 hex → a…p)
+    const der = Buffer.from(manifest.key, 'base64');
+    expect(der.length).toBeGreaterThan(200);
+    const id = createHash('sha256')
+      .update(der)
+      .digest('hex')
+      .slice(0, 32)
+      .replace(/[0-9a-f]/g, (c) => String.fromCharCode(97 + parseInt(c, 16)));
+    expect(id).toBe('oppdmoakaiampmmdgedmboeklbhkfmgh');
   });
 
   it('минимальная версия Chrome ≥ 132: pdf.js 6 читает CMaps и шрифты через Response.bytes() (версия 0.3, спайк S1)', () => {

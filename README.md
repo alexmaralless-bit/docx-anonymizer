@@ -17,6 +17,8 @@
 
 **Install.** Chrome or Edge 132+. Node.js 22+, `npm ci`, `npm run build`, then load `dist/` as an unpacked extension at `chrome://extensions`. Or take a release archive: `docx-anonymizer-<version>-full.zip` (≈ 34 MB, with the NER model, installs itself) or the lite `docx-anonymizer-<version>.zip` (≈ 6 MB). The extension gets no site access at install time: enable interception for a site from the extension menu and accept Chrome's access prompt.
 
+**Update.** No auto-update: unpacked extensions are updated by hand. Unzip the new release over the same folder (or into a new one) and press "Update" at `chrome://extensions` (for a new folder: remove the old entry, load the new one). The extension ID is pinned by the `key` field in `manifest.json`, so settings, granted site access and the installed NER model survive an update from any folder; a new model package in the full archive installs itself on the first run. Versions 0.2 and older had no key: upgrading from them means a fresh install.
+
 **PDF.** A PDF with a text layer is intercepted too: pdf.js (bundled in the extension, no network) extracts the text, a layout step rebuilds paragraphs, headings, lists, two-column pages and tables and drops running headers and page numbers, and the chat receives `name.anon.md` (or `.txt`) with placeholders instead of the PDF. The setting "PDF with a text layer" switches the output to `.txt` or turns PDF interception off. Scans, password-protected, empty and damaged PDFs are refused with a hint and can be uploaded as is after an explicit choice.
 
 **Limits.** `.docx`/`.docm` and text-layer PDF only (no scans/OCR, no PDF → PDF; layout is tested on Chromium and LibreOffice PDFs); AI files are restored from `.docx`/`.docm`/`.md`/`.txt`, not `.xlsx`/`.pptx`/PDF; embedded OLE objects are not anonymized (warned about or removed); single surnames of third parties without a label are found only by the NER model; Russian case restoration skips ambiguous prepositions. The UI is Russian-first with full English localization.
@@ -54,6 +56,16 @@
 5. **Подтвердите доступ к сайту.** Для сайтов из списка по умолчанию (ChatGPT, Claude, Gemini, DeepSeek, Perplexity) нажмите в меню «Разрешить доступ», для другого сайта — «Добавить …»; Chrome спросит разрешение на доступ к этому сайту — нажмите «Разрешить». Перезагружать страницу не нужно. Сайты можно добавлять и в настройках (раздел «Перехват»): при добавлении Chrome спрашивает разрешение так же, отозвать доступ можно в `chrome://extensions` → «Сведения» → «Доступ к сайтам».
 
 <img src="docs/screenshots/popup.png" width="260" alt="Меню расширения">
+
+### Обновление
+
+Автообновления нет: расширение не в магазине, а Chrome не обновляет распакованные расширения сам. О новых версиях сообщает страница [Releases](https://github.com/alexmaralless-bit/docx-anonymizer/releases) (расширение не делает запросов в сеть и само о них не узнаёт).
+
+1. Скачайте архив новой версии, полный или лёгкий.
+2. Распакуйте его в папку, из которой расширение загружено, с заменой файлов (старое содержимое папки лучше сначала удалить), или в новую папку.
+3. `chrome://extensions` → «Обновить» вверху страницы или кнопка перезагрузки на карточке расширения. Если распаковали в новую папку — «Удалить» старое и «Загрузить распакованное расширение» для новой.
+
+Идентификатор расширения закреплён полем `key` в `manifest.json`, поэтому при обновлении из любой папки сохраняются настройки, список сайтов с выданным доступом и установленная модель NER. Если в полном архиве новый пакет модели, он ставится сам при первом запуске после обновления; тот же пакет повторно не ставится. Версии 0.2 и старше ключа не имели: при переходе с них Chrome увидит новое расширение — удалите старое, настройки и доступ к сайтам придётся выдать заново (модель из полного архива поставится сама, для лёгкого — импортируйте пакет снова).
 
 ### Архив релиза
 

@@ -52,12 +52,15 @@ function logo() {
  * @property {(pos: {x: number, y: number}) => void} onPosition
  * @property {() => void} [onMappingHintShown]  подсказка о ключе восстановления показана (WP10-D): сохранить флаг hintMappingShown
  * @property {() => void} [onDismissNerHint]  подсказка «установите модель NER» закрыта (WP10-C): больше не показывать на странице
+ * @property {() => void} [onOrgPolicyHintShown]  подсказка о политике 0.4 («организации — по желанию») показана: снять orgPolicyHintPending
+ * @property {(section: 'categories'|'companies'|'ner') => void} [onOpenOptions]  открыть страницу настроек на разделе (0.4, MSG.OPEN_OPTIONS)
  */
 
 export class Panel {
   /**
    * @param {{lang: 'ru'|'en', catalog: any, origin: string, position?: {x: number, y: number}, openShadow?: boolean, handlers: PanelHandlers,
-   *   nerHint?: boolean}} o  nerHint — показать подсказку о модели NER (WP10-C: модели нет, встроенная не ставилась)
+   *   nerHint?: boolean, orgPolicyHint?: boolean}} o  nerHint — показать подсказку о модели NER (WP10-C: модели нет, встроенная не ставилась);
+   *   orgPolicyHint — один раз показать подсказку о политике 0.4 (settings.orgPolicyHintPending после обновления с 0.3)
    */
   constructor(o) {
     this.o = o;
@@ -247,6 +250,15 @@ export class Panel {
     this.o.handlers.onDismissNerHint?.();
   }
 
+  dismissOrgPolicyHint() {
+    const el = this.orgPolicyHintEl;
+    this.orgPolicyHintEl = null;
+    if (!el) return;
+    const box = el.parentElement;
+    el.remove();
+    if (box?.classList.contains('warns') && !box.childElementCount) box.remove();
+  }
+
   /** @param {number} i @param {{entities: any[], warnings?: any[], restored?: boolean, kind?: 'docx'|'pdf', ext?: string, api: any}} d */
   setReady(i, d) {
     const f = this.files[i];
@@ -276,6 +288,43 @@ export class Panel {
       );
       (this.nerHints ||= []).push(hint);
       warns.push(hint);
+    }
+    // Политика 0.4 (риски концепции): после обновления с 0.3 один раз объясняем, что названия организаций теперь
+    // маскируются по желанию; флаг снимается сразу при показе (onOrgPolicyHintShown), «×» убирает подсказку
+    if (this.o.orgPolicyHint && !this.orgPolicyHintShown) {
+      this.orgPolicyHintShown = true;
+      const hint = h(
+        'div',
+        { class: 'note', 'data-testid': 'org-policy-hint', style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0' } },
+        h(
+          'span',
+          { style: { flex: '1' } },
+          this.t('orgPolicyHint'),
+          ' ',
+          this.o.handlers.onOpenOptions
+            ? h('button', {
+                class: 'link',
+                type: 'button',
+                text: this.t('openOptions'),
+                'data-testid': 'org-policy-hint-open',
+                onClick: () => this.o.handlers.onOpenOptions?.('categories'),
+              })
+            : null,
+        ),
+        h('button', {
+          class: 'x',
+          type: 'button',
+          text: '×',
+          title: this.t('close'),
+          'aria-label': this.t('close'),
+          'data-testid': 'org-policy-hint-close',
+          style: { width: '24px', height: '24px', fontSize: '16px' },
+          onClick: () => this.dismissOrgPolicyHint(),
+        }),
+      );
+      this.orgPolicyHintEl = hint;
+      warns.push(hint);
+      this.o.handlers.onOrgPolicyHintShown?.();
     }
     // PDF (версия 0.3): в чат уйдёт текст, а не PDF — объясняем заранее
     // расширение результата — по pdfMode (FR-54): «.md» или «.txt»

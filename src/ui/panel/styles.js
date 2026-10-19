@@ -137,6 +137,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .pv-repl { flex: none; width: 168px; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .pv-ignore { flex: none; border: 0; background: none; color: var(--muted); font-size: 16px; padding: 2px 4px; border-radius: 6px; }
 .pv-ignore:hover { color: var(--danger); background: var(--danger-soft); }
+.pv-mask { flex: none; border: 1px solid var(--border); background: none; color: var(--accent); font-size: 11px; padding: 2px 6px; border-radius: 6px; white-space: nowrap; }
+.pv-mask:hover { background: var(--accent-soft); }
+.sel-remember { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.sel-remember[hidden] { display: none; }
 .pv-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
 .pv-empty[hidden] { display: none; }
 

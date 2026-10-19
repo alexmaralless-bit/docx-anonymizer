@@ -496,3 +496,46 @@ mark.hit {
   display: grid;
   gap: 8px;
 }
+
+/* Политика маскирования 0.4: группы «всегда» и коммерческая, список компаний */
+.group {
+  margin-top: 16px;
+}
+.group h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.group > .chips .chip {
+  padding: 2px 12px;
+}
+.cat-grid.muted {
+  opacity: 0.6;
+}
+.hint.warn {
+  background: var(--warn-bg);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-top: 6px;
+}
+.company-rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.company-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.company-row .chips {
+  margin-top: 0;
+}
+.company-row input {
+  flex: 1;
+  min-width: 180px;
+}
+#ner-stoplist {
+  width: 100%;
+  box-sizing: border-box;
+}

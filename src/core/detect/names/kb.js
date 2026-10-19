@@ -20,12 +20,19 @@
 //    Словарные пары (и латинские пары правил только по имени), совпадающие с названием компании документа без ОПФ
 //    или с его началом из ≥ 2 слов («Clifford Chance» при «Clifford Chance LLP»), — не лица, а вхождения компании.
 //    Пара правил «Имя Отчество» («Ольгой Петровной») разбирается как fm, чтобы падежные формы попали в одну запись.
+// Политика 0.4 (docs/concept-0.4.md, решения владельца 1 и 3; contracts §8.1):
+//    «ИП Фамилия И.О.» / «Индивидуальный предприниматель Фамилия Имя Отчество» — имя человека: всегда PERSON с формой
+//    в keepPrefix и canonical записи о лице (дальше по тексту «Фамилия И.О.» получает ту же метку); COMPANY для ИП нет.
+//    При выключенной COMPANY (коммерческая группа выключена) компании не порождаются и их спаны не занимаются:
+//    лица рядом с названиями и внутри них («ООО «Иванов и партнёры»») находятся как PERSON.
+//    В коммерческом режиме название правил, совпадающее с записью списка компаний (settings.maskedCompanies), выдаётся
+//    с source 'list' и canonical записи: строка панели — «из списка», метка общая с находками детектора company-list.js.
 
 import { findPersons } from './person.js';
 import { findPersonsByDict } from './person-dict.js';
-import { findCompanies } from './company.js';
+import { findCompanies, companyCore } from './company.js';
 import { tokenize, tokenSeq, escapeRe, pickNonOverlapping, overlaps } from './text.js';
-import { lowerE, COMMON_NOUNS, isStopWord } from './lexicon.js';
+import { lowerE, COMMON_NOUNS, isStopWord, isNeverMaskOrg } from './lexicon.js';
 import {
   lemmatizeFullName,
   lemmatizeNamePair,
@@ -456,6 +463,7 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
   const wantP = isEnabled('PERSON');
   const wantC = isEnabled('COMPANY');
   if (!wantP && !wantC) return [];
+
   const govEntities = ctx.settings?.govEntities !== false;
   const dictOn = ctx.settings?.dictNames !== false && wantP;
 
@@ -470,15 +478,19 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
   const tokCache = new Map();
   for (const s of streams) {
     if (!s.text || !/[\p{Lu}]/u.test(s.text)) continue;
-    const companies = findCompanies(s.text, { govEntities });
+    const ruleSpans = findCompanies(s.text, { govEntities });
+    // ИП — всегда (как PERSON); организации — только при включённой COMPANY, иначе их спаны свободны для ФИО
+    const ips = ruleSpans.filter((c) => c.kind === 'ip');
     const toks = tokenize(s.text);
     tokCache.set(s.id, toks);
     const rule = findPersons(s.text, { toks });
     const dict = dictOn ? findPersonsByDict(s.text, { toks, skip: rule }) : [];
+    // «Бюро Иванова И.И.», «Студия Артемия Лебедева»: название по родовому слову не отбирает спан у лица (правила, словарь)
+    const companies = wantC ? ruleSpans.filter((c) => c.kind !== 'ip' && !(c.generic && [...rule, ...dict].some((p) => overlaps(c, p)))) : [];
     const persons = (dict.length ? pickNonOverlapping([...rule, ...dict], (p) => (p.dict ? 0 : 1)) : rule).filter(
-      (p) => !companies.some((c) => overlaps(c, p)),
+      (p) => !companies.some((c) => overlaps(c, p)) && !ips.some((c) => overlaps(c, p)),
     );
-    if (companies.length || persons.length) found.set(s.id, { companies, persons, asCompany: [] });
+    if (companies.length || ips.length || persons.length) found.set(s.id, { companies, ips, persons, asCompany: [] });
   }
 
   // 1а. Пары, совпадающие с названием компании документа (без ОПФ) или с его началом из ≥ 2 слов, — вхождения компании
@@ -516,18 +528,20 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
       let rec = companies.get(key);
       if (!rec) companies.set(key, (rec = makeCompanyRec(c.core, c.kind)));
       if (zone) rec.party = true;
-      if (c.kind === 'ip' && c.person) {
-        const p = c.person;
-        const words = text(s, p.start, p.end).split(/[\s\u00A0]+/);
-        personOcc.push({
-          stream: s,
-          span: null,
-          parse: p.initials
-            ? { kind: 'initials', script: 'cyr', surname: p.surname, initials: p.initials, words }
-            : { kind: 'full', script: 'cyr', surname: p.surname, first: p.first, patronymic: p.patronymic, words },
-          party: zone,
-        });
-      }
+    }
+    // ИП (политика 0.4): вхождение лица на весь спан «ИП Фамилия И.О.», форма «ИП » — в keepPrefix
+    for (const c of f.ips) {
+      const p = /** @type {NonNullable<typeof c.person>} */ (c.person);
+      if (!p) continue;
+      const words = text(s, p.start, p.end).split(/[\s\u00A0]+/);
+      personOcc.push({
+        stream: s,
+        span: { start: c.start, end: c.end, keepPrefix: c.keepPrefix, ip: true },
+        parse: p.initials
+          ? { kind: 'initials', script: 'cyr', surname: p.surname, initials: p.initials, words }
+          : { kind: 'full', script: 'cyr', surname: p.surname, first: p.first, patronymic: p.patronymic, words },
+        party: zone,
+      });
     }
     for (const p of f.persons) personOcc.push({ stream: s, span: p, parse: pairAsFm(p.parse, dictOn), party: p.dict ? false : zone });
   }
@@ -561,13 +575,25 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
     arr.push(span);
   };
 
+  // ядро названия записи списка компаний (и псевдонимов) → canonical записи (0.4, contracts §8.2)
+  /** @type {Map<string, string>} */
+  const listed = new Map();
+  if (wantC) {
+    for (const e of Array.isArray(ctx.settings?.maskedCompanies) ? ctx.settings.maskedCompanies : []) {
+      const main = companyCore(e?.name);
+      if (!main) continue;
+      for (const n of [main, ...(Array.isArray(e.aliases) ? e.aliases.map(companyCore) : [])]) if (n && !listed.has(norm(n))) listed.set(norm(n), main);
+    }
+  }
+
   // 4а. Вхождения правил
   for (const s of streams) {
     const f = found.get(s.id);
     if (!f) continue;
     for (const c of f.companies) {
       const rec = /** @type {CompanyRec} */ (companies.get(norm(c.core)));
-      const canonical = companyCanonical(rec);
+      const fromList = listed.get(norm(c.core));
+      const canonical = fromList ?? companyCanonical(rec);
       out.push({
         streamId: s.id,
         category: 'COMPANY',
@@ -576,8 +602,8 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
         keepPrefix: c.keepPrefix,
         keepSuffix: c.keepSuffix,
         confidence: 'labeled',
-        source: 'rule',
-        ...(canonical !== norm(c.core) ? { canonical } : {}),
+        source: fromList ? 'list' : 'rule',
+        ...(fromList || canonical !== norm(c.core) ? { canonical } : {}),
       });
       occupy(s.id, c);
     }
@@ -590,12 +616,14 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
   for (const o of personOcc) {
     if (!o.span) continue;
     const rec = recOf.get(o);
-    const t = norm(text(o.stream, o.span.start, o.span.end));
+    const keepPrefix = o.span.keepPrefix || 0;
+    const t = norm(text(o.stream, o.span.start + keepPrefix, o.span.end));
     out.push({
       streamId: o.stream.id,
       category: 'PERSON',
       start: o.span.start,
       end: o.span.end,
+      ...(keepPrefix ? { keepPrefix } : {}),
       confidence: o.span.dict ? 'kb' : 'labeled',
       source: o.span.dict ? 'kb' : o.span.labeled ? 'label' : 'rule',
       ...(rec.canonical !== t ? { canonical: rec.canonical } : {}),
@@ -684,7 +712,13 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
     }
   }
 
-  return out.filter((c) => isEnabled(/** @type {string} */ (c.category)));
+  // бренд владельца не маскируется никогда (решение владельца 6): ни вариантом базы сторон, ни транслитерацией
+  return out.filter((c) => {
+    if (!isEnabled(/** @type {string} */ (c.category))) return false;
+    if (c.category !== 'COMPANY') return true;
+    const t = /** @type {any} */ (doc.streamById.get(c.streamId)).text.slice(c.start, c.end);
+    return !isNeverMaskOrg(t);
+  });
 }
 
 function text(stream, start, end) {

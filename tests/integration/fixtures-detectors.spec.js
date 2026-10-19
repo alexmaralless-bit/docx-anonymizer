@@ -18,6 +18,9 @@ const sample = (() => {
   return { name: 'sample-contract', bytes, gold: Object.entries(gold).map(([key, value]) => ({ key, value })) };
 })();
 const docs = [sample, ...buildFixtures()];
+// Ключи образца с названиями организаций (у gold образца нет категорий)
+const SAMPLE_COMPANIES = new Set(['company1', 'company2']);
+const isCompany = (f, x) => (x.category ? x.category === 'COMPANY' : f.name === 'sample-contract' && SAMPLE_COMPANIES.has(x.key));
 
 describe.skipIf(!enabled)('полный набор детекторов: файл → файл', () => {
   for (const f of docs) {
@@ -44,6 +47,36 @@ describe.skipIf(!enabled)('полный набор детекторов: фай�
     const person = mapping.entries.find((e) => e.original.includes('Кузнецов Андрей'));
     expect(person?.variants.join('|') + person?.original).toMatch(/Кузнецова/);
   });
+});
+
+// Политика 0.4 (К2, К3, contracts §8): обычный режим — pii/ids замаскированы всегда, названий организаций нет;
+// список компаний находит gold-организации и без коммерческой группы; коммерческий режим (anonymize по умолчанию) — выше
+describe.skipIf(!enabled)('политика 0.4: обычный режим и список компаний', () => {
+  const NORMAL = { commercial: false };
+  for (const f of docs) {
+    it(`${f.name}: обычный режим — ноль утечек pii/ids, ни одной находки COMPANY`, async () => {
+      const { docxBytes, analysis } = await anonymize(f.bytes, { settings: NORMAL });
+      expect(analysis.groups.filter((g) => g.category === 'COMPANY').map((g) => g.value)).toEqual([]);
+      expect(analysis.groups.filter((g) => ['CONTRACT', 'AMOUNT'].includes(g.category))).toEqual([]);
+      const values = f.gold.filter((x) => !isCompany(f, x)).map((x) => x.value);
+      expect(findLeaks(docxBytes, values)).toEqual([]);
+    });
+
+    it(`${f.name}: список компаний при выключенной коммерческой группе — gold-организации замаскированы, только source list`, async () => {
+      const names = f.gold.filter((x) => isCompany(f, x)).map((x) => x.value);
+      if (!names.length) return;
+      const { docxBytes, analysis } = await anonymize(f.bytes, { settings: { ...NORMAL, maskedCompanies: names.map((name) => ({ name, aliases: [] })) } });
+      const groups = analysis.groups.filter((g) => g.category === 'COMPANY');
+      expect(groups.every((g) => g.source === 'list')).toBe(true);
+      expect(groups.length).toBe(new Set(names.map((n) => n.toLowerCase())).size);
+      expect(
+        findLeaks(
+          docxBytes,
+          f.gold.map((x) => x.value),
+        ),
+      ).toEqual([]);
+    });
+  }
 });
 
 describe.skipIf(enabled)('полный набор детекторов (ожидают WP1/WP2)', () => {

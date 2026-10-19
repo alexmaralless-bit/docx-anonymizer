@@ -1,9 +1,23 @@
 // COMPANY по правилам: ОПФ + название в кавычках любого типа («», “”, „“, "", '', ‘’), ОПФ + название без
-// кавычек (1–2 слова), латинские «Name LLC/Ltd/Inc/GmbH…», «ИП Фамилия И.О.» (FR-21) и название в кавычках
-// после лейбла стороны («Поставщик: «Ромашка»»). ОПФ и кавычки уходят в keepPrefix/keepSuffix.
+// кавычек (1–2 слова), латинские «Name LLC/Ltd/Inc/GmbH…», название в кавычках после лейбла стороны
+// («Поставщик: «Ромашка»») и родовое слово + название («Студия Ромашка», «Группа компаний «Альфа»», политика 0.4).
+// ОПФ, родовое слово и кавычки уходят в keepPrefix/keepSuffix.
+// «ИП Фамилия И.О.» (FR-21) тоже размечается здесь (kind: 'ip'), но это имя человека (решение владельца 0.4, п. 1):
+// kb.js выдаёт его как PERSON с формой «ИП » в keepPrefix, а не как COMPANY.
 
 import { B, E, SP, labelBeforeRe, hasLabelBefore, pickNonOverlapping } from './text.js';
-import { PREFIX_FORMS, FULL_FORMS_RE_SRC, IP_FORM_RE_SRC, SUFFIX_FORMS_RE_SRC, GOV_ENTITIES, ROLE_WORDS, isStopWord, lowerE } from './lexicon.js';
+import {
+  PREFIX_FORMS,
+  FULL_FORMS_RE_SRC,
+  IP_FORM_RE_SRC,
+  SUFFIX_FORMS_RE_SRC,
+  GENERIC_ORG_RE_SRC,
+  GOV_ENTITIES,
+  ROLE_WORDS,
+  isStopWord,
+  isNeverMaskOrg,
+  lowerE,
+} from './lexicon.js';
 
 /**
  * @typedef {object} CompanySpan
@@ -15,6 +29,7 @@ import { PREFIX_FORMS, FULL_FORMS_RE_SRC, IP_FORM_RE_SRC, SUFFIX_FORMS_RE_SRC, G
  * @property {'org'|'ip'} kind
  * @property {string} [form]
  * @property {{surname: string, initials?: string, first?: string, patronymic?: string, start: number, end: number}} [person]  для ИП
+ * @property {boolean} [generic]   найдено по родовому слову («Студия Ромашка», политика 0.4)
  */
 
 const OPEN_QUOTES = { '«': '»', '"': '"', '“': '”', '„': '“', "'": "'", '‘': '’', '”': '”' };
@@ -37,6 +52,13 @@ const IP_RE = new RegExp(
   `${B}(${IP_FORM_RE_SRC.replace('индивидуальн', '[Ии]ндивидуальн')})${SP}+(?:(${RW})${SP}+(${INIT2})|(${RW})${SP}+(${RW})${SP}+(${RW})${E})`,
   'gu',
 );
+// Родовое слово + название (политика 0.4): 1–3 слова с заглавной или название в кавычках
+const CAP_WORD = '[А-ЯЁA-Z][\\p{L}\\d]*(?:-[\\p{L}\\d]+)*';
+// латинское название с «&»/«and» внутри («Smith & Co», «Brown and Partners») — одно название, не обрывается на союзе
+const GENERIC_RE = new RegExp(`${B}(${GENERIC_ORG_RE_SRC})${SP}+(?:(?=[«"“„'‘])|(${CAP_WORD}(?:${SP}(?:(?:&|and)${SP})?${CAP_WORD}){0,2})${E})`, 'gu');
+// после названия идут инициалы («Бюро Иванова И.И.») — это ФИО, а не название
+const INITIALS_AFTER_RE = /^[ \u00A0]*[А-ЯЁA-Z]\./u;
+const PREFIX_FORM_SET = new Set(PREFIX_FORMS);
 const NOT_FORM = `(?!(?:${SUFFIX_FORMS_RE_SRC})(?![\\p{L}\\p{N}]))`;
 const LATIN_RE = new RegExp(
   `${B}((?:${NOT_FORM}[A-Z][\\w&'.-]*)(?:${SP}(?:${NOT_FORM}[A-Z][\\w&'.-]*|&|and|of|de|du|der|und)){0,4}),?${SP}+(${SUFFIX_FORMS_RE_SRC})(?![\\p{L}\\p{N}])`,
@@ -89,6 +111,29 @@ export function readQuoted(text, pos) {
   return null;
 }
 
+// ОПФ в начале названия из списка компаний («ООО «Ромашка»», «Общество с ограниченной ответственностью Ромашка», «ИП …»)
+const LEAD_FORM_RE = new RegExp(`^(?:(?:${SHORT_FORMS})(?![\\p{L}\\p{N}])|(?:${FULL_FORMS_RE_SRC}|${IP_FORM_RE_SRC})(?![\\p{L}\\p{N}]))[ \\u00A0]*`, 'iu');
+// латинская ОПФ в конце названия («Romashka LLC», «Acme Trading Ltd.»)
+const TAIL_FORM_RE = new RegExp(`,?[ \\u00A0]+(?:${SUFFIX_FORMS_RE_SRC})$`, 'u');
+const QUOTE_CHARS = '«»"“”„\'‘’';
+
+/**
+ * Ядро названия из списка компаний (0.4, company-list.js и kb.js): без ОПФ в начале, латинской ОПФ в конце и внешних кавычек.
+ * @param {string} name
+ */
+export function companyCore(name) {
+  let c = String(name || '')
+    .replace(/[\s\u00A0]+/g, ' ')
+    .trim();
+  for (let i = 0; i < 3; i++) {
+    const before = c;
+    c = c.replace(LEAD_FORM_RE, '').replace(TAIL_FORM_RE, '').trim();
+    if (c.length >= 2 && QUOTE_CHARS.includes(c[0]) && QUOTE_CHARS.includes(c[c.length - 1])) c = c.slice(1, -1).trim();
+    if (c === before) break;
+  }
+  return c;
+}
+
 const keyOf = (s) =>
   lowerE(
     s
@@ -121,6 +166,8 @@ export function findCompanies(text, opts = {}) {
   const spans = [];
   const add = (s) => {
     if (badCore(s.core)) return;
+    // бренд владельца не маскируется никогда (решение владельца 6, концепция 0.4)
+    if (s.kind === 'org' && isNeverMaskOrg(s.core)) return;
     if (skipGov && isGovEntity(s.core, s.form)) return;
     spans.push(s);
   };
@@ -135,7 +182,7 @@ export function findCompanies(text, opts = {}) {
       add({ start, end: q.end, keepPrefix: q.contentStart - start, keepSuffix: q.end - q.contentEnd, core, kind: 'org', form: m[1] });
     }
   }
-  // 2. ИП Фамилия И.О. / ИП Фамилия Имя Отчество — COMPANY целиком (FR-21)
+  // 2. ИП Фамилия И.О. / ИП Фамилия Имя Отчество (FR-21) — имя человека: kb.js выдаёт PERSON с формой в keepPrefix
   for (const m of text.matchAll(IP_RE)) {
     const start = /** @type {number} */ (m.index);
     const ws = /^[ \u00A0]+/.exec(m[0].slice(m[1].length));
@@ -183,6 +230,38 @@ export function findCompanies(text, opts = {}) {
     const core = text.slice(q.contentStart, q.contentEnd);
     if (!/^[\p{Lu}\d]/u.test(core)) continue;
     add({ start: pos, end: q.end, keepPrefix: 1, keepSuffix: q.end - q.contentEnd, core, kind: 'org' });
+  }
+  // 6. Родовое слово + название: «Студия Ромашка», «Агентства «Вектор»», «Группа компаний Альфа Плюс» (политика 0.4, §8.3)
+  for (const m of text.matchAll(GENERIC_RE)) {
+    const start = /** @type {number} */ (m.index);
+    // строчное родовое слово в середине предложения («директор компании Сидоров И.П.», «в компании Петрова П.П.») —
+    // не начало названия; строчное допускается только перед кавычками («агентство «Вектор»»)
+    if (m[2] && /^\p{Ll}/u.test(m[1])) continue;
+    if (!m[2]) {
+      const q = readQuoted(text, start + m[0].length);
+      if (!q) continue;
+      const core = text.slice(q.contentStart, q.contentEnd);
+      if (!/^[\p{Lu}\d]/u.test(core)) continue;
+      add({ start, end: q.end, keepPrefix: q.contentStart - start, keepSuffix: q.end - q.contentEnd, core, kind: 'org', form: m[1], generic: true });
+      continue;
+    }
+    const words = m[2].split(/[ \u00A0]+/);
+    const isTail = (w) => isStopWord(w) || PREFIX_FORM_SET.has(w) || w === '&' || w === 'and';
+    while (words.length && isTail(words[words.length - 1])) words.pop();
+    if (!words.length || isStopWord(words[0]) || PREFIX_FORM_SET.has(words[0])) continue;
+    // инициал в ядре или сразу после него — это ФИО («Бюро Иванова И.И.»): не название и не обрывок
+    if (words.some((w) => /^[А-ЯЁA-Z]$/u.test(w))) continue;
+    // ядро — исходный текст первых words.length слов m[2] (разделители как в тексте)
+    const core = m[2]
+      .split(/([ \u00A0]+)/)
+      .slice(0, words.length * 2 - 1)
+      .join('');
+    // «Компания РТ», «Бюро ТЗ»: одиночная короткая аббревиатура — не название (сокращение уже найденной стороны ищет kb.js)
+    if (words.length === 1 && (core.length < 3 || (core.length <= 3 && core === core.toUpperCase()))) continue;
+    const coreStart = start + m[0].indexOf(m[2], m[1].length);
+    const coreEnd = coreStart + core.length;
+    if (INITIALS_AFTER_RE.test(text.slice(coreEnd, coreEnd + 4))) continue;
+    add({ start, end: coreEnd, keepPrefix: coreStart - start, keepSuffix: 0, core, kind: 'org', form: m[1], generic: true });
   }
   return pickNonOverlapping(spans, (s) => (s.kind === 'ip' ? 1 : 0));
 }

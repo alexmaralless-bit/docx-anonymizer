@@ -8,6 +8,7 @@
  * @property {string} placeholder
  * @property {string} level
  * @property {string} source
+ * @property {string} [normalized]         нормализованное значение группы (canonical для source 'list' — ключ исключения, 0.4)
  * @property {boolean} enabled
  * @property {string|null} edited          ручная замена пользователя (null — не менялась)
  * @property {Set<string>} excluded        id исключённых вхождений
@@ -37,6 +38,7 @@ export function toItems(entities, prev = []) {
       placeholder: e.placeholder,
       level: e.level,
       source: e.source,
+      normalized: e.normalized,
       enabled: p ? p.enabled : e.enabled !== false,
       edited: p ? p.edited : serverReplacement,
       excluded: p ? new Set(p.excluded) : new Set(),
@@ -46,6 +48,20 @@ export function toItems(entities, prev = []) {
     return item;
   });
 }
+
+/**
+ * Показывать ли в строке «Маскировать всегда» (политика 0.4, Ц3): организация, найденная не по списку
+ * (правило, база сторон, модель или вручную) — её можно добавить в список компаний.
+ * @param {Item} item
+ */
+export const canMaskAlways = (item) => item.category === 'COMPANY' && item.source !== 'list';
+
+/**
+ * Значение для исключения ⊘ (FR-32): у компании из списка — canonical записи (все формы и псевдонимы одной метки),
+ * иначе — значение группы.
+ * @param {Item} item
+ */
+export const exclusionValue = (item) => (item.source === 'list' && item.normalized ? item.normalized : item.value);
 
 /** Текст замены для показа в поле ввода. */
 export function replacementText(item) {

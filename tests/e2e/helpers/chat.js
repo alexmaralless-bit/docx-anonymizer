@@ -117,6 +117,13 @@ export const enableIntercept = (context, extensionId, site) =>
  *              [data-testid="btn-hint-ok"]        «Понятно» — закрыть панель без сохранения
  *              [data-testid="btn-hint-save"]      «Сохранить» — скачать ключ и закрыть панель
  *              [data-testid="error-message"]      ошибка
+ *   политика 0.4 (WP11-A):
+ *              [data-testid="pv-source-list"]     подпись «из списка» в строке компании из списка для маскирования
+ *              [data-testid="pv-mask-always"]     «Маскировать всегда» в строке организации не из списка (коммерческий режим)
+ *              [data-testid="pv-sel-remember"]    флажок «запомнить» во вкладке «Текст» при «Анонимизировать как → Организация»
+ *              [data-testid="org-policy-hint"]    одноразовая подсказка «организации — по желанию» (флаг orgPolicyHintPending)
+ *              [data-testid="org-policy-hint-open"]   «Открыть настройки» в подсказке (MSG.OPEN_OPTIONS → options.html#categories)
+ *              [data-testid="org-policy-hint-close"]  «×» подсказки о политике
  */
 export const PANEL_HOST = 'docx-anonymizer-root';
 /**
@@ -146,6 +153,11 @@ export const panel = (scope) => {
     hintOk: t('btn-hint-ok'),
     hintSave: t('btn-hint-save'),
     error: t('error-message'),
+    orgPolicyHint: t('org-policy-hint'),
+    orgPolicyHintOpen: t('org-policy-hint-open'),
+    orgPolicyHintClose: t('org-policy-hint-close'),
+    maskAlways: t('pv-mask-always'),
+    sourceList: t('pv-source-list'),
   };
 };
 

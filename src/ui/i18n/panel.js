@@ -19,6 +19,12 @@ export const panel = {
     nerReason_INFERENCE_FAILED: 'ошибка распознавания',
     // WP10-C: модели NER нет (лёгкая сборка) — закрываемая подсказка
     nerHint: 'Хотите находить больше имён? Установите модель NER в настройках расширения',
+    // политика 0.4: список компаний переполнен или название длиннее 120 символов
+    maskAlwaysFailed: 'список компаний заполнен или название слишком длинное',
+    openOptions: 'Открыть настройки',
+    // политика 0.4: один раз после обновления с 0.3
+    orgPolicyHint:
+      'Названия организаций теперь маскируются по желанию. Персональные данные и реквизиты (ИНН, счета) закрываются всегда. Включить организации или добавить свои компании в список можно в настройках, раздел «Что маскируется».',
     btnAnonymize: 'Анонимизировать и загрузить',
     btnUpload: 'Загрузить',
     btnOriginal: 'Отправить оригинал',
@@ -77,6 +83,10 @@ export const panel = {
     nerReason_MODEL_LOAD_FAILED: 'failed to load',
     nerReason_INFERENCE_FAILED: 'recognition error',
     nerHint: 'Want to find more names? Install the NER model in the extension settings',
+    maskAlwaysFailed: 'the company list is full or the name is too long',
+    openOptions: 'Open settings',
+    orgPolicyHint:
+      'Company names are now masked only if you choose to. Personal data and company identifiers (tax IDs, accounts) are always masked. You can turn company names on or add your companies to the list in the settings, “What is masked”.',
     btnAnonymize: 'Anonymize and upload',
     btnUpload: 'Upload',
     btnOriginal: 'Send original',

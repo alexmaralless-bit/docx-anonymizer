@@ -113,3 +113,38 @@ describe('router: MODEL_BOOTSTRAP (WP10-C)', () => {
     expect(port.postMessage).not.toHaveBeenCalled();
   });
 });
+
+// Политика 0.4: «Открыть настройки» из подсказки панели — вкладку открывает background (контент-скрипт этого не может)
+describe('router: OPEN_OPTIONS (0.4)', () => {
+  let chrome;
+  beforeEach(() => {
+    chrome = fakeChrome();
+    chrome.runtime.getURL = (p) => `chrome-extension://ext-id/${p}`;
+    chrome.tabs = { create: vi.fn(async () => ({ id: 1 })) };
+    vi.stubGlobal('chrome', chrome);
+    offscreen.hasDocument.mockReset();
+    offscreen.ensureOffscreen.mockReset().mockResolvedValue(undefined);
+    initRouter();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('раздел из списка → вкладка options.html#<раздел> и ACK; в offscreen не уходит', async () => {
+    const port = connect(chrome);
+    port.onMessage.fire({ type: MSG.OPEN_OPTIONS, requestId: 'o1', section: 'categories' });
+    await tick();
+    await tick();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: 'chrome-extension://ext-id/options/options.html#categories' });
+    expect(port.postMessage).toHaveBeenCalledWith({ type: MSG.ACK, requestId: 'o1' });
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(offscreen.ensureOffscreen).not.toHaveBeenCalled();
+  });
+
+  it('неизвестный раздел → ERROR INTERNAL, вкладка не открывается', async () => {
+    const port = connect(chrome);
+    port.onMessage.fire({ type: MSG.OPEN_OPTIONS, requestId: 'o2', section: '../../evil' });
+    await tick();
+    await tick();
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: MSG.ERROR, requestId: 'o2', code: 'INTERNAL' }));
+  });
+});

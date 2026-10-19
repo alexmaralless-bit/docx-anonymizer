@@ -20,6 +20,7 @@
     { "$ref": "#/$defs/CATALOG_CHANGED" },
     { "$ref": "#/$defs/MODEL_CHANGED" },
     { "$ref": "#/$defs/MODEL_BOOTSTRAP" },
+    { "$ref": "#/$defs/OPEN_OPTIONS" },
     { "$ref": "#/$defs/MODEL_INSTALL" },
     { "$ref": "#/$defs/MODEL_INSTALLED" },
     { "$ref": "#/$defs/PROGRESS" },
@@ -200,6 +201,16 @@
       "description": "Поставить встроенный пакет модели заново (WP10-C, кнопка «Восстановить встроенную модель»). Клиент → background, ответ — ACK сразу; установка идёт в фоне.",
       "required": ["type", "requestId"],
       "properties": { "type": { "const": "MODEL_BOOTSTRAP" }, "requestId": { "$ref": "#/$defs/requestId" } }
+    },
+    "OPEN_OPTIONS": {
+      "type": "object",
+      "description": "Открыть страницу настроек на разделе (0.4, ссылка в подсказке панели о политике маскирования). Клиент → background, ответ — ACK; вкладка options.html#<section>.",
+      "required": ["type", "requestId", "section"],
+      "properties": {
+        "type": { "const": "OPEN_OPTIONS" },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "section": { "enum": ["categories", "companies", "ner"] }
+      }
     },
     "MODEL_INSTALL": {
       "type": "object",

@@ -1,7 +1,7 @@
 // Страница настроек (FR-34, FR-35, FR-42, FR-44–FR-47). Каждое изменение сохраняется сразу через saveSettingsPatch;
 // невалидное — подсвечивается и не сохраняется. Работает только через src/shared/settings-store.js.
 import './options.css';
-import { buildCatalog } from '../core/categories.js';
+import { buildCatalog, CATEGORY_GROUPS } from '../core/categories.js';
 import { defaultSettings, validateSettingsPatch, SETTINGS_SCHEMA_VERSION } from '../core/settings.js';
 import { findCustomMatches } from '../core/detect/custom/index.js';
 import { checkRegexSource, validateCustomCategory, CUSTOM_VALIDATORS, SHAPES } from '../core/detect/custom/rules.js';
@@ -13,6 +13,7 @@ import { confirmDialog, downloadJson, h } from '../ui/deanon/dom.js';
 import { madeByLine, helpLink } from '../ui/brand.js';
 import { guardRegex } from './regex-guard.js';
 import { CATEGORIES_KIND, CONFIG_KIND, KEPT_ON_RESET, NOT_EXPORTED, parseCategoriesFile, parseConfigFile } from './config-io.js';
+import { companiesFile, isOwnerBrand, isRiskyCompanyName, mergeCompanies, parseAliases, parseCompaniesFile } from './companies-io.js';
 import {
   MAX_PACK_BYTES,
   MODEL_STORE_ERROR_CODES,
@@ -209,18 +210,219 @@ function interceptSection() {
   );
 }
 
-// ---------- категории ----------
+// ---------- что маскируется (политика 0.4) ----------
 
+// Политика 0.4 (docs/concept-0.4.md, решения владельца 1–3 и 5; К1): персональные данные и идентификаторы — всегда,
+// без переключателей (чипы из CATEGORY_GROUPS); коммерческая информация — переключатель группы `commercial`
+// и прежние переключатели категорий внутри (активны всегда, действуют при включённой группе).
 function categoriesSection() {
   const catalog = buildCatalog(settings);
-  const items = catalog.list
-    .filter((c) => c.builtin)
-    .map((c) => {
-      const on = typeof settings.categories[c.id] === 'boolean' ? settings.categories[c.id] : c.defaultOn;
+  const chip = (id) => {
+    const c = catalog.byId.get(id);
+    return h(
+      'span',
+      { class: 'chip', dataset: { testid: `always-${id}` } },
+      h('span', { class: 'dot', style: `background:${c?.color || '#888'}` }),
+      c?.label[lang] || id,
+    );
+  };
+  const always = (group, title, hint) =>
+    h(
+      'div',
+      { class: 'group', dataset: { testid: `group-${group}` } },
+      h('h3', {}, title),
+      h('p', { class: 'hint' }, hint),
+      h('div', { class: 'chips' }, CATEGORY_GROUPS[group].map(chip)),
+    );
+  const inner = h(
+    'div',
+    { class: `cat-grid${settings.commercial ? '' : ' muted'}`, dataset: { testid: 'commercial-categories' } },
+    CATEGORY_GROUPS.commercial.map((id) => {
+      const c = /** @type {any} */ (catalog.byId.get(id));
+      const on = typeof settings.categories[id] === 'boolean' ? settings.categories[id] : c.defaultOn;
       const name = h('span', {}, h('span', { class: 'dot', style: `background:${c.color}` }), c.label[lang]);
-      return toggle(name, c.defaultOn ? null : t('default_off'), on, (v, el) => save({ categories: { ...settings.categories, [c.id]: v } }, el), `cat-${c.id}`);
-    });
-  return card('categories', t('categories_h'), t('categories_hint'), h('div', { class: 'cat-grid' }, items));
+      return toggle(name, c.defaultOn ? null : t('default_off'), on, (v, el) => save({ categories: { ...settings.categories, [id]: v } }, el), `cat-${id}`);
+    }),
+  );
+  const innerHint = h('p', { class: 'hint', hidden: !!settings.commercial, dataset: { testid: 'commercial-off-hint' } }, t('commercial_off_hint'));
+  const commercial = toggle(
+    t('commercial'),
+    t('commercial_hint'),
+    settings.commercial === true,
+    async (v, el) => {
+      if (await save({ commercial: v }, el)) {
+        inner.classList.toggle('muted', !v);
+        innerHint.hidden = v;
+      }
+    },
+    'commercial',
+  );
+  return card(
+    'categories',
+    t('categories_h'),
+    t('categories_hint'),
+    always('pii', t('group_pii_h'), t('group_pii_hint')),
+    always('ids', t('group_ids_h'), t('group_ids_hint')),
+    h('div', { class: 'group', dataset: { testid: 'group-commercial' } }, h('h3', {}, t('group_commercial_h')), commercial, innerHint, inner),
+  );
+}
+
+// ---------- компании для маскирования (политика 0.4, Ц3) ----------
+
+// Список settings.maskedCompanies: ищется во всех документах независимо от группы «Коммерческая информация»
+// (detect/names/company-list.js); пополняется и из панели («Маскировать всегда», «запомнить»).
+// Итог импорта переживает перерисовку страницы (onSettingsChanged после сохранения списка) — как nerNote
+const companiesNote = { text: '' };
+
+function companiesSection() {
+  const box = h('div', { dataset: { testid: 'company-list' } });
+  const err = h('div', { class: 'err' });
+  const msg = h('div', { class: 'hint', role: 'status', dataset: { testid: 'companies-msg' } }, companiesNote.text);
+  const note = (text) => {
+    companiesNote.text = text;
+    const el = document.querySelector('[data-testid="companies-msg"]');
+    if (el) el.textContent = text;
+    else msg.textContent = text;
+  };
+  const warn = h('div', { class: 'hint warn', hidden: true, dataset: { testid: 'company-short' } }, t('company_short'));
+  // бренд владельца не маскируется никогда (решение 6): запись сохранится, но искаться не будет
+  const brand = h('div', { class: 'hint warn', hidden: true, dataset: { testid: 'company-brand' } }, t('company_brand'));
+  const checkName = (v) => {
+    brand.hidden = !isOwnerBrand(v);
+    warn.hidden = !brand.hidden || !isRiskyCompanyName(v);
+  };
+  const name = h('input', {
+    type: 'text',
+    maxLength: 120,
+    'aria-label': t('company_name'),
+    placeholder: t('company_name_placeholder'),
+    dataset: { testid: 'company-name' },
+  });
+  const list = () => settings.maskedCompanies || [];
+  const draw = () => {
+    box.replaceChildren(
+      list().length
+        ? h(
+            'div',
+            { class: 'company-rows' },
+            list().map((c, i) =>
+              h(
+                'div',
+                { class: 'company-row', dataset: { testid: 'company-item' } },
+                h(
+                  'div',
+                  { class: 'chips' },
+                  h(
+                    'span',
+                    { class: 'chip' },
+                    c.name,
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        title: t('remove'),
+                        'aria-label': `${t('remove')} ${c.name}`,
+                        dataset: { testid: `company-remove-${i}` },
+                        onclick: async () => {
+                          await save({ maskedCompanies: list().filter((_, j) => j !== i) });
+                          draw();
+                        },
+                      },
+                      '×',
+                    ),
+                  ),
+                ),
+                h('input', {
+                  type: 'text',
+                  value: (c.aliases || []).join(', '),
+                  placeholder: t('company_aliases'),
+                  'aria-label': `${t('company_aliases')}: ${c.name}`,
+                  dataset: { testid: `company-aliases-${i}` },
+                  onchange: (e) => {
+                    const aliases = parseAliases(e.target.value);
+                    save({ maskedCompanies: list().map((x, j) => (j === i ? { name: x.name, aliases } : x)) }, e.target);
+                  },
+                }),
+              ),
+            ),
+          )
+        : h('div', { class: 'empty' }, t('companies_empty')),
+    );
+  };
+  const add = async () => {
+    const v = name.value.replace(/\s+/g, ' ').trim();
+    if (!v) {
+      name.classList.add('invalid');
+      err.textContent = t('company_empty');
+      return;
+    }
+    name.classList.remove('invalid');
+    err.textContent = '';
+    checkName(v);
+    const next = mergeCompanies(list(), [{ name: v, aliases: [] }]);
+    if (next.length !== list().length && !(await save({ maskedCompanies: next }, name))) return;
+    name.value = '';
+    draw();
+  };
+  name.addEventListener('input', () => checkName(name.value));
+  name.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') add();
+  });
+  const fileInput = h('input', {
+    type: 'file',
+    accept: '.json,application/json',
+    hidden: true,
+    dataset: { testid: 'companies-import-file' },
+    onchange: async () => {
+      const f = fileInput.files?.[0];
+      fileInput.value = '';
+      if (!f) return;
+      const r = parseCompaniesFile(await f.text());
+      if ('error' in r) {
+        note(t('companies_import_bad', { why: r.error }));
+        return;
+      }
+      if (!(await save({ maskedCompanies: mergeCompanies(list(), r.companies) }))) {
+        note(t('companies_import_bad', { why: 'max 200' }));
+        return;
+      }
+      note(t('companies_imported', { n: r.companies.length }));
+      draw();
+    },
+  });
+  draw();
+  return card(
+    'companies',
+    t('companies_h'),
+    t('companies_hint'),
+    h(
+      'div',
+      { class: 'row' },
+      h('div', { style: 'flex:2;min-width:200px' }, name),
+      h('button', { type: 'button', class: 'btn', dataset: { testid: 'company-add' }, onclick: add }, t('add')),
+    ),
+    err,
+    warn,
+    brand,
+    box,
+    h(
+      'div',
+      { class: 'row' },
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'btn',
+          dataset: { testid: 'companies-export' },
+          onclick: () => downloadJson('companies.json', companiesFile(list())),
+        },
+        t('companies_export'),
+      ),
+      h('button', { type: 'button', class: 'btn', dataset: { testid: 'companies-import' }, onclick: () => fileInput.click() }, t('companies_import')),
+      fileInput,
+    ),
+    msg,
+  );
 }
 
 // ---------- обработка ----------
@@ -593,6 +795,29 @@ function nerSection() {
     const v = threshold.value.trim() === '' ? NaN : Number(threshold.value);
     save({ nerThreshold: v }, threshold);
   });
+  // Политика 0.4 (концепция п. 4, К10): свой порог для организаций и дополнение стоп-списка модельных организаций
+  const thresholdOrg = h('input', {
+    type: 'number',
+    min: 0,
+    max: 1,
+    step: 0.05,
+    value: String(settings.nerThresholdOrg ?? 0.85),
+    dataset: { testid: 'ner-threshold-org' },
+    id: 'ner-threshold-org',
+  });
+  thresholdOrg.addEventListener('input', () => {
+    const v = thresholdOrg.value.trim() === '' ? NaN : Number(thresholdOrg.value);
+    save({ nerThresholdOrg: v }, thresholdOrg);
+  });
+  const stoplist = h('textarea', {
+    rows: 4,
+    id: 'ner-stoplist',
+    spellcheck: false,
+    placeholder: t('ner_stoplist_placeholder'),
+    dataset: { testid: 'ner-stoplist' },
+  });
+  stoplist.value = (settings.nerStoplist || []).join('\n');
+  stoplist.addEventListener('change', () => save({ nerStoplist: [...new Set(lines(stoplist.value))] }, stoplist));
 
   nerRefresh = refresh;
   refresh();
@@ -602,6 +827,14 @@ function nerSection() {
     t('ner_hint'),
     toggle(t('ner_enabled'), t('ner_enabled_hint'), settings.nerEnabled, (v, el) => save({ nerEnabled: v }, el), 'ner-enabled'),
     h('div', { class: 'field' }, h('label', { for: 'ner-threshold' }, t('ner_threshold')), threshold),
+    h(
+      'div',
+      { class: 'field' },
+      h('label', { for: 'ner-threshold-org' }, t('ner_threshold_org')),
+      thresholdOrg,
+      h('div', { class: 'hint' }, t('ner_threshold_org_hint')),
+    ),
+    h('div', { class: 'field' }, h('label', { for: 'ner-stoplist' }, t('ner_stoplist')), stoplist, h('div', { class: 'hint' }, t('ner_stoplist_hint'))),
     h('div', { class: 'field' }, status),
     onboarding,
     row,
@@ -1222,6 +1455,7 @@ function renderApp() {
   const nav = [
     ['intercept', 'nav_intercept'],
     ['categories', 'nav_categories'],
+    ['companies', 'nav_companies'],
     ['processing', 'nav_processing'],
     ['ner', 'nav_ner'],
     ['exclusions', 'nav_exclusions'],
@@ -1247,6 +1481,7 @@ function renderApp() {
         h('header', { class: 'page-head' }, h('h1', {}, t('title')), h('p', {}, t('subtitle'))),
         interceptSection(),
         categoriesSection(),
+        companiesSection(),
         processingSection(),
         nerSection(),
         exclusionsSection(),

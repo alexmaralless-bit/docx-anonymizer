@@ -15,6 +15,7 @@ import {
   replacementText,
   setReplacement,
   plannedReplacements,
+  canMaskAlways,
 } from './model.js';
 
 const ROW_H = 62;
@@ -24,8 +25,9 @@ const LEVEL_ICON = { validated: '✓', labeled: '●', kb: '◆', ner: '◈', we
 
 /**
  * @param {{lang: 'ru'|'en', catalog: {list: any[], byId: Map<string, any>},
- *   api: {getText: (from: number, count: number) => Promise<any>, addEntity: (category: string, text: string) => Promise<any[]>, ignoreForever?: (item: any) => void},
- *   onChange?: () => void}} opts
+ *   api: {getText: (from: number, count: number) => Promise<any>, addEntity: (category: string, text: string) => Promise<any[]>, ignoreForever?: (item: any) => void,
+ *     maskAlways?: (item: {category: string, value: string}) => Promise<any> | void},
+ *   onChange?: () => void}} opts  maskAlways (0.4) — добавить организацию в список компаний для маскирования (settings.maskedCompanies)
  */
 export function createPreview(opts) {
   const { lang, catalog, api } = opts;
@@ -106,6 +108,16 @@ export function createPreview(opts) {
     renderRows();
     changed();
     showToast(t('ignored', { value: item.value }));
+  }
+
+  // Политика 0.4 (Ц3): «Маскировать всегда» — организация уходит в список компаний и маскируется во всех документах
+  async function maskAlwaysItem(item) {
+    try {
+      await opts.api.maskAlways?.({ category: item.category, value: item.value });
+      showToast(t('maskedAlways', { value: item.value }));
+    } catch (err) {
+      showToast(t('addFailed', { msg: err?.message || err }));
+    }
   }
 
   /* ---------- вкладка «Текст» ---------- */
@@ -260,6 +272,7 @@ export function createPreview(opts) {
       h('span', { class: `lvl lvl-${item.level}`, title: t(`level_${item.level}`), text: LEVEL_ICON[item.level] || '·' }),
       h('span', { text: n > 1 ? `${t('occurrences', { n: active })}` : t('occurrences', { n: 1 }) }),
       item.source === 'user' ? h('span', { class: 'pv-user', text: t('source_user') }) : null,
+      item.source === 'list' ? h('span', { class: 'pv-user', text: t('source_list'), 'data-testid': 'pv-source-list' }) : null,
       ctx ? h('span', { class: 'pv-ctx', title: ctx, text: ctx }) : null,
     );
     const ignore = opts.api.ignoreForever
@@ -273,6 +286,18 @@ export function createPreview(opts) {
           onClick: () => ignoreItem(item),
         })
       : null;
+    const maskAlways =
+      opts.api.maskAlways && canMaskAlways(item)
+        ? h('button', {
+            class: 'pv-mask',
+            type: 'button',
+            title: t('maskAlwaysTitle', { value: item.value }),
+            'aria-label': t('maskAlwaysTitle', { value: item.value }),
+            text: t('maskAlways'),
+            'data-testid': 'pv-mask-always',
+            onClick: () => maskAlwaysItem(item),
+          })
+        : null;
     const row = h(
       'div',
       {
@@ -293,6 +318,7 @@ export function createPreview(opts) {
         meta,
       ),
       input,
+      maskAlways,
       ignore,
     );
     return row;
@@ -425,26 +451,37 @@ export function createPreview(opts) {
         catalog.list.map((c) => h('option', { value: c.id, text: c.label?.[lang] || c.id })),
       )
     );
+    // политика 0.4 (Ц3): для «Организации» — флажок «запомнить» (в список компаний для маскирования)
+    const remember = /** @type {HTMLInputElement} */ (h('input', { type: 'checkbox', 'data-testid': 'pv-sel-remember' }));
+    const rememberEl = api.maskAlways
+      ? h('label', { class: 'sel-remember', title: t('rememberTitle'), hidden: select.value !== 'COMPANY' }, remember, h('span', { text: t('remember') }))
+      : null;
+    select.addEventListener('change', () => {
+      if (rememberEl) rememberEl.hidden = select.value !== 'COMPANY';
+    });
     selBar.append(
       h('span', { class: 'sel-text', title: raw, text: `«${raw.length > 40 ? raw.slice(0, 40) + '…' : raw}»` }),
       h('span', { class: 'sel-lab', text: t('asCategory') }),
       select,
+      rememberEl,
       h('button', {
         class: 'btn btn-primary btn-sm',
         type: 'button',
         text: t('apply'),
         'data-testid': 'pv-sel-apply',
-        onClick: () => addSelection(select.value),
+        onClick: () => addSelection(select.value, select.value === 'COMPANY' && remember.checked),
       }),
     );
     selBar.hidden = false;
   });
 
-  async function addSelection(category) {
+  async function addSelection(category, rememberCompany = false) {
     const text = pendingSelection;
     if (!text) return;
     showSelectionHint();
     try {
+      // «запомнить» (0.4): сначала в список компаний — запись сохраняется, даже если ADD_ENTITY не удастся
+      if (rememberCompany) await api.maskAlways?.({ category, value: text });
       const before = items.reduce((n, i) => n + i.occurrences.length, 0);
       const entities = await api.addEntity(category, text);
       setEntities(entities, true);

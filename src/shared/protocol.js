@@ -30,6 +30,9 @@ export const MSG = Object.freeze({
   MODEL_CHANGED: 'MODEL_CHANGED',
   /** {} — поставить встроенный пакет модели заново (WP10-C, кнопка «Восстановить встроенную модель»): background отвечает ACK сразу */
   MODEL_BOOTSTRAP: 'MODEL_BOOTSTRAP',
+  /** {section} — открыть страницу настроек на разделе (0.4, подсказка панели «организации — по желанию»): background
+   *  открывает вкладку options.html#<section> и отвечает ACK; section ∈ OPTIONS_SECTIONS */
+  OPEN_OPTIONS: 'OPEN_OPTIONS',
   // bg → offscreen (clientId 'bootstrap', не порт клиента; WP10-C, docs/contracts.md §6.8)
   /** {url, id, sha256, version, extensionVersion} — установить пакет из архива расширения; ответ MODEL_INSTALLED */
   MODEL_INSTALL: 'MODEL_INSTALL',
@@ -47,9 +50,12 @@ export const MSG = Object.freeze({
   DEANON_RESULT: 'DEANON_RESULT',
   MAPPING: 'MAPPING',
   BATCH_DONE: 'BATCH_DONE',
-  /** Расширение протокола: подтверждение для DISCARD/CANCEL/CATALOG_CHANGED/MODEL_CHANGED/MODEL_BOOTSTRAP/BATCH_* без данных. */
+  /** Расширение протокола: подтверждение для DISCARD/CANCEL/CATALOG_CHANGED/MODEL_CHANGED/MODEL_BOOTSTRAP/OPEN_OPTIONS/BATCH_* без данных. */
   ACK: 'ACK',
 });
+
+/** Разделы страницы настроек, которые можно открыть сообщением OPEN_OPTIONS (0.4): якоря options.html#<раздел>. */
+export const OPTIONS_SECTIONS = Object.freeze(['categories', 'companies', 'ner']);
 
 // 'pdf' — извлечение текста PDF (версия 0.3)
 export const STAGES = Object.freeze(['receiving', 'unzip', 'parse', 'pdf', 'detect', 'ner', 'kb', 'apply', 'zip', 'sending']);

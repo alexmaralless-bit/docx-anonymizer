@@ -262,7 +262,7 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 ## 4. Протокол (`src/shared/protocol.js`)
 
 - Порт: `chrome.runtime.connect({name: 'docx'})` → `connectClient()` из `src/shared/port-client.js` возвращает клиента.
-- Все сообщения `{type, requestId, ...}`; типы — `MSG.*` (§5.4) + расширение `ACK` (ответ на `DISCARD`, `CANCEL`, `BATCH_BEGIN/END`, `CATALOG_CHANGED`, `MODEL_CHANGED`, `MODEL_BOOTSTRAP`).
+- Все сообщения `{type, requestId, ...}`; типы — `MSG.*` (§5.4) + расширение `ACK` (ответ на `DISCARD`, `CANCEL`, `BATCH_BEGIN/END`, `CATALOG_CHANGED`, `MODEL_CHANGED`, `MODEL_BOOTSTRAP`, `OPEN_OPTIONS`).
   `BATCH_ADD`, `BATCH_APPLY`, `BATCH_DONE` (ТЗ §5.4, рабочее пространство) объявлены в `MSG`, но не реализованы: в схеме их нет, хост отвечает `ERROR INTERNAL`.
 - `MODEL_CHANGED {modelId?}` (0.2, WP8): клиент (страница настроек) → bg → offscreen → worker; хост сбрасывает кэш NER-провайдера (`dispose()`), ответ `ACK`. Router не добавляет `settings`; если offscreen-документа нет — отвечает `ACK` сам, не поднимая его.
 - Встроенная модель NER (0.3, WP10-C, §6.8): `MODEL_BOOTSTRAP {}` — клиент (кнопка «Восстановить встроенную модель») → bg, ответ `ACK` сразу, установка
@@ -291,6 +291,10 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 - `DEANON` (FR-36/37): `mappingRef` — `docId` сессии (берётся её последний маппинг; нет маппинга → ошибка «сначала примените замены») или объект маппинга.
   Хост склоняет ФИО **только при `decline === true`** (иначе результат прежний, `declined: []`). С 0.3 страница восстановления `DEANON` не шлёт:
   карту сессии она получает через `GET_MAPPING`, карту из `.mapping.json` разбирает сама и в обоих случаях вызывает ядро (`restoreText`/`restoreDocx`) с `decline` из флажка (по умолчанию вкл.).
+- `OPEN_OPTIONS {section}` (0.4, WP11-A) — клиент (ссылка «Открыть настройки» в подсказке панели о политике маскирования) → bg: background открывает
+  вкладку `options/options.html#<section>` (`chrome.tabs.create`) и отвечает `ACK`; в offscreen не уходит. `section` ∈ `OPTIONS_SECTIONS`
+  (`categories`, `companies`, `ner`; `src/shared/protocol.js`, enum в схеме), иначе `ERROR INTERNAL`. Нужно потому, что контент-скрипт не может открыть
+  страницу расширения сам (`web_accessible_resources` пуст).
 - `GET_MAPPING {docId}` → `MAPPING {docId, mapping}` (0.3, WP10-B, FR-36а): карта последнего применения сессии (`session.lastMapping`) для восстановления на странице;
   до `APPLY` — `ERROR INTERNAL` «Маппинг не найден: сначала примените замены» с `reason: 'NO_MAPPING'`, неизвестный `docId` — `ERROR INTERNAL` с `reason: 'NO_SESSION'`
   (так же `DEANON` и все запросы с `docId`; `ERROR.reason` — необязательное поле, `ERROR_REASONS` в `shared/protocol.js`, переносится в `ProtocolError.reason`). Страница различает
@@ -828,9 +832,20 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
 
 ### 8.2. Список компаний (`detect/names/company-list.js`, WP11-A)
 
-Запись `{name, aliases}` → ядро названия без ОПФ и кавычек; поиск во всех потоках: точное слово, русские падежи (основа ≥ 5 букв + хвост до 3 букв; короткие и латиница —
-точно), кросс-скрипт (`crossScriptMatch`), с ОПФ/кавычками в `keepPrefix`/`keepSuffix`. Выход: `category: 'COMPANY'`, `source: 'list'`, `confidence: 'labeled'`,
-`canonical` = `name` из списка (одна метка на компанию). Срабатывает независимо от `commercial`; `exclusions` применяются после.
+- Запись `{name, aliases}` → ядро названия без ОПФ и внешних кавычек (`companyCore` в `company.js`); псевдонимы — ещё одно название записи.
+- Поиск во всех потоках, документный детектор `company-list` (после `kb`), независимо от `commercial`:
+  - точное слово без учёта регистра первой буквы; название с заглавной не ищется в строчном написании («ромашка» — цветок);
+  - русская морфология: кириллическое слово ≥ 5 букв — основа + падежное окончание из списка (до 3 букв), у слова на согласную основа — всё слово;
+    в многословном названии склоняется и короткое слово («Лунного света»); одиночное короткое название и латиница — только точно;
+  - границы слова как `glued()` в `person-dict.js`; составное через дефис («Ромашка-Трейд») — не «Ромашка»;
+  - кросс-скрипт через `crossScriptMatch` при `skeletonWeight ≥ 3` (последовательности 1–3 слов с заглавной);
+  - ОПФ перед названием, латинская ОПФ после, кавычки — в `keepPrefix`/`keepSuffix`; спанов через `\n` нет.
+  - Название маскируется везде, в т.ч. в начале предложения, после «:» и в ячейке; риск общих слов («Старт») — предупреждение `company-short` в настройках.
+- Выход: `category: 'COMPANY'`, `source: 'list'`, `confidence: 'labeled'`, `canonical` = ядро названия записи (одна метка с находкой правил в коммерческом режиме:
+  совпавшее с записью название правил `kb.js` выдаёт с `source: 'list'`). `exclusions` применяются после; ⊘ у строки из списка кладёт нормализованный canonical.
+- Бренд владельца (`NEVER_MASK_ORGS` в `lexicon.js`: Sitimlab, Ситимлаб в любом падеже) не маскируется никогда: ни правилами, ни KB, ни списком, ни моделью (стоп-список).
+- Пополнение: `pv-mask-always` в строке COMPANY, флажок `pv-sel-remember` на вкладке «Текст»; страница настроек `#companies` (импорт/экспорт
+  `{kind: 'docx-anonymizer-companies', version: 1, companies}`, слияние при импорте).
 
 ### 8.3. Фильтры модельных организаций (`core/ner/{filters,stoplist}.js`, WP11-B)
 

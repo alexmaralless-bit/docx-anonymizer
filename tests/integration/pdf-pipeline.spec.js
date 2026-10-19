@@ -97,11 +97,11 @@ function keyset(groups, pred) {
   return s;
 }
 
-async function pdfPipeline(n, { injectGold = false, textFormat = 'md' } = {}) {
+async function pdfPipeline(n, { injectGold = false, textFormat = 'md', settings = SETTINGS } = {}) {
   const layout = await extractPdfNode(pdfBytes(n));
   const doc = fromText(layout.blocks, { name: `${n}.pdf` });
   const userEntities = injectGold ? goldEntities(doc, gold(n)) : undefined;
-  const analysis = await analyze(doc, SETTINGS, { userEntities });
+  const analysis = await analyze(doc, settings, { userEntities });
   const r = applyDecisions(doc, analysis.groups, { textFormat, placeholderLanguage: 'ru' });
   return { layout, doc, analysis, text: new TextDecoder().decode(r.bytes), r };
 }
@@ -179,6 +179,38 @@ describe('К2: в .anon.md нет ни одного gold-значения — н
       ).toEqual([]);
     }
   }, 30000);
+});
+
+// Политика 0.4 (К2, К3): обычный режим — pii/ids закрыты без коммерческой группы, организаций нет; список компаний
+// закрывает gold-организации PDF-фикстур и при выключенной группе
+describe('политика 0.4: обычный режим и список компаний в PDF', () => {
+  const NORMAL = { ...SETTINGS, commercial: false };
+  for (const n of LEAK_FIXTURES) {
+    it(`${n}: обычный режим — ноль утечек pii/ids, ни одной COMPANY; со списком — организации закрыты`, async () => {
+      const list = gold(n).filter((g) => g.category !== 'COMPANY');
+      const { text, analysis } = await pdfPipeline(n, { settings: NORMAL });
+      expect(analysis.groups.filter((g) => g.category === 'COMPANY').map((g) => g.value)).toEqual([]);
+      const out = norm(text);
+      expect(list.filter((g) => out.includes(norm(g.value))).map((g) => g.key)).toEqual([]);
+      expect(partialLeaks(list, text), 'частичные утечки').toEqual([]);
+      const names = [
+        ...new Set(
+          gold(n)
+            .filter((g) => g.category === 'COMPANY')
+            .map((g) => g.value),
+        ),
+      ];
+      if (!names.length) return;
+      const withList = await pdfPipeline(n, { settings: { ...NORMAL, maskedCompanies: names.map((name) => ({ name, aliases: [] })) } });
+      const out2 = norm(withList.text);
+      expect(
+        gold(n)
+          .filter((g) => out2.includes(norm(g.value)))
+          .map((g) => g.key),
+      ).toEqual([]);
+      expect(withList.analysis.groups.filter((g) => g.category === 'COMPANY').every((g) => g.source === 'list')).toBe(true);
+    }, 30000);
+  }
 });
 
 describe('К3: паритет с DOCX (детекторы без gold)', () => {

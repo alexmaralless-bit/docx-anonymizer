@@ -117,6 +117,44 @@ describe('settings', () => {
     expect(eff.nerThresholdOrg).toBe(0.5);
     expect(eff.nerStoplist).toEqual([]); // не поле профиля
   });
+  it('экспорт/импорт конфигурации (0.4, К1): commercial, maskedCompanies, nerThresholdOrg и nerStoplist переносятся', async () => {
+    const { parseConfigFile, CONFIG_KIND, NOT_EXPORTED } = await import('../../src/options/config-io.js');
+    const src = {
+      ...defaultSettings(),
+      commercial: true,
+      maskedCompanies: [{ name: 'ООО «Ромашка»', aliases: ['Romashka'] }],
+      nerThresholdOrg: 0.9,
+      nerStoplist: ['ЭДО'],
+      orgPolicyHintPending: true,
+    };
+    // как dataSection: всё, кроме NOT_EXPORTED
+    const exported = Object.fromEntries(Object.entries(src).filter(([k]) => !NOT_EXPORTED.has(k)));
+    const r = parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, version: 1, schemaVersion: SETTINGS_SCHEMA_VERSION, settings: exported }));
+    expect(r.skipped).toEqual([]);
+    expect(r.patch).toMatchObject({ commercial: true, maskedCompanies: src.maskedCompanies, nerThresholdOrg: 0.9, nerStoplist: ['ЭДО'] });
+    expect(r.patch.orgPolicyHintPending).toBeUndefined();
+  });
+  it('файл списка компаний (0.4, options/companies-io.js): формат, слияние, псевдонимы, предупреждение о коротком названии', async () => {
+    const io = await import('../../src/options/companies-io.js');
+    const list = [{ name: 'Ромашка', aliases: ['Romashka'] }];
+    const file = io.companiesFile(list);
+    expect(file).toEqual({ kind: 'docx-anonymizer-companies', version: 1, companies: list });
+    expect(io.parseCompaniesFile(JSON.stringify(file))).toEqual({ companies: list });
+    expect(io.parseCompaniesFile(JSON.stringify(['Вектор']))).toEqual({ companies: [{ name: 'Вектор', aliases: [] }] });
+    expect(io.parseCompaniesFile('{')).toEqual({ error: 'JSON' });
+    expect(io.parseCompaniesFile(JSON.stringify({ kind: 'other', companies: list }))).toEqual({ error: 'kind' });
+    expect(io.parseCompaniesFile(JSON.stringify({ kind: io.COMPANIES_KIND, companies: [{ name: '' }] }))).toEqual({ error: 'companies' });
+    expect(io.mergeCompanies(list, [{ name: 'РОМАШКА', aliases: ['Ромашка-М', 'romashka'] }, { name: 'Вектор' }])).toEqual([
+      { name: 'Ромашка', aliases: ['Romashka', 'Ромашка-М'] },
+      { name: 'Вектор', aliases: [] },
+    ]);
+    expect(io.parseAliases(' Romashka, ромашка-м ;; Romashka ')).toEqual(['Romashka', 'ромашка-м']);
+    for (const n of ['Рог', 'ООО «Рог»', 'Старт', 'Вектор']) expect(io.isRiskyCompanyName(n), n).toBe(true);
+    for (const n of ['Ромашка-Трейд', 'ООО «Лунный свет»', '']) expect(io.isRiskyCompanyName(n), n).toBe(false);
+    // бренд владельца (решение 6): предупреждение company-brand
+    for (const n of ['Sitimlab', 'Студия Sitimlab', 'ООО «Ситимлаб»']) expect(io.isOwnerBrand(n), n).toBe(true);
+    expect(io.isOwnerBrand('Ромашка')).toBe(false);
+  });
   it('nerModel (WP8): по умолчанию пусто, id пакета проверяется, в профили и экспорт конфига не попадает', async () => {
     expect(defaultSettings().nerModel).toBe('');
     expect(validateSettingsPatch({ nerModel: 'rubert-tiny2-ner-ruen' })).toEqual([]);

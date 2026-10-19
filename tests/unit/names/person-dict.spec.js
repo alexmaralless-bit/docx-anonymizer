@@ -167,6 +167,28 @@ describe('латинские названия фирм — не лица (рев
     }
   });
 
+  // Политика 0.4 (contracts §8.1): коммерческая группа выключена — kb.js не порождает компании и не занимает их спаны,
+  // поэтому пара, совпадающая с названием фирмы, остаётся лицом (ПДн маскируются всегда), а самой фирмы в выдаче нет
+  it('обычный режим: пара, совпадающая с названием компании, — PERSON; COMPANY нет', async () => {
+    for (const [company, mention] of [
+      ['Brenda Collins LLP', 'Brenda Collins'],
+      ['ООО «Зульфия Хасанова»', 'Зульфия Хасанова'],
+    ]) {
+      const r = await analyzeParagraphs([...fill(5), `Консультант: ${company}.`, `Заключение подготовила ${mention} в срок.`, ...fill(8)]);
+      const out = pc(r);
+      expect(
+        out.filter((x) => x.startsWith('COMPANY:')),
+        mention,
+      ).toEqual([]);
+      expect(out, mention).toContain(`PERSON:${mention}`);
+    }
+  });
+
+  it('обычный режим: лицо после названия компании находится («ООО «Ромашка», в лице …»)', async () => {
+    const r = await analyzeParagraphs(['ООО «Ромашка», в лице директора Брендиной Зульфии Маратовны, и Wesley Barnes LLP подписали акт.']);
+    expect(pc(r)).toEqual(['PERSON:Брендиной Зульфии Маратовны']);
+  });
+
   it('пара правил после настоящего лейбла остаётся лицом', async () => {
     const r = await analyzeParagraphs([...fill(5), 'Counsel: Oliver Hart LLP.', 'Signed by Oliver Hart.', ...fill(8)], allOnSettings());
     expect(pc(r)).toEqual(['COMPANY:Oliver Hart LLP', 'PERSON:Oliver Hart']);

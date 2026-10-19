@@ -1,6 +1,6 @@
 // Маршрутизатор: порты клиентов (content/popup/options/restore) ⇄ offscreen (§5.1, §5.4).
 // Background добавляет к сообщениям поле `settings` — offscreen не имеет доступа к chrome.storage.
-import { PORT_NAME, TARGET, MSG, errorMessage } from '../shared/protocol.js';
+import { PORT_NAME, TARGET, MSG, OPTIONS_SECTIONS, errorMessage } from '../shared/protocol.js';
 import { ensureOffscreen, hasDocument } from './offscreen-manager.js';
 import { loadSettings } from '../shared/settings-store.js';
 import { bootstrapBundledModel } from './bundled-model.js';
@@ -41,6 +41,17 @@ async function forward(clientId, port, msg) {
     // страниц такое сообщение в offscreen не пропускаем вовсе
     if (BOOTSTRAP_ONLY.has(msg?.type)) {
       port.postMessage(errorMessage(msg.requestId, { code: 'INTERNAL', message: 'Сообщение недоступно клиенту' }));
+      return;
+    }
+    // 0.4: ссылка «Открыть настройки» из панели на сайте — страница расширения не открывается из контент-скрипта
+    // (нет web_accessible_resources), поэтому вкладку открывает background; раздел — только из списка
+    if (msg.type === MSG.OPEN_OPTIONS) {
+      if (!OPTIONS_SECTIONS.includes(msg.section)) {
+        port.postMessage(errorMessage(msg.requestId, { code: 'INTERNAL', message: 'Неизвестный раздел настроек' }));
+        return;
+      }
+      await chrome.tabs.create({ url: chrome.runtime.getURL(`options/options.html#${msg.section}`) });
+      port.postMessage({ type: MSG.ACK, requestId: msg.requestId });
       return;
     }
     // WP10-C: «Восстановить встроенную модель» — установка идёт в фоне (bundled-model.js), клиенту сразу ACK;

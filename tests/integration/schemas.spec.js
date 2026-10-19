@@ -168,6 +168,13 @@ describe('schemas/protocol.schema.json', () => {
     for (const m of [...sent, ...out]) expect(checkMessage(m), `${m.type}`).toEqual([]);
   }, 30000);
 
+  it('OPEN_OPTIONS (0.4): раздел из перечня валиден, чужой раздел и сообщение без раздела — нет', () => {
+    for (const section of ['categories', 'companies', 'ner']) expect(checkMessage({ type: MSG.OPEN_OPTIONS, requestId: 'o1', section }), section).toEqual([]);
+    expect(checkMessage({ type: MSG.OPEN_OPTIONS, requestId: 'o2', section: 'data' })).not.toEqual([]);
+    expect(checkMessage({ type: MSG.OPEN_OPTIONS, requestId: 'o3' })).not.toEqual([]);
+    expect(checkMessage({ type: MSG.ACK, requestId: 'o1' })).toEqual([]);
+  });
+
   it('отвергает испорченные сообщения', () => {
     const base = { type: 'FILE_BEGIN', requestId: 'r1', name: 'a.docx', size: 10, chunks: 1 };
     expect(checkMessage(base)).toEqual([]);

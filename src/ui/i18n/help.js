@@ -1,6 +1,7 @@
 // Строки справки. Факты — из README: что делает, как пользоваться, что данные не покидают компьютер.
 // Версия 0.2: доступ к сайтам по запросу (К9), словарный поиск ФИО (FR-23), пакет модели NER (§5.2), склонение при восстановлении (FR-37).
 // Версия 0.3: PDF с текстовым слоем (FR-54–FR-57), файл от ИИ (FR-36а), два архива — полный с моделью и лёгкий (§5.2, К12).
+// Версия 0.4: политика маскирования (docs/concept-0.4.md, Ц1–Ц3): что всегда, что по желанию, список компаний.
 export const HELP_DICT = {
   ru: {
     title: 'Справка',
@@ -17,6 +18,15 @@ export const HELP_DICT = {
     how_3: 'Снимите лишние галочки и нажмите «Анонимизировать и загрузить» — в чат уйдёт файл имя.anon.docx, а для PDF — имя.anon.md.',
     how_4:
       'Ответ ИИ вставьте текстом или загрузите файлом от ИИ (.docx, .docm, .md, .txt) на странице «Восстановить текст»: расширение подставит настоящие значения из карты замен — ключа восстановления — и отдаст файл «имя.restored.*» с прежним форматированием; в файле заменяются только метки точно как в карте или в квадратных скобках. Ключ хранится только у вас, в памяти браузера до его перезапуска; сохранить его в файл можно на экране «готово» панели: «Ещё» → «Сохранить ключ восстановления». ФИО ставятся в нужный падеж по контексту, склонённые подстановки выделены зелёным — проверьте их.',
+    policy_h: 'Что маскируется',
+    policy_1:
+      'Всегда: персональные данные — ФИО (в том числе «ИП Фамилия И.О.»), паспорт, СНИЛС, SSN, телефон, электронная почта, адрес, дата рождения, банковская карта. Отключить их в настройках нельзя; снять галочку с конкретной находки в панели можно.',
+    policy_2:
+      'Всегда: идентификаторы компаний — ИНН, КПП, ОГРН/ОГРНИП, расчётный счёт, IBAN, БИК, SWIFT, иностранный налоговый номер, ссылки — даже если название компании остаётся открытым.',
+    policy_3:
+      'По желанию: коммерческая информация — названия организаций, номера договоров, суммы. По умолчанию выключена; включается переключателем «Коммерческая информация» в настройках, раздел «Что маскируется».',
+    policy_4:
+      'Список компаний: названия, которые нужно скрывать всегда (свою фирму, ключевых клиентов), впишите в настройках, раздел «Компании для маскирования», или нажмите «Маскировать всегда» в строке организации панели. Они ищутся во всех падежах, с юридической формой и без, кириллицей и латиницей, и получают одну метку на компанию.',
     privacy_h: 'Данные не покидают ваш компьютер',
     privacy_1: 'Расширение не делает ни одного сетевого запроса: это закреплено политикой безопасности расширения и проверяется тестами.',
     privacy_2: 'Документ обрабатывается в изолированном окне самого браузера и никуда не отправляется.',
@@ -49,6 +59,15 @@ export const HELP_DICT = {
     how_3: 'Clear the checkmarks you do not need and press "Anonymize and upload" — the chat receives name.anon.docx, or name.anon.md for a PDF.',
     how_4:
       'Paste the AI answer as text or load the file the AI produced (.docx, .docm, .md, .txt) on the "Restore text" page: the extension puts the real values back from the replacement map (the recovery key) and gives you a "name.restored.*" file with the original formatting; in a file only markers written exactly as in the map or in square brackets are replaced. The key stays only with you, in browser memory until the browser restarts; save it to a file on the panel\'s "done" screen: "More" → "Save the recovery key". Russian names are put in the right case by context; declined values are highlighted in green — check them.',
+    policy_h: 'What is masked',
+    policy_1:
+      'Always: personal data — names (including “IP Surname I.I.” sole traders), passports, SNILS, SSN, phones, emails, addresses, dates of birth, bank cards. They cannot be turned off in the settings; you can still clear the checkmark of a particular finding in the panel.',
+    policy_2:
+      'Always: company identifiers — INN, KPP, OGRN/OGRNIP, bank accounts, IBAN, BIK, SWIFT, foreign tax IDs, links — even when the company name stays visible.',
+    policy_3:
+      'Optional: commercial information — company names, contract numbers, amounts. Off by default; turn it on with the “Commercial information” switch in the settings, “What is masked”.',
+    policy_4:
+      'Company list: names that must always be hidden (your own firm, key clients) — add them in the settings, “Companies to mask”, or press “Always mask” in a company row of the panel. They are found in every grammatical case, with or without the legal form, in Cyrillic and Latin, and get one label per company.',
     privacy_h: 'Your data never leaves your computer',
     privacy_1: 'The extension makes no network requests at all: this is enforced by the extension security policy and checked by tests.',
     privacy_2: 'The document is processed in an isolated browser window and is not sent anywhere.',

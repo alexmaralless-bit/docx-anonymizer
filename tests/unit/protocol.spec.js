@@ -168,3 +168,17 @@ describe('protocol: встроенная модель NER (WP10-C)', () => {
     expect(TERMINAL.has('MODEL_INSTALL')).toBe(false);
   });
 });
+
+describe('protocol: OPEN_OPTIONS (0.4)', () => {
+  it('тип объявлен и есть в схеме; разделы схемы = OPTIONS_SECTIONS; ответ — терминальный ACK', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { TERMINAL, OPTIONS_SECTIONS } = await import('../../src/shared/protocol.js');
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/protocol.schema.json', import.meta.url), 'utf8'));
+    expect(MSG.OPEN_OPTIONS).toBe('OPEN_OPTIONS');
+    expect(schema.$defs.OPEN_OPTIONS.properties.type.const).toBe('OPEN_OPTIONS');
+    expect(schema.$defs.OPEN_OPTIONS.properties.section.enum).toEqual([...OPTIONS_SECTIONS]);
+    expect(schema.oneOf).toContainEqual({ $ref: '#/$defs/OPEN_OPTIONS' });
+    expect(OPTIONS_SECTIONS).toEqual(['categories', 'companies', 'ner']);
+    expect(TERMINAL.has(MSG.ACK)).toBe(true);
+  });
+});

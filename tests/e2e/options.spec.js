@@ -1,5 +1,5 @@
 // WP4: страница настроек — FR-42 (сохранение ≤ 200 мс), siteMode с подтверждением, валидация, свои категории и regex-guard.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test, expect, BUNDLED } from './fixtures.js';
 
@@ -95,6 +95,111 @@ test('свои категории: regex-guard блокирует (a+)+$, при
   await expect.poll(async () => (await stored(page)).customCategories.map((c) => c.id)).toEqual([cc.id]);
 
   await page.screenshot({ path: join(dir, 'options.png'), fullPage: true });
+});
+
+// Политика 0.4 (К1, Ц1): «Персональные данные» и «Идентификаторы» — без переключателей, «Коммерческая информация» —
+// переключатель группы и прежние переключатели категорий внутри
+test('«Что маскируется»: блоки «всегда» без переключателей; commercial по умолчанию выключен и включает cat-*', async ({ context, extensionId }) => {
+  const page = await openOptions(context, extensionId);
+  const pii = page.getByTestId('group-pii');
+  const ids = page.getByTestId('group-ids');
+  await expect(pii.getByTestId('always-PERSON')).toBeVisible();
+  await expect(pii.getByTestId('always-PASSPORT')).toBeVisible();
+  await expect(ids.getByTestId('always-INN')).toBeVisible();
+  await expect(ids.getByTestId('always-ACCOUNT')).toBeVisible();
+  await expect(pii.locator('input')).toHaveCount(0);
+  await expect(ids.locator('input')).toHaveCount(0);
+  await expect(page.getByTestId('cat-PERSON')).toHaveCount(0);
+  await expect(page.getByTestId('cat-INN')).toHaveCount(0);
+
+  const group = page.getByTestId('group-commercial');
+  const commercial = page.getByTestId('commercial');
+  await expect(commercial).not.toBeChecked();
+  await expect(page.getByTestId('commercial-off-hint')).toBeVisible();
+  for (const id of ['COMPANY', 'CONTRACT', 'AMOUNT']) await expect(group.getByTestId(`cat-${id}`)).toHaveCount(1);
+  await page.locator('label.switch', { has: commercial }).click();
+  await expect.poll(async () => (await stored(page)).commercial).toBe(true);
+  await expect(page.getByTestId('commercial-off-hint')).toBeHidden();
+  await page.locator('label.switch', { has: page.getByTestId('cat-COMPANY') }).click();
+  await expect.poll(async () => (await stored(page)).categories.COMPANY).toBe(false);
+  await page.reload();
+  await expect(page.getByTestId('commercial')).toBeChecked();
+  await expect(page.getByTestId('cat-COMPANY')).not.toBeChecked();
+  // раздел в навигации
+  await expect(page.locator('nav.nav a[href="#categories"]')).toHaveText('Что маскируется');
+  await expect(page.locator('nav.nav a[href="#companies"]')).toBeVisible();
+});
+
+// Политика 0.4 (Ц3, К3): список компаний для маскирования — добавление, псевдонимы, предупреждение, удаление, экспорт/импорт
+test('«Компании для маскирования»: добавление, псевдонимы, предупреждение о коротком названии, удаление, экспорт и импорт', async ({
+  context,
+  extensionId,
+}) => {
+  const page = await openOptions(context, extensionId);
+  const name = page.getByTestId('company-name');
+  await name.fill('Рог');
+  await expect(page.getByTestId('company-short')).toBeVisible();
+  await page.getByTestId('company-add').click();
+  // бренд владельца (решение 6) — предупреждение: не маскируется никогда
+  await name.fill('Студия Sitimlab');
+  await expect(page.getByTestId('company-brand')).toBeVisible();
+  await expect(page.getByTestId('company-short')).toBeHidden();
+  await name.fill('ООО «Лунный свет»');
+  await expect(page.getByTestId('company-short')).toBeHidden();
+  await expect(page.getByTestId('company-brand')).toBeHidden();
+  await name.press('Enter');
+  await expect
+    .poll(async () => (await stored(page)).maskedCompanies)
+    .toEqual([
+      { name: 'Рог', aliases: [] },
+      { name: 'ООО «Лунный свет»', aliases: [] },
+    ]);
+  await expect(page.getByTestId('company-item')).toHaveCount(2);
+  // повтор не добавляется
+  await name.fill('рог');
+  await page.getByTestId('company-add').click();
+  await expect(page.getByTestId('company-item')).toHaveCount(2);
+
+  await page.getByTestId('company-aliases-1').fill('Lunny Svet, Лунный свет плюс');
+  await page.getByTestId('company-aliases-1').press('Tab');
+  await expect.poll(async () => (await stored(page)).maskedCompanies[1].aliases).toEqual(['Lunny Svet', 'Лунный свет плюс']);
+
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('companies-export').click()]);
+  const file = JSON.parse(readFileSync(await dl.path(), 'utf8'));
+  expect(file).toEqual({
+    kind: 'docx-anonymizer-companies',
+    version: 1,
+    companies: [
+      { name: 'Рог', aliases: [] },
+      { name: 'ООО «Лунный свет»', aliases: ['Lunny Svet', 'Лунный свет плюс'] },
+    ],
+  });
+
+  await page.getByTestId('company-remove-0').click();
+  await expect.poll(async () => (await stored(page)).maskedCompanies.map((c) => c.name)).toEqual(['ООО «Лунный свет»']);
+  await page.getByTestId('companies-import-file').setInputFiles({
+    name: 'companies.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ ...file, companies: [...file.companies, { name: 'Вектор', aliases: ['Vector'] }] })),
+  });
+  await expect.poll(async () => (await stored(page)).maskedCompanies.map((c) => c.name)).toEqual(['ООО «Лунный свет»', 'Рог', 'Вектор']);
+  await expect(page.getByTestId('companies-msg')).toContainText('Импортировано компаний: 3');
+  await page.getByTestId('companies-import-file').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"kind":"x"}') });
+  await expect(page.getByTestId('companies-msg')).toContainText('Файл не принят');
+  await page.reload();
+  await expect(page.getByTestId('company-item')).toHaveCount(3);
+});
+
+test('NER: порог для организаций и стоп-список сохраняются (0.4, К10)', async ({ context, extensionId }) => {
+  const page = await openOptions(context, extensionId);
+  await expect(page.getByTestId('ner-threshold-org')).toHaveValue('0.85');
+  await page.getByTestId('ner-threshold-org').fill('0.9');
+  await expect.poll(async () => (await stored(page)).nerThresholdOrg).toBe(0.9);
+  await page.getByTestId('ner-threshold-org').fill('2');
+  await expect(page.getByTestId('ner-threshold-org')).toHaveClass(/invalid/);
+  await page.getByTestId('ner-stoplist').fill('ЭДО\n  MVP \n\nЭДО');
+  await page.getByTestId('ner-stoplist').press('Tab');
+  await expect.poll(async () => (await stored(page)).nerStoplist).toEqual(['ЭДО', 'MVP']);
 });
 
 // WP10-C (К16): лёгкая сборка без модели — онбординг из трёх шагов в карточке «Модель NER», строка в popup со ссылкой на #ner

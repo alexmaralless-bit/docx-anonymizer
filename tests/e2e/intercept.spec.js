@@ -425,3 +425,127 @@ test('панель: подсказка «установите модель NER»
   await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
   await expect(page.getByTestId('ner-hint')).toHaveCount(0);
 });
+
+// Политика 0.4 (Ц1, Ц3, К3; contracts §8): организации — по желанию, список компаний, «Маскировать всегда», подсказка один раз
+test.describe('политика маскирования 0.4: список компаний и организации', () => {
+  const companyDocx = (name = 'поставка.docx') => ({
+    name,
+    mimeType: DOCX_MIME,
+    buffer: Buffer.from(
+      makeDocx(
+        para(run(`ООО «Ромашка» поставляет товар. Связь: ${EMAIL_A}.`)) +
+          para(run('Счёт выставлен Ромашке, копия — АО «Вектор».')) +
+          para(run('Срок поставки — 10 дней.')),
+      ),
+    ),
+  });
+  const stored = (ext) => ext.evaluate(async () => (await chrome.storage.local.get('settings')).settings);
+
+  test('обычный режим: организаций нет, компания из списка — строка «из списка», маскируется во всех падежах', async ({ context, extensionId }) => {
+    const page = await setup(context, extensionId, { extra: { hintMappingShown: true, maskedCompanies: [{ name: 'Ромашка', aliases: [] }] } });
+    await page.setInputFiles('#single', companyDocx());
+    await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+    const row = page.locator('.pv-row', { hasText: 'Организация' });
+    await expect(row).toHaveCount(1); // «Вектор» не из списка — в обычном режиме не предлагается
+    await expect(row.getByTestId('pv-source-list')).toHaveText('из списка');
+    await expect(row.getByTestId('pv-mask-always')).toHaveCount(0);
+    await expect(row).toContainText('2 вхожд.');
+    await page.getByTestId('btn-anonymize').click();
+    await expect(page.getByTestId('done-title')).toBeVisible({ timeout: 30000 });
+    const txt = textOf((await dump(page))[0]);
+    expect(txt).not.toContain('Ромашк');
+    expect(txt).toContain('ООО «[КОМПАНИЯ_1]»');
+    expect(txt).toContain('АО «Вектор»');
+    expect(txt).not.toContain(EMAIL_A);
+  });
+
+  test('коммерческий режим: «Маскировать всегда» пишет компанию в список; ⊘ у компании из списка — исключение по записи', async ({ context, extensionId }) => {
+    const page = await setup(context, extensionId, {
+      extra: { hintMappingShown: true, commercial: true, maskedCompanies: [{ name: 'Ромашка', aliases: [] }] },
+    });
+    await page.setInputFiles('#single', companyDocx());
+    await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+    // по значению строки (.val): в контексте строки «Вектор» есть «Ромашке»
+    const rowOf = (v) => page.locator('.pv-row', { has: page.locator('.val', { hasText: v }) });
+    const vector = rowOf('Вектор');
+    await expect(vector).toHaveCount(1);
+    await expect(vector.getByTestId('pv-source-list')).toHaveCount(0);
+    await vector.getByTestId('pv-mask-always').click();
+    await expect(page.locator('.pv-toast')).toContainText('добавлена в список компаний');
+    const ext = await context.newPage();
+    await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    await expect
+      .poll(async () => (await stored(ext)).maskedCompanies)
+      .toEqual([
+        { name: 'Ромашка', aliases: [] },
+        { name: 'Вектор', aliases: [] },
+      ]);
+    // компания из списка: кнопки нет, ⊘ кладёт в исключения canonical записи
+    const romashka = rowOf('Ромашк');
+    await expect(romashka.getByTestId('pv-source-list')).toBeVisible();
+    await expect(romashka.getByTestId('pv-mask-always')).toHaveCount(0);
+    await romashka.getByTestId('pv-ignore').click();
+    await expect.poll(async () => (await stored(ext)).exclusions).toEqual([{ value: 'ромашка', category: 'COMPANY' }]);
+    await ext.close();
+    await page.getByTestId('btn-cancel').click();
+  });
+
+  test('вкладка «Текст»: «Организация» + «запомнить» пополняет список компаний', async ({ context, extensionId }) => {
+    const page = await setup(context, extensionId, { extra: { hintMappingShown: true } });
+    await page.setInputFiles('#single', companyDocx());
+    await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+    await page.getByTestId('pv-tab-text').click();
+    await expect(page.locator('.pv-p').first()).toBeVisible();
+    await page.evaluate(() => {
+      const root = document.querySelector('docx-anonymizer-root').shadowRoot;
+      const p = [...root.querySelectorAll('.pv-p')].find((x) => x.textContent.includes('Вектор'));
+      const node = [...p.childNodes].find((n) => n.nodeType === 3 && n.textContent.includes('Вектор'));
+      const start = node.textContent.indexOf('Вектор');
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, start + 'Вектор'.length);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      root.querySelector('.pv-text').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await expect(page.getByTestId('pv-sel-remember')).toBeHidden(); // по умолчанию выбрана не «Организация»
+    await page.getByTestId('pv-sel-category').selectOption('COMPANY');
+    await page.getByTestId('pv-sel-remember').check();
+    await page.getByTestId('pv-sel-apply').click();
+    await page.getByTestId('pv-tab-entities').click();
+    await expect(page.locator('.pv-row .val', { hasText: 'Вектор' })).toBeVisible({ timeout: 10000 });
+    const ext = await context.newPage();
+    await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    await expect.poll(async () => (await stored(ext)).maskedCompanies).toEqual([{ name: 'Вектор', aliases: [] }]);
+    await ext.close();
+    await page.getByTestId('btn-cancel').click();
+  });
+
+  test('подсказка о политике (orgPolicyHintPending) показана один раз и снимает флаг', async ({ context, extensionId }) => {
+    const page = await setup(context, extensionId, { extra: { hintMappingShown: true, orgPolicyHintPending: true } });
+    await page.setInputFiles('#single', docxFile());
+    await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+    const hint = page.getByTestId('org-policy-hint');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText('по желанию');
+    const ext = await context.newPage();
+    await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    await expect.poll(async () => (await stored(ext)).orgPolicyHintPending).toBe(false);
+    await ext.close();
+    // «Открыть настройки» — вкладку открывает background (MSG.OPEN_OPTIONS) сразу на разделе «Что маскируется»
+    const [opened] = await Promise.all([context.waitForEvent('page'), page.getByTestId('org-policy-hint-open').click()]);
+    await opened.waitForLoadState();
+    expect(opened.url()).toBe(`chrome-extension://${extensionId}/options/options.html#categories`);
+    await expect(opened.getByTestId('commercial')).toBeAttached();
+    await opened.close();
+    await page.getByTestId('org-policy-hint-close').click();
+    await expect(hint).toHaveCount(0);
+    await page.getByTestId('btn-cancel').click();
+    await expect(page.locator('docx-anonymizer-root')).toHaveCount(0);
+    await page.setInputFiles('#single', docxFile('второй.docx'));
+    await expect(page.getByTestId('pv-summary')).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId('org-policy-hint')).toHaveCount(0);
+    await page.getByTestId('btn-cancel').click();
+  });
+});

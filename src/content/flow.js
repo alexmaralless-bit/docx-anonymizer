@@ -10,6 +10,8 @@ import { MSG, ProtocolError, makeRequestId } from '../shared/protocol.js';
 import { saveSettingsPatch } from '../shared/settings-store.js';
 import { isSupported, resultType, mappingFileName, isInvalidatedError, makeResultName } from './files.js';
 import { Link, contextValid, readOpenShadowFlag } from './runtime.js';
+import { exclusionValue } from '../ui/preview/model.js';
+import { shouldShowOrgPolicyHint, withMaskedCompany } from '../ui/panel/org-policy.js';
 
 /**
  * @typedef {{action: 'anonymized'|'original'|'cancel', files: File[]}} FlowResult
@@ -128,11 +130,31 @@ async function runOnce(originals, deps) {
         /* контекст инвалидирован */
       }
     },
+    // Политика 0.4: «Открыть настройки» из подсказки — вкладку открывает background (MSG.OPEN_OPTIONS)
+    onOpenOptions: (section) => {
+      try {
+        link
+          .get()
+          .request(MSG.OPEN_OPTIONS, { section })
+          .catch(() => {});
+      } catch (err) {
+        if (isInvalidatedError(err)) invalidated();
+      }
+    },
+    // Политика 0.4: подсказка «организации — по желанию» показывается один раз — флаг снимается при показе
+    onOrgPolicyHintShown: () => {
+      try {
+        saveSettingsPatch({ orgPolicyHintPending: false }).catch(() => {});
+      } catch {
+        /* контекст инвалидирован */
+      }
+    },
   };
 
   // WP10-C: лёгкая сборка и модели нет — закрываемая подсказка в панели (в полной модель ставится сама или есть «Восстановить»)
   const nerHint = !BUNDLED && !settings.nerModel && !nerHintDismissed;
-  const panel = new Panel({ lang, catalog, origin, position: settings.panelPosition?.[origin], openShadow, handlers, nerHint });
+  const orgPolicyHint = shouldShowOrgPolicyHint(settings);
+  const panel = new Panel({ lang, catalog, origin, position: settings.panelPosition?.[origin], openShadow, handlers, nerHint, orgPolicyHint });
   panel.mount();
 
   function invalidated() {
@@ -184,10 +206,25 @@ async function runOnce(originals, deps) {
           ignoreForever: async (item) => {
             try {
               const cur = deps.getSettings();
-              if (!cur.exclusions.some((e) => e.value === item.value && e.category === item.category))
-                await saveSettingsPatch({ exclusions: [...cur.exclusions, { value: item.value, category: item.category }] });
+              // компания из списка (0.4): исключается по canonical записи — все формы и псевдонимы сразу
+              const value = exclusionValue(item);
+              if (!cur.exclusions.some((e) => e.value === value && e.category === item.category))
+                await saveSettingsPatch({ exclusions: [...cur.exclusions, { value, category: item.category }] });
             } catch (err) {
               if (isInvalidatedError(err)) invalidated();
+            }
+          },
+          // Политика 0.4 (Ц3, К3): «Маскировать всегда» в строке организации и «запомнить» на вкладке «Текст» —
+          // запись в список компаний для маскирования (settings.maskedCompanies), без повторов по названию
+          maskAlways: async (item) => {
+            try {
+              const next = withMaskedCompany(deps.getSettings().maskedCompanies, item.value);
+              if (!next) return;
+              const r = await saveSettingsPatch({ maskedCompanies: next });
+              if (r.rejected?.length) throw new Error(tt('maskAlwaysFailed'));
+            } catch (err) {
+              if (isInvalidatedError(err)) return invalidated();
+              throw err;
             }
           },
         },

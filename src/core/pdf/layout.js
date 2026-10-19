@@ -48,26 +48,104 @@ export const GUTTER_GAP = 0.4; // зазор > 0.4·size — разрыв, ес�
 export const PARA_PITCH = 1.3; // шаг строк больше 1.3 обычного — новый абзац
 export const INDENT = 1.5; // отступ первой строки > 1.5·size — новый абзац
 export const BAND = 0.08; // верхняя и нижняя полосы страницы для колонтитулов (8 % высоты)
+export const HEADER_GAP = 1.5; // крайняя строка полосы отделена от текста шагом > 1.5 обычного — колонтитул (stripRepeating)
 
 // eslint-disable-next-line no-control-regex -- управляющие символы из текстового слоя PDF удаляются
 const CONTROL_RE = /[\u0000-\u0008\u000B-\u001F\u007F\uFFFE\uFFFF]/g;
 const BULLET_RE = /^[•‒–—○▪■✓\-·◦●►]\s+/u;
 const NUMBERING_RE = /^(?:\d{1,3}(?:\.\d{1,3})*\.|\d{1,3}\)|[а-яa-z]\))\s/iu;
+/** Сумма или количество в ячейке («120 500,50», «7 000,00», «10») — такие ячейки не переносятся на строку ниже. */
+const AMOUNT_RE = /^(?:\d{1,3}(?:[ \u00A0]\d{3})*(?:[.,]\d{1,2})?|\d{1,4})$/u;
 const PAGE_NUM_RE = /^(?:-\s*\d+\s*-|\d+|(?:страница|стр\.?|page|p\.)\s*\d+(?:\s*(?:из|of|\/)\s*\d+)?|\d+\s*(?:из|of|\/)\s*\d+)$/iu;
 const BOLD_FONT_RE = /bold|black|heavy|semibold|demi|[-,]bd\b|w[6-9]00/i;
+/** Моноширинный шрифт по имени (Courier, Liberation Mono, Consolas…) — пробел в нём шириной в символ (findGutters). */
+export const MONO_FONT_RE = /mono|courier|consol|menlo|fixed|typewriter/i;
 /** Слова-частицы и короткие приставки, дефис перед которыми — часть слова, а не перенос («что-то», «из-за», «пр-т»). */
 const KEEP_HYPHEN_RIGHT = new Set(['то', 'либо', 'нибудь', 'таки', 'ка', 'де', 'с', 'за', 'под', 'над', 'т']);
+/** «По-видимому», «по-русски», «во-первых»: дефис после «по»/«во» перед такими словами — часть слова. */
+const KEEP_HYPHEN_PO = /^(?:\p{L}+(?:ому|ему|ски|цки|ьи)|первых|вторых|третьих|четв[её]ртых|пятых)$/u;
+
+/* ---------------- ориентация страницы ---------------- */
+
+/** Произведение аффинных матриц pdf.js [a, b, c, d, e, f]: сначала m2, затем m1. */
+export function mulTransform(m1, m2) {
+  return [
+    m1[0] * m2[0] + m1[2] * m2[1],
+    m1[1] * m2[0] + m1[3] * m2[1],
+    m1[0] * m2[2] + m1[2] * m2[3],
+    m1[1] * m2[2] + m1[3] * m2[3],
+    m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+    m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+  ];
+}
+
+/**
+ * Ориентация текста элемента: 0 (обычная), 90 (снизу вверх), 180 (вверх ногами), 270 (сверху вниз) или null
+ * (наклон — водяные знаки, повёрнутые подписи).
+ * @param {number[]} t transform элемента
+ * @returns {0|90|180|270|null}
+ */
+export function orientationOf(t) {
+  const [a, b] = t || [1, 0];
+  const n = Math.hypot(a, b);
+  if (!n) return null;
+  if (Math.abs(b) <= 0.05 * n) return a > 0 ? 0 : 180;
+  if (Math.abs(a) <= 0.05 * n) return b > 0 ? 90 : 270;
+  return null;
+}
+
+/**
+ * Элемент читается в обычной ориентации: без поворота и без зеркала (d > 0). Остальное (водяные знаки,
+ * вертикальные подписи, текст вверх ногами) разметкой отбрасывается — после orientPage.
+ * @param {number[]} t
+ */
+export function isUpright(t) {
+  const [a, b, c, d] = t || [1, 0, 0, 1];
+  return a > 0 && d > 0 && Math.abs(b) <= 0.05 * Math.abs(a) + 1e-6 && Math.abs(c) <= 0.05 * Math.abs(d) + 1e-6;
+}
+
+/**
+ * Страница с повёрнутым содержимым (альбомный лист «по-принтерному»: /Rotate + матрица cm, текст сверху вниз и т.п.)
+ * → преобладающая по числу букв ориентация текста становится обычной: координаты элементов поворачиваются вместе со
+ * страницей (ширина и высота меняются местами при 90/270). Без этого весь текст страницы отбросился бы как
+ * «повёрнутый» и документ ушёл бы пустым (Ц4: тихий сбой). Страница с обычной ориентацией возвращается как есть.
+ * @param {PageItems} page
+ * @returns {PageItems}
+ */
+export function orientPage(page) {
+  /** @type {Record<number, number>} */
+  const letters = { 0: 0, 90: 0, 180: 0, 270: 0 };
+  for (const it of page.items || []) {
+    const o = orientationOf(it.transform);
+    if (o === null) continue;
+    letters[o] += (String(it.str || '').match(/\p{L}/gu) || []).length;
+  }
+  let best = 0;
+  for (const o of [90, 180, 270]) if (letters[o] > letters[best]) best = o;
+  if (best === 0) return page;
+  const W = page.width;
+  const H = page.height;
+  // поворот системы координат на −best вокруг страницы с переносом в положительные координаты
+  const P = best === 90 ? [0, -1, 1, 0, 0, W] : best === 180 ? [-1, 0, 0, -1, W, H] : [0, 1, -1, 0, H, 0];
+  const swap = best !== 180;
+  return {
+    ...page,
+    width: swap ? H : W,
+    height: swap ? W : H,
+    items: (page.items || []).map((it) => ({ ...it, transform: mulTransform(P, it.transform || [1, 0, 0, 1, 0, 0]) })),
+  };
+}
 
 /* ---------------- элементы → строки → сегменты ---------------- */
 
 /**
  * Элементы страницы → «прогоны» с геометрией сверху вниз. Пробельные элементы pdf.js не выдаются, а помечают
- * соседей (spAfter/spBefore); повёрнутый текст (водяные знаки, вертикальные подписи) отбрасывается.
+ * соседей (spAfter/spBefore); повёрнутый текст (водяные знаки, вертикальные подписи) отбрасывается (isUpright).
  * @param {PageItems} page
  */
 export function normalizeItems(page) {
   const fonts = page.fonts || {};
-  /** @type {{text: string, x: number, x1: number, y: number, size: number, bold: boolean, eol: boolean, spBefore: boolean, spAfter: boolean}[]} */
+  /** @type {{text: string, x: number, x1: number, y: number, size: number, bold: boolean, mono: boolean, eol: boolean, spBefore: boolean, spAfter: boolean}[]} */
   const out = [];
   let pendingSpace = false;
   for (const it of page.items || []) {
@@ -82,8 +160,8 @@ export function normalizeItems(page) {
       }
       continue;
     }
-    const [a, b, c, d] = t;
-    if (Math.abs(b) > 0.05 * Math.abs(a) + 1e-6 || Math.abs(c) > 0.05 * Math.abs(d) + 1e-6) continue; // поворот
+    const [, , c, d] = t;
+    if (!isUpright(t)) continue; // поворот, зеркало
     const size = Math.abs(d) || Math.hypot(c, d) || it.height || 10;
     const lead = raw.length - raw.trimStart().length;
     const trail = raw.length - raw.trimEnd().length;
@@ -96,6 +174,7 @@ export function normalizeItems(page) {
       y: page.height - t[5],
       size,
       bold: !!(it.fontName && (fonts[it.fontName]?.bold ?? BOLD_FONT_RE.test(fonts[it.fontName]?.name || ''))),
+      mono: !!(it.fontName && (fonts[it.fontName]?.mono ?? MONO_FONT_RE.test(fonts[it.fontName]?.name || ''))),
       eol: !!it.hasEOL,
       spBefore: pendingSpace || lead > 0,
       spAfter: trail > 0,
@@ -145,10 +224,27 @@ export function groupLines(runs) {
 }
 
 /**
+ * Ширина символа строки моноширинного шрифта или 0: шрифт с моноширинным именем (MONO_FONT_RE) у большинства
+ * прогонов, либо геометрия — ≥ 4 прогонов от 2 символов с одной шириной символа (±2 %) не уже 0.55·size.
+ * В таком шрифте пробел шириной в символ (0.6·size) шире GUTTER_GAP, и «БИК 044525901» резалось бы на ячейки.
+ * @param {{size: number, runs: any[]}} L
+ */
+export function monoCharWidth(L) {
+  const runs = L.runs.filter((r) => r.text.length >= 2 && r.x1 > r.x);
+  if (!runs.length) return 0;
+  const ws = runs.map((r) => (r.x1 - r.x) / r.text.length).sort((a, b) => a - b);
+  const med = ws[Math.floor(ws.length / 2)];
+  const byName = L.runs.filter((r) => r.mono).length > L.runs.length / 2;
+  const byGeometry = runs.length >= 4 && med >= 0.55 * L.size && ws.every((w) => Math.abs(w - med) <= 0.02 * med);
+  return byName || byGeometry ? med : 0;
+}
+
+/**
  * Разрывы строк по «просветам» колонок (ячейки таблиц, колонки текста): зазор > SEGMENT_GAP·size — разрыв всегда;
  * зазор > GUTTER_GAP·size — разрыв, если в непрерывном участке соседних строк, которые не пересекают этот x текстом,
  * ещё ≥ 2 строки начинают элемент у того же x (±0.3·size). Растянутые пробелы выровненного по ширине абзаца так не
- * проходят: соседние строки перекрывают их словами.
+ * проходят: соседние строки перекрывают их словами. В моноширинном шрифте порог — не меньше 1.5 ширины символа:
+ * одиночный пробел между словами — не просвет (monoCharWidth).
  * @param {{y: number, size: number, runs: any[]}[]} lines строки страницы
  * @returns {Set<number>[]} для каждой строки — индексы прогонов, перед которыми разрыв
  */
@@ -158,12 +254,13 @@ export function findGutters(lines) {
   const crosses = (L, x, tol) => L.runs.some((r) => r.x < x - tol && r.x1 > x + tol);
   lines.forEach((L, i) => {
     let right = -Infinity;
+    const monoW = monoCharWidth(L);
     L.runs.forEach((r, k) => {
       if (k > 0) {
         const gap = r.x - right;
         const size = Math.max(L.size, r.size);
         if (gap > SEGMENT_GAP * size) splits[i].add(k);
-        else if (gap > GUTTER_GAP * size) {
+        else if (gap > GUTTER_GAP * size && gap > 1.5 * monoW) {
           const tol = 0.3 * size;
           let count = 1;
           for (const dir of [-1, 1]) {
@@ -269,13 +366,16 @@ const repeatKey = (text) => text.toLowerCase().replace(/\d+/g, '#').replace(/\s+
 /**
  * Колонтитулы и номера страниц (FR колонтитулов концепции 0.3): строки верхней и нижней полос (BAND высоты), текст
  * которых (цифры → #) повторяется на ≥ 3 страницах или на ≥ 50 % страниц (не меньше двух), — колонтитулы; одиночная
- * крайняя строка полосы мелким кеглем (≤ 0.85 основного) — тоже; номера страниц («3», «- 3 -», «Страница 2 из 4»,
- * «Page 2 of 4») удаляются. Возвращает строки без колонтитулов и сами колонтитулы (по одному на уникальный текст).
+ * крайняя строка полосы мелким кеглем (≤ 0.85 основного) — тоже; крайняя строка полосы обычным кеглем без жирного,
+ * отделённая от текста шагом > HEADER_GAP·pitch, — тоже, и на одностраничном документе (колонтитул LibreOffice
+ * 12 pt над текстом); номера страниц («3», «- 3 -», «Страница 2 из 4», «Page 2 of 4») удаляются. Возвращает строки
+ * без колонтитулов и сами колонтитулы (по одному на уникальный текст).
  * @param {{page: number, height: number, lines: Line[]}[]} pages
  * @param {number} bodySize медианный кегль документа
+ * @param {number} [pitch] обычный шаг строк (0 — правило отделённой строки не применяется)
  * @returns {{pages: {page: number, height: number, lines: Line[]}[], headers: {kind: 'header'|'footer', text: string, page: number}[]}}
  */
-export function stripRepeating(pages, bodySize = 0) {
+export function stripRepeating(pages, bodySize = 0, pitch = 0) {
   const n = pages.length;
   /** @type {Map<string, Set<number>>} */
   const seen = new Map();
@@ -305,7 +405,11 @@ export function stripRepeating(pages, bodySize = 0) {
         if (PAGE_NUM_RE.test(text.trim())) return;
         const extreme = band === 'top' ? i === 0 : i === p.lines.length - 1;
         const small = bodySize > 0 && L.size <= 0.85 * bodySize && extreme;
-        if (repeated(`${band}\u0000${repeatKey(text)}`) || small) {
+        // отделённая от текста крайняя строка обычного кегля: не заголовок (не крупнее и не жирная)
+        const neighbour = band === 'top' ? p.lines[i + 1] : p.lines[i - 1];
+        const plain = bodySize > 0 && L.size <= 1.15 * bodySize && L.segs.every((x) => x.bold < 0.5);
+        const isolated = extreme && plain && pitch > 0 && !!neighbour && Math.abs(neighbour.y - L.y) > HEADER_GAP * pitch;
+        if (repeated(`${band}\u0000${repeatKey(text)}`) || small || isolated) {
           const kind = band === 'top' ? 'header' : 'footer';
           const k = `${kind}\u0000${repeatKey(text)}`;
           if (!known.has(k)) {
@@ -383,6 +487,30 @@ export function detectColumns(lines) {
       if (best) {
         bestEnd = end;
         break;
+      }
+    }
+    if (best) {
+      // Граница участка: строка левой половины ниже последней строки правой колонки, набранная иначе, чем колонки
+      // (другой кегль или жирная после промежутка), — заголовок на всю ширину после колонок («РЕКВИЗИТЫ…»), а не
+      // хвост левой колонки; иначе он ушёл бы между колонками и склеился с правой.
+      const lastRight = run
+        .slice(0, bestEnd)
+        .map((r) => r.right.length > 0)
+        .lastIndexOf(true);
+      const bodySizes = run.slice(0, bestEnd).flatMap((r) => [...r.left, ...r.right].map((x) => x.size));
+      const colSize = bodySizes.sort((a, b) => a - b)[Math.floor(bodySizes.length / 2)] || 0;
+      for (let k = lastRight + 1; k < bestEnd; k++) {
+        const r = run[k];
+        if (r.right.length || !r.left.length) continue;
+        const seg = r.left[0];
+        const gap = k > 0 ? r.L.y - run[k - 1].L.y : 0;
+        const otherSize = colSize > 0 && Math.abs(seg.size - colSize) > 0.15 * colSize;
+        const boldAfterGap = seg.bold >= 0.9 && gap > PARA_PITCH * 1.2 * seg.size;
+        if (otherSize || boldAfterGap) {
+          best = isProse(run.slice(0, k)); // участок уже признан колонками — порог в 6 строк не повторяется
+          bestEnd = best ? k : 0;
+          break;
+        }
       }
     }
     if (best) {
@@ -478,24 +606,43 @@ export function detectTables(lines, pitch = 0) {
   return units;
 }
 
-/** x-начала колонок таблицы: кластеры начал сегментов многосегментных строк (±0.5·size), поддержанные ≥ 2 строками. */
+/**
+ * x-начала колонок таблицы. Колонка — кластер начал сегментов многосегментных строк (±0.5·size), поддержанный ≥ 2
+ * строками, либо кластер правых краёв (числа и суммы, выровненные вправо: «10» и «2» в колонке «Кол-во»), если
+ * сегменты не попали ни в одну колонку по началу. Колонка по началу внутри колонки по правому краю («2», «1» под
+ * «10») — та же колонка: её начало сдвигается к самому левому сегменту.
+ * @param {Line[]} lines
+ * @returns {number[]}
+ */
 function clusterStarts(lines) {
-  /** @type {{x: number, n: number, size: number}[]} */
-  const cl = [];
-  for (const L of lines) {
-    if (L.segs.length < 2) continue;
-    for (const s of L.segs) {
-      const c = cl.find((k) => Math.abs(k.x - s.x0) <= 0.5 * s.size);
+  const segs = lines.filter((L) => L.segs.length >= 2).flatMap((L) => L.segs);
+  /** @param {(s: Seg) => number} key @param {boolean} toMin */
+  const clusterBy = (key, toMin) => {
+    /** @type {{v: number, members: Seg[]}[]} */
+    const cl = [];
+    for (const s of segs) {
+      const v = key(s);
+      const c = cl.find((k) => Math.abs(k.v - v) <= 0.5 * s.size);
       if (c) {
-        c.n++;
-        c.x = Math.min(c.x, s.x0);
-      } else cl.push({ x: s.x0, n: 1, size: s.size });
+        c.members.push(s);
+        if (toMin) c.v = Math.min(c.v, v);
+      } else cl.push({ v, members: [s] });
     }
+    return cl.filter((c) => c.members.length >= 2);
+  };
+  const left = clusterBy((s) => s.x0, true);
+  const inLeft = new Set(left.flatMap((c) => c.members));
+  const cols = left.map((c) => ({ x0: c.v, x1: Math.max(...c.members.map((m) => m.x1)) }));
+  for (const c of clusterBy((s) => s.x1, false)) {
+    const free = c.members.filter((m) => !inLeft.has(m));
+    if (!free.length) continue;
+    const x0 = Math.min(...free.map((m) => m.x0));
+    const tol = 0.5 * free[0].size;
+    const host = cols.find((k) => k.x0 >= x0 - tol && k.x0 <= c.v + tol && k.x1 <= c.v + tol);
+    if (host) host.x0 = Math.min(host.x0, x0);
+    else if (!cols.some((k) => x0 >= k.x0 - tol && x0 <= k.x1)) cols.push({ x0, x1: c.v });
   }
-  return cl
-    .filter((c) => c.n >= 2)
-    .map((c) => c.x)
-    .sort((a, b) => a - b);
+  return cols.map((c) => c.x0).sort((a, b) => a - b);
 }
 
 function buildTable(lines, cols, pitch, pageRight, pageLeft) {
@@ -558,6 +705,10 @@ function continues(prev, next, colRight, pitch) {
   const step = next.y - prev.y;
   if (pitch && step > PARA_PITCH * pitch) return false;
   if (step <= 0) return false;
+  // числа, выровненные вправо («15 000,00» над «120 500,50»): общий правый край при разных началах — новая строка
+  // таблицы, а не перенос (перенесённая строка ячейки начинается у её левого края); суммы и количества не переносятся
+  if (Math.abs(next.x1 - prev.x1) <= 0.5 * next.size && Math.abs(next.x0 - prev.x0) > 0.5 * next.size) return false;
+  if (AMOUNT_RE.test(prev.text) && AMOUNT_RE.test(next.text)) return false;
   if (/[\p{L}\p{N}][-\u2010\u00AD]$/u.test(prev.text)) return true; // перенос после дефиса
   return !wouldFit(prev, next, colRight, 0.25);
 }
@@ -584,21 +735,30 @@ function centered(seg, left, right) {
 
 /**
  * Склейка строки абзаца с продолжением: перенос «слово-» + строчная → «словочасть» (дефис переноса удаляется),
- * «Санкт-» + «Петербург» → «Санкт-Петербург» (дефис остаётся); мягкий перенос U+00AD удаляется всегда;
- * дефис в почте, адресах сайтов, числах и в коротких частях («пр-т», «из-за», «что-то») остаётся. Иначе — пробел.
+ * «Санкт-» + «Петербург» → «Санкт-Петербург» (дефис остаётся); мягкий перенос U+00AD и знак переноса U+2010 в конце
+ * строки удаляются всегда (так LibreOffice и Word рисуют мягкий перенос: «Ан‐» + «дреева» → «Андреева»); дефис после
+ * двух букв слова с заглавной — тоже перенос («Ан-» + «дреева»), кроме «По-видимому», «Во-первых». Цифры: «7805-» +
+ * «003215» → «7805003215», если по любую сторону дефиса группа ≥ 4 цифр (ИНН, счёт, разорванные мягким переносом:
+ * иначе номер ушёл бы в чат двумя «безобидными» частями); группы по 2–3 цифры (телефон «123-» + «45-67») — дефис
+ * остаётся. Дефис в почте, адресах сайтов и в коротких частях («пр-т», «из-за», «что-то») остаётся. Иначе — пробел.
  * @param {string} a @param {string} b
  */
 export function dehyphenate(a, b) {
   if (!a) return b;
   if (!b) return a;
-  if (a.endsWith('\u00AD')) return a.slice(0, -1) + b;
-  if (/[\p{L}\p{N}][-\u2010]$/u.test(a)) {
+  if (/[\u00AD\u2010]$/u.test(a)) return a.slice(0, -1) + b;
+  if (/[\p{L}\p{N}]-$/u.test(a)) {
     const leftTok = a.slice(a.lastIndexOf(' ') + 1, -1);
     const rightTok = b.split(' ')[0];
+    const leftDigits = (leftTok.match(/\d+$/) || [''])[0];
+    const rightDigits = (rightTok.match(/^\d+/) || [''])[0];
+    if (leftDigits && rightDigits) return leftDigits.length >= 4 || rightDigits.length >= 4 ? a.slice(0, -1) + b : a + b;
     const rightWord = (rightTok.match(/^\p{L}+/u) || [''])[0];
     const leftWord = (leftTok.match(/\p{L}+$/u) || [''])[0];
     const technical = /[@/\\.\d_:]/.test(leftTok) || leftWord.length !== leftTok.length;
-    if (!technical && /^\p{Ll}/u.test(b) && leftWord.length >= 3 && !KEEP_HYPHEN_RIGHT.has(rightWord.toLowerCase())) {
+    const lower = rightWord.toLowerCase();
+    const short2 = leftWord.length === 2 && /^\p{Lu}\p{Ll}$/u.test(leftWord) && !(/^(?:по|во)$/iu.test(leftWord) && KEEP_HYPHEN_PO.test(lower));
+    if (!technical && /^\p{Ll}/u.test(b) && (leftWord.length >= 3 || short2) && !KEEP_HYPHEN_RIGHT.has(lower)) {
       return a.slice(0, -1) + b;
     }
     return a + b;
@@ -613,13 +773,15 @@ const joinLineText = dehyphenate;
  * кончилась точкой), шаг строк больше PARA_PITCH обычного, смена кегля, отступ первой строки > INDENT·size, маркер
  * списка, предыдущая строка явно короче колонки (следующее слово на ней помещалось).
  * @param {(Line & {col?: {left: number, right: number}})[]} lines строки по порядку чтения (одиночные сегменты)
- * @param {{pitch?: number, left?: (L: Line) => number, right?: (L: Line) => number}} [o]
+ * @param {{pitch?: number, left?: (L: Line) => number, right?: (L: Line) => number, block?: (L: Line) => any}} [o]
+ *   block — узкий блок строки (narrowBlocks): строки разных блоков в один абзац не склеиваются
  * @returns {{text: string, page: number, pageEnd: number, size: number, bold: number, lines: number, chars: number, contPage?: boolean}[]}
  */
 export function mergeParagraphs(lines, o = {}) {
   const pitch = o.pitch || 0;
   const leftOf = o.left || ((L) => L.col?.left ?? L.segs[0].x0);
   const rightOf = o.right || ((L) => L.col?.right ?? L.segs[L.segs.length - 1].x1);
+  const blockOf = o.block || (() => undefined);
   const paras = [];
   /** @type {any} */
   let cur = null;
@@ -634,15 +796,19 @@ export function mergeParagraphs(lines, o = {}) {
       const left = leftOf(L);
       const right = rightOf(prevL);
       if (L.page !== prevL.page || (L.col && prevL.col && L.col.left !== prevL.col.left)) {
-        // продолжение на следующей странице/колонке: предыдущая строка дошла до края и абзац не закончен
+        // продолжение на следующей странице/колонке: предыдущая строка дошла до края и абзац не закончен;
+        // «;» на границе — не конец, если дальше строчная буква без нумерации («…Федерации;» + «все уведомления»)
         const full = !wouldFit(prevSeg, seg, right);
-        newPara = !(sameSize && full && !/[.!?:;]$/.test(cur.text) && !BULLET_RE.test(text));
+        const ended = /[.!?:]$/.test(cur.text) || (/;$/.test(cur.text) && (!/^\p{Ll}/u.test(text) || NUMBERING_RE.test(text)));
+        newPara = !(sameSize && full && !ended && !BULLET_RE.test(text));
         if (!newPara && L.page !== prevL.page) cur.contPage = true;
       } else {
         const step = L.y - prevL.y;
         const p = pitch || prevL.size * 1.2;
         if (step > PARA_PITCH * p || step <= 0) newPara = true;
         else if (!sameSize) newPara = true;
+        else if (blockOf(L) !== blockOf(prevL))
+          newPara = true; // граница узкого блока (надписи)
         else if ((seg.bold >= 0.9 && prevSeg.bold <= 0.2) || (seg.bold <= 0.2 && prevSeg.bold >= 0.9))
           newPara = true; // жирный заголовок
         else if (centered(prevSeg, leftOf(prevL), right) && Math.abs(seg.x0 - prevSeg.x0) > L.size)
@@ -739,25 +905,27 @@ export function linePitch(steps) {
  * @returns {Layout}
  */
 export function buildLayout(pages) {
-  const raw = pages.map((p) => ({ page: p.page, height: p.height, lines: pageLines(p) }));
+  const raw = pages.map(orientPage).map((p) => ({ page: p.page, height: p.height, lines: pageLines(p) }));
   // кегль основного текста — медиана по символам
   const sizes = [];
   for (const p of raw) for (const L of p.lines) for (const s of L.segs) for (let k = 0; k < Math.min(s.chars, 200); k++) sizes.push(s.size);
   const bodySize = median(sizes);
-  const { pages: clean, headers } = stripRepeating(raw, bodySize);
-
-  // обычный шаг строк: медиана расстояний между соседними строками основного кегля
-  const steps = [];
-  for (const p of clean) {
-    for (let k = 1; k < p.lines.length; k++) {
-      const a = p.lines[k - 1];
-      const b = p.lines[k];
-      const d = b.y - a.y;
-      if (Math.abs(a.size - bodySize) <= 0.15 * bodySize && Math.abs(b.size - bodySize) <= 0.15 * bodySize && d >= 0.9 * bodySize && d <= 2.5 * bodySize)
-        steps.push(d);
+  /** Обычный шаг строк: наименьший частый шаг между соседними строками основного кегля (linePitch). */
+  const pitchOf = (list) => {
+    const steps = [];
+    for (const p of list) {
+      for (let k = 1; k < p.lines.length; k++) {
+        const a = p.lines[k - 1];
+        const b = p.lines[k];
+        const d = b.y - a.y;
+        if (Math.abs(a.size - bodySize) <= 0.15 * bodySize && Math.abs(b.size - bodySize) <= 0.15 * bodySize && d >= 0.9 * bodySize && d <= 2.5 * bodySize)
+          steps.push(d);
+      }
     }
-  }
-  const pitch = linePitch(steps) || bodySize * 1.2;
+    return linePitch(steps) || bodySize * 1.2;
+  };
+  const { pages: clean, headers } = stripRepeating(raw, bodySize, pitchOf(raw));
+  const pitch = pitchOf(clean);
 
   /** @type {Block[]} */
   const blocks = [];
@@ -782,10 +950,12 @@ export function buildLayout(pages) {
   };
   const flush = () => {
     if (!pending.length) return;
+    const boxes = narrowBlocks(pending, pitch, leftEdge, rightEdge);
     const paras = mergeParagraphs(pending, {
       pitch,
       left: (L) => L.col?.left ?? leftEdge.get(L.page) ?? L.segs[0].x0,
-      right: (L) => L.col?.right ?? rightEdge.get(L.page) ?? L.segs[L.segs.length - 1].x1,
+      right: (L) => L.col?.right ?? boxes.get(L)?.right ?? rightEdge.get(L.page) ?? L.segs[L.segs.length - 1].x1,
+      block: (L) => boxes.get(L),
     });
     for (const para of paras) {
       pageBreak(para.page);
@@ -829,6 +999,46 @@ export function buildLayout(pages) {
   normalizeHr(blocks);
   for (const h of headers.filter((x) => x.kind === 'footer')) blocks.push({ kind: 'footer', text: h.text, page: h.page });
   return { blocks, pages: pages.length, warnings: [] };
+}
+
+/**
+ * Узкие блоки (надпись LibreOffice «Согласовано: Зайцева / Ольга Петровна», врезка): ≥ 2 подряд идущих строк вне
+ * колонок одной страницы с общим началом x0 (±0.3·size) с отступом > INDENT·size от левого края текста, одного кегля
+ * и с обычным шагом, причём самая длинная из них заметно короче правого края страницы. Для них «строка дошла до края»
+ * считается по локальному правому краю (max x1 участка), а не по краю страницы: иначе каждая строка надписи стала бы
+ * отдельным абзацем и ФИО разорвалось бы на части. Строка, кончающаяся на «.!?:;», абзац не продолжает и здесь.
+ * @param {Line[]} lines @param {number} pitch @param {Map<number, number>} leftEdge @param {Map<number, number>} rightEdge
+ * @returns {Map<Line, {right: number}>} строка → её блок (один объект на блок) с локальным правым краем
+ */
+function narrowBlocks(lines, pitch, leftEdge, rightEdge) {
+  /** @type {Map<Line, {right: number}>} */
+  const out = new Map();
+  let i = 0;
+  while (i < lines.length) {
+    const L = lines[i];
+    const x0 = L.segs[0].x0;
+    const indented = !L.col && x0 - (leftEdge.get(L.page) ?? x0) > INDENT * L.size;
+    let j = i + 1;
+    if (indented) {
+      while (j < lines.length) {
+        const N = lines[j];
+        const P = lines[j - 1];
+        const step = N.y - P.y;
+        if (N.col || N.page !== L.page || Math.abs(N.segs[0].x0 - x0) > 0.3 * L.size) break;
+        if (Math.abs(N.size - L.size) > 0.15 * L.size || step <= 0 || step > PARA_PITCH * (pitch || 1.2 * L.size)) break;
+        if (/[.!?:;]$/.test(lineText(P))) break;
+        j++;
+      }
+    }
+    if (j - i >= 2) {
+      const block = lines.slice(i, j);
+      const right = Math.max(...block.map((x) => x.segs[x.segs.length - 1].x1));
+      const box = { right };
+      if (right < (rightEdge.get(L.page) ?? Infinity) - 2 * L.size) for (const x of block) out.set(x, box);
+    }
+    i = j;
+  }
+  return out;
 }
 
 /** Разрывы страниц: без повторов подряд, не в начале и не в конце основного текста. */

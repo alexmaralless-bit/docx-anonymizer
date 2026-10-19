@@ -15,7 +15,10 @@ describe('i18n PDF', () => {
   });
   it('новые строки есть и не пусты', () => {
     for (const lang of ['ru', 'en']) {
-      for (const k of ['warnPdfPages', 'pdfNote']) expect(panel[lang][k], `${lang}.${k}`).toBeTruthy();
+      for (const k of ['warnPdfPages', 'pdfNote', 'btnUpload']) expect(panel[lang][k], `${lang}.${k}`).toBeTruthy();
+      // заметка подставляет расширение результата по pdfMode; лимит страниц — свой текст (ревью WP10-A, Д9, Д10)
+      expect(panel[lang].pdfNote, `${lang}.pdfNote`).toContain('{ext}');
+      expect(common[lang]['err.TOO_LARGE_PAGES'], `${lang}.err.TOO_LARGE_PAGES`).toMatch(/\{pages\}.*\{limit\}/);
       for (const k of ['pdf_mode', 'pdf_mode_markdown', 'pdf_mode_text', 'pdf_mode_off', 'pdf_mode_hint'])
         expect(options[lang][k], `${lang}.${k}`).toBeTruthy();
       for (const k of ['stage.pdf', 'err.PDF_INVALID', 'err.PDF_ENCRYPTED', 'err.PDF_EMPTY', 'err.PDF_NO_TEXT'])

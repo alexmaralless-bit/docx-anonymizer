@@ -3,6 +3,8 @@
 // HTML (обход WordprocessingML: абзацы, жирный, таблицы, вложенные таблицы, списки, надписи) → PDF через Chromium Playwright
 // (A4, колонтитулы шаблонами page.pdf). Плюс LibreOffice-версии (ip-contract.lo, two-companies.lo, зашифрованный PDF),
 // «скан» (страница-картинка), смешанный документ, пустой PDF (/Count 0) и perf-50p (50 страниц ≈ 20 000 слов, К6).
+// По ревью WP10-A: «дикие» wild-mono / wild-landscape / wild-2col (другие шрифт, кегль, альбом, колонки), rotated
+// (/Rotate 270 с повёрнутым содержимым), structures.lo и sample-contract.lo.
 // Все данные ВЫМЫШЛЕННЫЕ. Сети не требует.
 //
 // Для каждого текстового PDF пишутся `<имя>.gold.json` (значения для проверки утечек, К2) и `<имя>.txt` — снимок
@@ -311,6 +313,156 @@ export function emptyPdf() {
   return new TextEncoder().encode(s);
 }
 
+/* ---------- «дикие» PDF: другой шрифт и кегль, альбом, две колонки, моноширинный ---------- */
+
+// Реквизиты «диких» договоров (ВЫМЫШЛЕННЫЕ, как и всё в фикстурах).
+const WILD = {
+  co1: 'Звёздный путь',
+  inn1: '7736050003',
+  kpp1: '773601001',
+  ogrn1: '1025004012340',
+  co2: 'Вектор-М',
+  inn2: '500400123402',
+  dir1: 'Петров Иван Сергеевич',
+  dir1g: 'Петрова Ивана Сергеевича',
+  dir2g: 'Смирновой Елены Александровны',
+  dir2: 'Смирнова Елена Александровна',
+  tel: '+7 (495) 765-43-21',
+  mail: 'ivan.petrov@zvezda.example',
+  rs: '40702810700000012345',
+  ks: '30101810300000000901',
+  bik: '044525901',
+  pass: '45 05 123456',
+  snils: '112-233-445 95',
+  addr: '123456, г. Москва, ул. Ленина, д. 1, офис 5',
+};
+// prettier-ignore
+export const WILD_GOLD = [
+  ['COMPANY', WILD.co1], ['INN', WILD.inn1], ['KPP', WILD.kpp1], ['OGRN', WILD.ogrn1], ['COMPANY', WILD.co2], ['INN', WILD.inn2],
+  ['PERSON', WILD.dir1], ['PERSON', WILD.dir1g], ['PERSON', WILD.dir2g], ['PERSON', WILD.dir2], ['PHONE', WILD.tel], ['EMAIL', WILD.mail],
+  ['ACCOUNT', WILD.rs], ['ACCOUNT', WILD.ks], ['BIK', WILD.bik], ['PASSPORT', WILD.pass], ['SNILS', WILD.snils],
+].map(([category, value], i) => ({ key: `w${i}`, category, value }));
+
+/** HTML «дикого» договора: вступление, пункты-заполнители, таблица позиций (числа вправо), реквизиты. */
+function wildHtml({ font, size, extra = '', filler = 4, cols = false, items = false }) {
+  const P = WILD;
+  const fill = Array.from(
+    { length: filler },
+    (_, i) =>
+      `<p>${i + 2}.1. Стороны руководствуются условиями настоящего договора и действующим законодательством Российской Федерации; ` +
+      'все уведомления направляются уполномоченным представителям сторон в письменной форме не позднее пяти рабочих дней с даты ' +
+      'наступления соответствующего обстоятельства, включая изменение банковских реквизитов и адресов.</p>',
+  ).join('\n');
+  const intro = `<h1>ДОГОВОР ОКАЗАНИЯ УСЛУГ № 42/ЗП-2026</h1>
+<p class="row"><span>г. Москва</span><span>1 октября 2026 г.</span></p>
+<p>ООО «${P.co1}», ИНН ${P.inn1}, КПП ${P.kpp1}, ОГРН ${P.ogrn1}, именуемое в дальнейшем «Исполнитель», в лице генерального директора ${P.dir1g}, действующего на основании Устава, с одной стороны, и АО «${P.co2}», ИНН ${P.inn2}, в лице генерального директора ${P.dir2g}, действующей на основании Устава, с другой стороны, заключили настоящий договор.</p>
+<p>1.1. Контактное лицо Исполнителя — ${P.dir1}, тел. ${P.tel}, e-mail ${P.mail}; паспорт ${P.pass}, СНИЛС ${P.snils}.</p>
+<p>1.2. Оплата производится на расчётный счёт ${P.rs} в банке с БИК ${P.bik}, корреспондентский счёт ${P.ks}.</p>
+<ul><li>оказание консультационных услуг;</li><li>подготовка отчётов;</li></ul>
+<p># Хештег в начале абзаца и вертикальная черта | внутри текста.</p>`;
+  const table = `<table class="items"><tr><th>№</th><th>Наименование</th><th>Кол-во</th><th>Цена, руб.</th></tr>
+<tr><td>1</td><td>Консультация</td><td class="r">10</td><td class="r">15 000,00</td></tr>
+<tr><td>2</td><td>Отчёт</td><td class="r">2</td><td class="r">120 500,50</td></tr>
+<tr><td>3</td><td>Сопровождение</td><td class="r">1</td><td class="r">7 000,00</td></tr></table>`;
+  const req = `<h2>РЕКВИЗИТЫ И ПОДПИСИ СТОРОН</h2>
+<table><tr><td>Исполнитель:</td><td>Заказчик:</td></tr>
+<tr><td>ООО «${P.co1}»</td><td>АО «${P.co2}»</td></tr>
+<tr><td>ИНН/КПП ${P.inn1}/${P.kpp1}</td><td>ИНН ${P.inn2}</td></tr>
+<tr><td>ОГРН ${P.ogrn1}</td><td>Адрес: 141000, Московская обл., г. Мытищи, пр-т Мира, д. 10</td></tr>
+<tr><td>Адрес: ${P.addr}</td><td>Тел.: ${P.tel}</td></tr>
+<tr><td>р/с ${P.rs}</td><td>E-mail: ${P.mail}</td></tr>
+<tr><td>к/с ${P.ks}</td><td>Банк: ПАО «Банк»</td></tr>
+<tr><td>БИК ${P.bik}</td><td>| символ черты</td></tr>
+<tr><td>_____________ / ${P.dir1} /</td><td>_____________ / ${P.dir2} /</td></tr></table>`;
+  const css = `body{font-family:'${font}';font-size:${size}pt;margin:0} h1{font-size:${size * 1.4}pt;text-align:center} h2{font-size:${size * 1.15}pt}
+ .row{display:flex;justify-content:space-between} table{border-collapse:collapse;width:100%} td,th{border:1px solid #000;padding:2pt 4pt;vertical-align:top;text-align:left}
+ .r{text-align:right} .cols{column-count:2;column-gap:24pt} .cols p{text-align:justify} ${extra}`;
+  const body = intro + (cols ? `<div class="cols">${fill}</div>` : fill) + (items ? table : '') + req;
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>${css}</style></head><body>${body}</body></html>`;
+}
+
+// Варианты: моноширинный 12 pt (пробел шириной в символ), альбомный 10 pt с таблицей чисел вправо, две колонки
+// с колонтитулом обычного кегля и заголовком на всю ширину после колонок.
+const WILD_VARIANTS = {
+  'wild-mono': { html: { font: 'Liberation Mono', size: 12, filler: 4, items: true }, header: 0 },
+  'wild-landscape': { html: { font: 'DejaVu Sans', size: 10, filler: 25, items: true }, header: 10, landscape: true },
+  'wild-2col': { html: { font: 'Liberation Sans', size: 11, filler: 20, cols: true }, header: 11 },
+};
+
+async function wildPdf(browser, name) {
+  const v = WILD_VARIANTS[name];
+  const page = await browser.newPage();
+  try {
+    await page.setContent(wildHtml(v.html), { waitUntil: 'load' });
+    const hdr = v.header;
+    const tpl = (align, inner) =>
+      `<div style="font-family:'Liberation Sans';font-size:${hdr}pt;width:100%;text-align:${align};padding-right:15mm">${inner}</div>`;
+    return new Uint8Array(
+      await page.pdf({
+        format: 'A4',
+        landscape: !!v.landscape,
+        margin: { top: '25mm', bottom: '25mm', left: '20mm', right: '15mm' },
+        displayHeaderFooter: hdr > 0,
+        headerTemplate: hdr ? tpl('center', `ООО «${WILD.co1}» — Договор № 42/ЗП-2026`) : '<span></span>',
+        footerTemplate: hdr ? tpl('right', 'Страница <span class="pageNumber"></span> из <span class="totalPages"></span>') : '<span></span>',
+      }),
+    );
+  } finally {
+    await page.close();
+  }
+}
+
+/* ---------- повёрнутая страница ---------- */
+
+/**
+ * Страницы PDF «по-принтерному» (Д5 ревью WP10-A): MediaBox альбомный (ширина и высота меняются местами), /Rotate 270,
+ * содержимое повёрнуто матрицей cm так, что на экране страница выглядит как исходная книжная. Без учёта поворота текст
+ * страницы идёт сверху вниз и разметка отбросила бы его целиком. Инкрементальное обновление PDF Chromium (классическая
+ * таблица xref, объекты страниц без сжатия): новые объекты страниц, потоки «q cm» / «Q» и xref с /Prev.
+ * @param {Uint8Array} bytes
+ */
+export function rotatePdf(bytes) {
+  const src = Buffer.from(bytes).toString('latin1');
+  const prev = Number(/startxref\s+(\d+)\s+%%EOF\s*$/.exec(src)?.[1]);
+  const trailer = src.slice(src.lastIndexOf('trailer'));
+  const size = Number(/\/Size (\d+)/.exec(trailer)?.[1]);
+  const rootRef = /\/Root (\d+ \d+ R)/.exec(trailer)?.[1];
+  const infoRef = /\/Info (\d+ \d+ R)/.exec(trailer)?.[1];
+  if (!prev || !size || !rootRef) throw new Error('rotatePdf: не классическая таблица xref');
+  const pages = [...src.matchAll(/(\d+) 0 obj\s*(<<\s*\/Type \/Page\b[\s\S]*?)endobj/g)];
+  if (!pages.length) throw new Error('rotatePdf: нет объектов страниц');
+  let out = '';
+  let next = size;
+  const offsets = [];
+  const add = (num, body) => {
+    offsets.push([num, src.length + Buffer.byteLength(out, 'latin1')]);
+    out += `${num} 0 obj\n${body}\nendobj\n`;
+  };
+  for (const [, num, dict] of pages) {
+    const box = /\/MediaBox \[\s*([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)\s*\]/.exec(dict);
+    const contents = /\/Contents (\d+ \d+ R|\[[^\]]*\])/.exec(dict);
+    if (!box || !contents || /\/Rotate/.test(dict)) throw new Error('rotatePdf: неожиданный объект страницы');
+    const [w, h] = [Number(box[3]) - Number(box[1]), Number(box[4]) - Number(box[2])];
+    const pre = `q 0 -1 1 0 0 ${w} cm\n`;
+    const post = '\nQ\n';
+    const preNum = next++;
+    const postNum = next++;
+    add(preNum, `<< /Length ${pre.length} >>\nstream\n${pre}\nendstream`);
+    add(postNum, `<< /Length ${post.length} >>\nstream\n${post}\nendstream`);
+    const inner = contents[1].startsWith('[') ? contents[1].slice(1, -1).trim() : contents[1];
+    const page = dict
+      .replace(box[0], `/MediaBox [0 0 ${h} ${w}]`)
+      .replace(/\/CropBox \[[^\]]*\]\s*/, '')
+      .replace(contents[0], `/Contents [${preNum} 0 R ${inner} ${postNum} 0 R] /Rotate 270`);
+    add(Number(num), page.trimEnd());
+  }
+  const xrefAt = src.length + Buffer.byteLength(out, 'latin1');
+  out += 'xref\n0 1\n0000000000 65535 f \n';
+  for (const [num, off] of offsets.sort((a, b) => a[0] - b[0])) out += `${num} 1\n${String(off).padStart(10, '0')} 00000 n \n`;
+  out += `trailer\n<< /Size ${next} /Root ${rootRef}${infoRef ? ` /Info ${infoRef}` : ''} /Prev ${prev} >>\nstartxref\n${xrefAt}\n%%EOF\n`;
+  return new Uint8Array(Buffer.concat([Buffer.from(bytes), Buffer.from(out, 'latin1')]));
+}
+
 /* ---------- LibreOffice ---------- */
 
 export const SOFFICE = process.env.SOFFICE || (existsSync('/snap/bin/libreoffice') ? '/snap/bin/libreoffice' : 'soffice');
@@ -396,6 +548,14 @@ export async function buildPdfFixtures(o = {}) {
     const png = await scanPng(browser).catch(() => scanPng(browser));
     const img = `<img src="data:image/png;base64,${Buffer.from(png).toString('base64')}" style="width:170mm">`;
     if (want('scan')) out.push({ name: 'scan', bytes: await htmlToPdf(browser, htmlPage(img), null), kind: 'scan' });
+    for (const name of Object.keys(WILD_VARIANTS)) {
+      if (want(name)) out.push({ name, bytes: await wildPdf(browser, name), gold: WILD_GOLD, kind: 'text' });
+    }
+    if (want('rotated')) {
+      const ip = docs.find((d) => d.name === 'ip-contract');
+      const html = htmlPage(documentToHtml(documentXml(ip.bytes)));
+      out.push({ name: 'rotated', bytes: rotatePdf(await htmlToPdf(browser, html, SPEC['ip-contract'].header)), gold: ip.gold, kind: 'text' });
+    }
     if (want('mixed')) {
       const ip = docs.find((d) => d.name === 'ip-contract');
       const html = htmlPage(`${documentToHtml(documentXml(ip.bytes))}<span class="pb"></span>${img}`);
@@ -406,10 +566,11 @@ export async function buildPdfFixtures(o = {}) {
   }
   if (want('empty')) out.push({ name: 'empty', bytes: emptyPdf(), kind: 'empty' });
   if (useLo) {
-    for (const n of ['ip-contract', 'two-companies']) {
-      if (!want(`${n}.lo`)) continue;
-      const d = docs.find((x) => x.name === n);
-      out.push({ name: `${n}.lo`, bytes: libreOfficePdf(n, d.bytes), gold: d.gold, kind: 'text' });
+    // ip-contract, two-companies; structures (надпись, мягкий перенос в ИНН) и sample-contract (колонтитулы
+    // обычного кегля на одной странице, сноски) — ревью WP10-A (Д1, Д4, Д8)
+    for (const s of [...docs, { name: 'sample-contract', bytes: sample.bytes, gold: sampleGold }]) {
+      if (!['ip-contract', 'two-companies', 'structures', 'sample-contract'].includes(s.name) || !want(`${s.name}.lo`)) continue;
+      out.push({ name: `${s.name}.lo`, bytes: libreOfficePdf(s.name, s.bytes), gold: s.gold, kind: 'text' });
     }
     if (want('encrypted')) {
       const d = docs.find((x) => x.name === 'ip-contract');

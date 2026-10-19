@@ -132,24 +132,35 @@ popup / content / options / restore ──port "docx"──► background (route
 `placeholder` — полная форма (`ООО «[КОМПАНИЯ_1]»`), `original` — `ООО «Ромашка»`. Записи отсортированы по каталогу и номеру.
 `mergeMappings([...])` — склейка маппингов файлов одной отправки. **Маппинг никогда не пишется в `chrome.storage`** (FR-29).
 
-### 1.5. `deanonymize(text, mapping, {decline = false} = {}) → {text, unresolved[], replaced, declined[]}`
+### 1.5. `deanonymize(text, mapping, {decline = false, strict = false} = {}) → {text, unresolved[], replaced, declined[], tokens[]}`
 
 Понимает `[ФИО_1]`, `ФИО_1`, `ФИО 1`, `ФИО-1`, любой регистр, Markdown-обёртки; `ООО «[КОМПАНИЯ_1]»` → `ООО «Ромашка»`.
+`strict: true` (0.3, для файлов — FR-36а): без скобок принимается только точный текст метки из карты (`ФИО_1`, `ДАТА_РОЖД_1`; регистр и `_` как в карте),
+`Счет 1`, `договор-1`, `Person 1` — нет; формы в скобках (`[счет 1]`, `[ ФИО_1 ]`, `**[ФИО_1]**`) — как без `strict`. По умолчанию (текст, FR-36) — либерально.
+`tokens[]` — метки карты (`[ПАСПОРТ_1]`), найденные и восстановленные, без повторов (для предупреждений страницы восстановления).
 Записи режимов `mask`/`delete` не восстанавливаются. `unresolved` — оставшиеся `[X_n]` (позиции в результирующем тексте).
 `decline: true` (FR-37, редакция 0.2) — PERSON в форме `[X_n]` склоняется по контексту (`core/deanon-morph.js`: приклеенное окончание → предлог → сочинение, иначе именительный);
+предлог ищется в окне до 6 слов и 64 символов (`PREP_WINDOW_CHARS`, общий для `prepositionCase` и `wordAlignedBefore`), между предлогом и меткой — только мостики `BRIDGE`:
+обращения/роли и основы должностей из `POSITION_RE_SRC` («в лице заместителя генерального директора [ФИО_1]» → `gen`; «в лице представителя по доверенности [ФИО_1]» → `nom`);
 `declined[] = {start, end, case: 'nom'|'gen'|'dat'|'acc'|'ins'|'prep', original, text}` — позиции в результирующем тексте, `original` — значение из карты.
 При `decline: false` результат побайтно прежний, `declined` пуст. Карта замен не меняется: лемма и род выводятся из `value`/`variants`.
 
 Под капотом (0.3, WP10-B) — два шага в координатах **входного** текста:
-- `deanonymizeSpans(text, mapping, {decline}) → [{start, end, newText, declined?: {case, original}}]` — распознанные метки, отсортированы, без пересечений;
+- `deanonymizeSpans(text, mapping, {decline, strict, used}) → [{start, end, newText, declined?: {case, original}}]` — распознанные метки, отсортированы, без пересечений;
+  `used` — необязательный `Set`, в него добавляются токены карты найденных меток;
   `end` включает поглощённое приклеенное окончание (`[ФИО_1]у`); контекст склонения (предлог, сочинение) — по входу, как и раньше;
 - `findUnresolved(text, spans) → [{text, start, end}]` — метки `[X_n]` вне спанов (координаты входа).
 `deanonymize` = склейка по спанам; его `unresolved` по-прежнему считается по результату. Фикстуры `deanon.json` (30) и `deanon-decline.json` проходят без изменений.
 
 ### 1.6. `restoreDocx(bytes, mapping, {decline = false} = {})` (`core/restore-doc.js`, FR-36а)
 
-Восстановление файла от ИИ: `parseDocx` → `deanonymizeSpans` по **всем** потокам (`live/deleted/field/attr/meta`) → `serializeDocx(doc, edits, {keepMetadata: true, stripEmbedded: false})`.
-Возвращает `{bytes, replaced, unresolved: [{text, streamId, part}], declined: [{streamId, part, start, end, case, original, text}], skipped: [{streamId, part, reason: 'container'}], changedParts}`.
+Восстановление файла от ИИ: `parseDocx` → `deanonymizeSpans(…, {strict: true})` по **всем** потокам (`live/deleted/field/attr/meta`) → `serializeDocx(doc, edits, {keepMetadata: true, stripEmbedded: false})`.
+Возвращает `{bytes, replaced, unresolved: [{text, streamId, part}], declined: [{streamId, part, start, end, case, original, text}], skipped: [{streamId, part, reason: 'container'}], changedParts, tokens}`.
+- Распознавание строгое (`strict: true`, §1.5): «Счет 1», «Договор 1 от 01.01» из текста документа не заменяются; `ФИО_1` и формы в скобках — заменяются.
+- `tokens` — метки карты, найденные в документе. Страница по ним строит предупреждения `mixedValueWarnings(mapping, tokens)` (`ui/deanon/index.js`):
+  запись не PERSON/COMPANY, у которой в `variants` есть значения, отличные от `value`/`original` после нормализации (регистр, «ё», пробелы и знаки) —
+  «метка {token}: в документе были и другие значения ({n})». Известный случай — паспорт (с 0.2): `[ПАСПОРТ_1]` = серия и номер, `variants` = орган выдачи и код подразделения;
+  при восстановлении все три места получают серию и номер.
 - Форматирование: правка идёт через раны §6.3 — значение пишется в первый ран плейсхолдера, остальные `w:t` пустеют (`xml:space="preserve"`), `rPr` не трогаются; нетронутые части ZIP (в т.ч. `word/vbaProject.bin`) — исходные сжатые байты.
 - `rel-target` вида `https://anonymized.invalid/<метка>` (в т.ч. в %-кодировке), где хвост — ровно одна известная метка, заменяется целиком исходным URL (обратное FR-13); иначе — общий путь (`mailto:[EMAIL_1]` → `mailto:…`).
 - Склонение (`decline: true`) — только в `live`/`deleted`; атрибуты, поля, связи и метаданные получают значение из карты как есть. Координаты `declined` — в тексте потока до восстановления.
@@ -221,6 +232,11 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 - `bundledModelSha` (string, по умолчанию `''`; иначе hex64; 0.3, WP10-C) — sha256 встроенного пакета модели, который этот профиль уже обработал (поставил или
   нашёл стоящим). Пишет только background по ответу `MODEL_INSTALLED` (§6.8); удаление модели пользователем поле **не трогает** — поэтому модель сама не
   возвращается. **Не экспортируется** (`NOT_EXPORTED`), миграции нет: `migrateSettings` дополняет ключ дефолтом.
+- `bundledModelError` (string, по умолчанию `''`; иначе код `/^[A-Z_]{1,40}$/`; 0.3, WP10-C) — код последней неудачной автоустановки встроенного пакета
+  (`MODEL_INSTALLED failed`, `ERROR` хоста, `HOST_UNAVAILABLE`). Пишет только background (§6.8): код — при неудаче, `''` — в начале новой попытки и при
+  `installed|present`; страница настроек стирает его сама перед «Повторить». **Не экспортируется** (`NOT_EXPORTED`).
+- «Сбросить настройки» (`config-reset`) сохраняет `KEPT_ON_RESET` = `nerModel`, `bundledModelSha`, `bundledModelError` (`options/config-io.js`): это состояние
+  браузера (установленная модель и её автоустановка), а не настройки; без этого полная сборка после сброса висела бы в «устанавливается…» без попытки установки.
 - Хранилище — **только** через `src/shared/settings-store.js`: `loadSettings()`, `saveSettingsPatch(patch) → {settings, rejected}`, `onSettingsChanged(cb)`.
 - Сайты: `matchOrigin`, `isOriginAllowed`, `isInterceptActive(settings, origin)` (FR-07, FR-35).
 
@@ -258,7 +274,9 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
   Хост склоняет ФИО **только при `decline === true`** (иначе результат прежний, `declined: []`). С 0.3 страница восстановления `DEANON` не шлёт:
   карту сессии она получает через `GET_MAPPING`, карту из `.mapping.json` разбирает сама и в обоих случаях вызывает ядро (`restoreText`/`restoreDocx`) с `decline` из флажка (по умолчанию вкл.).
 - `GET_MAPPING {docId}` → `MAPPING {docId, mapping}` (0.3, WP10-B, FR-36а): карта последнего применения сессии (`session.lastMapping`) для восстановления на странице;
-  до `APPLY` — `ERROR INTERNAL` «Маппинг не найден: сначала примените замены», неизвестный `docId` — `ERROR INTERNAL`. Настроек не требует. Страница «Восстановить» берёт карту так
+  до `APPLY` — `ERROR INTERNAL` «Маппинг не найден: сначала примените замены» с `reason: 'NO_MAPPING'`, неизвестный `docId` — `ERROR INTERNAL` с `reason: 'NO_SESSION'`
+  (так же `DEANON` и все запросы с `docId`; `ERROR.reason` — необязательное поле, `ERROR_REASONS` в `shared/protocol.js`, переносится в `ProtocolError.reason`). Страница различает
+  случаи по `reason`, а не по тексту: `session_missing` / `session_gone`. Настроек не требует. Страница «Восстановить» берёт карту так
   и для текста, и для файла, замену делает ядром у себя (`restoreText`/`restoreDocx`); `?docId=` в адресе страницы предвыбирает сессию (неизвестный — самая свежая).
 - Сущность в `ENTITIES`: `{id, category, value, normalized, placeholder, replacement?, level, source, validated, enabled, occurrences[{id, part, pid, streamId, stream, start, end, text, context, variantOf?}]}`.
 - Повторная загрузка того же файла (SHA-256) в одной сессии браузера → `restoredDecisions: true` и прежние решения (§3.6).
@@ -395,20 +413,22 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
 Импорт: `f.size > MAX_PACK_BYTES` → `TOO_LARGE` без чтения файла → `inspectPack` → не проверен → `confirmDialog` → `install` → прочие пакеты удаляются (одна модель) → `save({nerModel: id})` → `MODEL_CHANGED`.
 Удаление: подтверждение → `remove` всех установленных → `save({nerModel: ''})` → `MODEL_CHANGED`. Сбой установки, оставивший `nerModel` без файлов, сбрасывает `nerModel`.
 
-Состояния карточки (0.3, WP10-C; `ner-status[data-state]` = `loading | installed | installing | none`), `BUNDLED` — define `__BUNDLED_MODEL__` (§6.8):
+Состояния карточки (0.3, WP10-C; `ner-status[data-state]` = `loading | installed | installing | failed | none`), `BUNDLED` — define `__BUNDLED_MODEL__` (§6.8):
 
 | Условие | Карточка |
 |---|---|
 | активная модель (`listInstalled` содержит `nerModel`) | «Установлена модель … · проверенный пакет», `ner-remove`; онбординга нет |
-| `BUNDLED`, `!nerModel`, `bundledModelSha !== BUNDLED.sha256` | `ner_bundled_installing` «Встроенная модель устанавливается…», `data-state="installing"`, `ner-import` отключён |
+| `BUNDLED`, `!nerModel`, `bundledModelError` не пуст — или ожидание («устанавливается…», «устанавливается заново…») дольше `BUNDLED_WAIT_MS` = 60 с с открытия страницы / нажатия кнопки (код `TIMEOUT`) | `ner_bundled_failed` «Не удалось установить встроенную модель ({code})», `data-state="failed"`, `ner-import` включён, кнопка `ner-retry` «Повторить» → стирает `bundledModelError`, `MODEL_BOOTSTRAP` (force); `ner-restore` скрыта; флаг «восстанавливается» сбрасывается |
+| `BUNDLED`, `!nerModel`, `bundledModelSha !== BUNDLED.sha256`, ошибки нет | `ner_bundled_installing` «Встроенная модель устанавливается…», `data-state="installing"`, `ner-import` отключён |
 | `BUNDLED`, `!nerModel`, `bundledModelSha === BUNDLED.sha256` (модель удалили) | `ner_not_installed` + кнопка `ner-restore` «Восстановить встроенную модель» → `MODEL_BOOTSTRAP`, статус `ner_bundled_restoring` до смены настроек |
 | `!BUNDLED`, нет активной | блок `ner-onboarding`: `<ol class="steps">` — `ner_step_1` + `ner-releases-link`, `ner_step_2` + `ner-import`, `ner_step_3` |
 
 Ссылка `ner-releases-link` и кнопка `ner-import` — одни и те же элементы (testid не дублируются): в онбординге они переезжают в шаги. Карточка строится
 динамически, поэтому после первой отрисовки страница прокручивается к `location.hash` (`options.html#ner` из popup). Popup: строка `ner-hint` между первой
-карточкой и «Недавними» — скрыта при `nerModel`; при `BUNDLED && bundledModelSha !== sha` — `nerInstalling` без ссылки, иначе `nerHint` со ссылкой
-(`chrome.tabs.create({url: getURL('options/options.html#ner')})` — `openOptionsPage()` якорь не принимает). Панель: при `!nerModel && !bundledModelSha`
-(`content/flow.js` → `new Panel({nerHint})`) — `.note[data-testid="ner-hint"]` с крестиком `ner-hint-close`; закрытие запоминается до перезагрузки страницы.
+карточкой и «Недавними» — скрыта при `nerModel`; при `BUNDLED && bundledModelSha !== sha && !bundledModelError` — `nerInstalling` без ссылки (`data-state="installing"`),
+иначе `nerHint` со ссылкой (`data-state="failed"` при `bundledModelError`, иначе `none`;
+`chrome.tabs.create({url: getURL('options/options.html#ner')})` — `openOptionsPage()` якорь не принимает). Панель: только лёгкая сборка — `!BUNDLED && !nerModel`
+(`content/flow.js` читает тот же define `__BUNDLED_MODEL__`: `common.define` в `scripts/build.mjs` применяется ко всем entry, включая content script; → `new Panel({nerHint})`) — `.note[data-testid="ner-hint"]` с крестиком `ner-hint-close`; закрытие запоминается до перезагрузки страницы.
 
 ### 6.4. Хост и воркер
 
@@ -428,7 +448,11 @@ OPFS (`navigator.storage.getDirectory()`), работает в окне и в de
 - Размеры `offscreen/worker.js`: до WP8 (IIFE) 225 443 байт; после WP8 329 403 байт, из них ORT ≈ 102 400 (+ словари WP7: 719 209 байт на момент сдачи WP8, без ORT ≈ 616 400).
   После WP9 (провайдер, токенизатор, BIO): 745 462 байт, из них ORT 102 795, без ORT 642 667 (≤ 700 КБ, К15).
   Финальное состояние 0.2.0 (`npm run build`, 15.10.2026): `worker.js` 757 433 байт, из них ORT 102 856, без ORT 654 577; `content.js` 110 262 байт (< 150 КБ, без словарей).
-  `tests/integration/pack.spec.js` проверяет «worker.js без ORT ≤ 700 КБ» (К15), считая ORT по секции бандла `// node_modules/onnxruntime-web/…`.
+  `tests/integration/pack.spec.js` проверял «worker.js без ORT ≤ 700 КБ» (К15), считая ORT по секции бандла `// node_modules/onnxruntime-web/…`.
+  **С 0.3 (ревью WP10-A) бюджет разделён:** словари ФИО (секции `// src/core/detect/names/dict/…`, генерируемые данные WP7) считаются отдельно от кода —
+  **код без ORT и словарей ≤ 400 КБ, словари ≤ 400 КБ**: общий запас «без ORT ≤ 700 КБ» был исчерпан (на 19.10.2026 — 541 байт), а растёт код.
+  Состояние 19.10.2026 (`node scripts/build.mjs`, с PDF и доработкой WP10-A по ревью): `worker.js` 819 125 байт = ORT 102 856 + словари 365 494 + код 350 775
+  (запас кода ≈ 58,8 КБ, словарей ≈ 34,5 КБ). Бэклог — словари в `vendor/dict/*.txt` с ленивой загрузкой через `package-fetch.js` (`docs/tasks.md`).
 - Архив релиза (`npm run pack`, 0.2.0): 4 244 595 байт (4,0 МБ), 27 файлов; wasm 14 239 897 байт (13,6 МБ) сжимается в архиве до 3 824 625 байт. Модели в архиве нет.
 
 ### 6.6. Спайки S1–S3 (Chromium из Playwright 1.63, headless new, `dist-e2e`)
@@ -584,27 +608,31 @@ eval-ru абзацами по 5 предложений: PER ≥ 0.80, ORG ≥ 0.
 | `foreign` | `nerModel` не пуст и `≠ bundled.id` | ничего: выбран свой пакет |
 | `install` | иначе (свежий профиль; новый sha при обновлении; `nerModel === id` без sha — ручной импорт того же zip) | `MODEL_INSTALL` |
 
-`settingsPatchFor(result, bundled, cur)`: `installed|present` → `cur.nerModel && cur.nerModel !== bundled.id ? {bundledModelSha} : {nerModel: bundled.id, bundledModelSha}`;
-`failed` → `null` (ничего не пишем: следующий запуск попробует снова). `force` (`MODEL_BOOTSTRAP`, кнопка «Восстановить встроенную модель») трактует `skip` как `install`.
+`settingsPatchFor(result, bundled, cur)`: `installed|present` → `cur.nerModel && cur.nerModel !== bundled.id ? {bundledModelSha, bundledModelError: ''} : {nerModel: bundled.id, bundledModelSha, bundledModelError: ''}`;
+`failed` → `{bundledModelError: errorCode(code)}` (код не по `/^[A-Z_]{1,40}$/` → `INTERNAL`; sha не отмечается — следующий запуск попробует снова); прочее → `null`.
+`force` (`MODEL_BOOTSTRAP`, кнопки «Восстановить встроенную модель» и «Повторить») трактует `skip` как `install`.
 
 **Поток сообщений.**
 
 1. `background/bundled-model.js` `initBundledModel()` (слушатели верхнего уровня): `onInstalled` → `migrateStoredSettings()` (перенесено из `index.js`, чтобы
    миграция не перетёрла патч модели) → при `reason ∈ {install, update}` `bootstrapBundledModel()`; `onStartup` → `bootstrapBundledModel()`; `runtime.onMessage` —
    ответы `{target: 'background', clientId: 'bootstrap', msg}` (router их игнорирует: порта с таким id нет). `chrome_update`/`shared_module_update` — без плана.
-2. `bootstrapBundledModel({force})`: повторные вызовы до отправки получают тот же промис; `install` → `ensureOffscreen()` →
+2. `bootstrapBundledModel({force})`: повторные вызовы до отправки получают тот же промис; `force` во время прогона без `force` не теряется — после него
+   запускается ещё один прогон с `force` (один на всех ждущих). `install` → непустой `bundledModelError` стирается → `ensureOffscreen()` →
    `runtime.sendMessage({target: 'offscreen', clientId: 'bootstrap', msg: {type: MODEL_INSTALL, requestId, url: getURL('models/<file>'), id, sha256, version, extensionVersion}})`
-   (одна повторная попытка, как router). Ответа промисом **не ждёт**: установка идёт секунды, service worker может уснуть и проснётся на сообщении `MODEL_INSTALLED`.
+   (одна повторная попытка, как router; не вышло — `bundledModelError: 'HOST_UNAVAILABLE'`). Ответа промисом **не ждёт**: установка идёт секунды, service worker может уснуть и проснётся на сообщении `MODEL_INSTALLED`.
 3. Хост (`offscreen/host.js`, `env.readPackageFile`, `env.modelStore`), установки строго по очереди: `listInstalled()` содержит `{id, packSha256 === sha256}` →
    `MODEL_INSTALLED {status: 'present'}` без чтения файла; иначе `readPackageFile(url)` → `inspectPack` → требуется `verified === true` (`UNVERIFIED`), тот же
    `packSha256` и `manifest.id` (`MISMATCH`) → `install(bytes, {verified: true, extensionVersion})` **без удаления чужих пакетов** → сброс кэша NER-провайдера (как
    `MODEL_CHANGED`) → `{status: 'installed', bytes, ms}`. `ModelStoreError` → `{status: 'failed', code}`; прочее — `ERROR`.
 4. Background: `MODEL_INSTALLED` с тем же sha → `saveSettingsPatch(settingsPatchFor(...))` → страницы перерисовываются по `onSettingsChanged`;
-   `failed`/`ERROR` → `console.warn('[bundled-model] <code>')` (только код), настройки не меняются; `installed` → `console.info('[bundled-model] installed in <ms> ms')`.
-5. Router: клиентский `MODEL_BOOTSTRAP` → `bootstrapBundledModel({force: true})` и `ACK` сразу.
+   `failed`/`ERROR` → `console.warn('[bundled-model] <code>')` (только код) и `bundledModelError: <code>`; `installed` → `console.info('[bundled-model] installed in <ms> ms')`.
+5. Router: клиентский `MODEL_BOOTSTRAP` → `bootstrapBundledModel({force: true})` и `ACK` сразу; клиентские `MODEL_INSTALL`/`MODEL_INSTALLED` → `ERROR INTERNAL`,
+   в offscreen не уходят (установку из пакета запрашивает только background).
 
 **`offscreen/package-fetch.js`** — `readPackageFile(url) → Uint8Array`, **единственный `fetch` в `src/`**: адрес обязан быть `chrome-extension://` с тем же хостом,
-что `self.location` воркера, иначе `ModelStoreError('IO')` до вызова `fetch`; `!ok` → `IO` «Файл пакета расширения не найден». Override ESLint — блок
+что `self.location` воркера, путь — строго `/models/<имя>.zip` (`^/models/[A-Za-z0-9][A-Za-z0-9._-]*\.zip$`); в исходной строке запрещены `..`, `%2e`, `%2f`,
+`%5c`, `\`; непустые `username`/`password`, порт, query, fragment, схемы `blob:`/`data:`/http(s) — отказ. Иначе `ModelStoreError('IO')` до вызова `fetch`; `!ok` → `IO` «Файл пакета расширения не найден». Override ESLint — блок
 `{files: ['src/offscreen/package-fetch.js']}` с `no-restricted-globals` без `fetch` (XHR, WebSocket, EventSource по-прежнему запрещены); сторож — `tests/unit/bundled-model.spec.js`
 (`\bfetch\(` в `src/**/*.js` ровно в этом файле, override ровно на него). CSP `connect-src 'self'` дублирует ограничение в браузере.
 
@@ -614,8 +642,15 @@ eval-ru абзацами по 5 предложений: PER ≥ 0.80, ORG ≥ 0.
 
 **Замеры** (e2e `tests/e2e/bundled-model.spec.js`, Chromium из Playwright 1.63, headless; полная e2e-сборка): `nerModel` выставлен через ≈ 1,2 с после старта
 теста (норма К15 ≤ 30 с), `MODEL_INSTALLED.ms` 804 мс (zip 28,2 МБ → 5 файлов пакета, 31,4 МБ в OPFS), восстановление кнопкой — 1,1 с по `ms`, ≈ 2,4 с до смены
-настроек; повторный `MODEL_BOOTSTRAP` при том же sha файлы не переписывает (`installedAt` прежний); http(s)-запросов ноль, CDP-захват содержит
-`chrome-extension://<id>/models/<file>`. Архивы (`npm run pack`, 19.10.2026, версия 0.2.0 в package.json, с pdf.js WP10-A): лёгкий 6 425 890 байт, sha256 `470c208a…ee41876`; полный 35 944 655 байт, sha256 `5ff52c32…a035873b`.
+настроек; повторный `MODEL_BOOTSTRAP` при том же sha файлы не переписывает (`installedAt` прежний); http(s)-запросов ноль, снимок CDP-захвата сразу после
+появления `nerModel` содержит `chrome-extension://<id>/models/<file>`. Архивы (`npm run pack`, версия 0.2.0 в package.json, с pdf.js WP10-A): лёгкий ≈ 6,1 МБ,
+полный ≈ 34 МБ; точные байты и sha256 печатает `npm run pack` (здесь не фиксируются — меняются с каждым изменением кода).
+
+**Окно до подключения записи сети (К17).** Фикстура запускает Chromium с уже загруженным расширением; `onInstalled` срабатывает сразу, и offscreen-документ
+(`offscreen.html/js`, `worker.js`, `vendor/*.wasm`) может загрузиться до того, как `captureAllRequests` подключится к CDP (≈ 30 мс от начала теста, после фикстур
+`context` и `extensionId`) — эти запросы запись не видит. Чтение zip модели идёт позже (после старта воркера и разбора `MODEL_INSTALL`) и в снимок попадает;
+http(s) в окне исключён и без записи: CSP `connect-src 'self'`, `readPackageFile` принимает только `chrome-extension://<свой id>/models/*.zip`, в `src/`
+нет других сетевых API (ESLint). Сценарий с испорченным zip (копия сборки, `test.use({extensionDir})`) проверяет экран «не удалось / повторить».
 
 ---
 
@@ -633,8 +668,12 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
   импортирует pdf.js, не знает `chrome.*` и не делает сетевых запросов. `getDocument({...BASE_DOC_OPTIONS, ...docOptions, data: bytes.slice(), password?, verbosity: ERRORS})`,
   `BASE_DOC_OPTIONS = {disableFontFace, useSystemFonts: false, useWasm: false, stopAtErrors: false, isOffscreenCanvasSupported: false, isImageDecoderSupported: false,
   enableXfa: false, disableRange, disableStream, disableAutoFetch, fontExtraProperties: true}`; копия байтов — pdf.js передаёт буфер в свой воркер.
-- По страницам: `getTextContent({includeMarkedContent: false})` → `PageItems {page, width, height, items[{str, transform (координаты страницы, начало — view), width,
-  height, fontName, hasEOL}], fonts}`. Жирность — по имени шрифта (`…-Bold`, `Black`, `Semibold`…): имя приходит в `page.commonObjs` только после
+- По страницам: `getTextContent({includeMarkedContent: false})` → `PageItems {page, width, height, items[{str, transform (координаты видимой страницы, y вверх), width,
+  height, fontName, hasEOL}], fonts}`. Координаты — через матрицу `page.getViewport({scale: 1}).transform` (`pageSpace(page)`: учитывает `/Rotate` и начало
+  view; размеры — видимой страницы), затем `orientPage` (§7.2) поворачивает страницу к преобладающей ориентации текста — альбомный лист «по-принтерному»
+  (`/Rotate` + матрица `cm`) и текст сверху вниз не теряются. «Страница без текста» (< `MIN_LETTERS`) считается по буквам элементов, которые разметка возьмёт
+  (`isUpright`), — страница из одних диагональных водяных знаков даёт `PDF_NO_TEXT`/`PDF_PAGES_NO_TEXT`, а не пустой результат. Жирность и моноширинность — по
+  шрифту (`…-Bold`, `Black`, `Semibold`…; `isMonospace` или имя `Mono`/`Courier`/`Consolas`): имя приходит в `page.commonObjs` только после
   `getOperatorList()` и с `fontExtraProperties: true`; вызывается только для страниц с текстом, сбой не ошибка. После страницы — `page.cleanup()`, в конце — `loadingTask.destroy()`.
 - Коды (`CoreError`, текст без содержимого документа): `PasswordException` → `PDF_ENCRYPTED {reason: NEED_PASSWORD|INCORRECT_PASSWORD}`; `InvalidPDFException`,
   `FormatError`, `UnknownErrorException`, `MissingPDFException` → `PDF_INVALID`; прочее → `INTERNAL`; `numPages === 0` → `PDF_EMPTY`; `> maxPages` →
@@ -647,7 +686,7 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
   один на жизнь offscreen; `docOptions = {worker, useWorkerFetch: true, cMapUrl, cMapPacked: true, standardFontDataUrl}` — пути от `import.meta.url`
   (`chrome.runtime.getURL` в воркере нет). Порт задаётся явно: без него `PDFWorker` читает `window.location` (в воркере его нет) и уходит в «fake worker»,
   который импортирует `pdf.worker.mjs` в наш воркер и вешает обработчик на его `self`.
-- Сборка: pdf.js **не бандлится** (бюджет `worker.js` без ORT ≤ 700 КБ, К15) — `scripts/build.mjs` копирует `node_modules/pdfjs-dist/legacy/build/pdf.min.mjs` →
+- Сборка: pdf.js **не бандлится** (бюджет кода `worker.js`, К15, §6.5) — `scripts/build.mjs` копирует `node_modules/pdfjs-dist/legacy/build/pdf.min.mjs` →
   `vendor/pdfjs/pdf.mjs`, `pdf.worker.min.mjs` → `vendor/pdfjs/pdf.worker.mjs`, `cmaps/` (169 `.bcmap`), `standard_fonts/` (16 файлов), `LICENSE` (Apache 2.0);
   `package.json` pdf.js не копируется. **Legacy-сборка**, а не современная: современная `build/pdf*.mjs` 6.4 использует `Map.prototype.getOrInsertComputed` и
   `Math.sumPrecise` (есть только в самых новых Chrome), legacy заполняет их и `Response.prototype.bytes` (core-js). Тот же legacy-модуль — в Node-тестах
@@ -660,15 +699,16 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
 
 | Шаг | Правило |
 |---|---|
-| `normalizeItems` | пробельные элементы pdf.js не выдаются, а помечают соседей (`spAfter`/`spBefore`); NBSP → пробел; управляющие символы удаляются; повёрнутый текст (водяные знаки) отбрасывается; y — сверху страницы |
+| `orientPage` | ориентация элемента (`orientationOf`: 0/90/180/270 или наклон); если по числу букв преобладает не 0 — все элементы поворачиваются вместе со страницей (при 90/270 ширина и высота меняются местами), иначе страница как есть |
+| `normalizeItems` | пробельные элементы pdf.js не выдаются, а помечают соседей (`spAfter`/`spBefore`); NBSP → пробел; управляющие символы удаляются; не `isUpright` (наклон, вверх ногами, зеркало — водяные знаки) отбрасывается; y — сверху страницы; флаги `bold`, `mono` — по шрифту |
 | `groupLines` | базовые линии ближе `0.35·size` — одна строка; надстрочный знак мельче `0.8·size` (сноска) в пределах `−0.65…+0.35·size` — часть строки |
-| `findGutters` + `joinWords` | зазор > `0.15·size` или явный пробел pdf.js — пробел; зазор > `2·size` или `hasEOL` непустого элемента — новый сегмент; зазор > `0.4·size` — сегмент, если в непрерывном участке строк, не пересекающих этот x текстом, ещё ≥ 2 строки начинают элемент у того же x (±0.3·size): так ячейки таблиц LibreOffice (поле ≈ 0.47·size) отделяются, а растянутые пробелы выровненного текста (до ≈ 0.85·size) — нет; двойная отрисовка (имитация жирного) — один раз |
-| `stripRepeating` | строки верхних/нижних 8 % страницы: номера страниц (`3`, `- 3 -`, `Страница 2 из 4`, `Page 2 of 4`, `2 из 4`) удаляются; текст (цифры → `#`), повторяющийся в той же полосе на ≥ 3 страницах или ≥ 50 % (не меньше двух), и одиночная крайняя строка кеглем ≤ 0.85 основного — колонтитул (`header`/`footer`, по одному на текст) |
-| `detectColumns` | участок строк, все сегменты которых лежат в половинах, ≥ 3 строки в каждой, ≥ 50 % строк каждой колонки заполняют ≥ 75 % её ширины (проза, а не ячейки); участок обрывается, где обе половины строки начинаются не там, где колонки; читается слева направо |
-| `detectTables` | ≥ 3 строки из ≥ 2 сегментов с общими x-началами (±0.5·size), одиночные строки внутри — продолжение ячейки (у начала колонки, не шире её, обычным шагом); ячейки колонки сливаются, если предыдущая строка дошла до правого края ячейки (начало следующей колонки − 2 поля, поле — отступ текста таблицы от края текста страницы; у последней колонки — ширина предыдущей, но не меньше её самой длинной строки) или кончилась дефисом; строки таблицы — по y начала ячеек, пустые ячейки дополняются |
+| `findGutters` + `joinWords` | зазор > `0.15·size` или явный пробел pdf.js — пробел; зазор > `2·size` или `hasEOL` непустого элемента — новый сегмент; зазор > `0.4·size` — сегмент, если в непрерывном участке строк, не пересекающих этот x текстом, ещё ≥ 2 строки начинают элемент у того же x (±0.3·size): так ячейки таблиц LibreOffice (поле ≈ 0.47·size) отделяются, а растянутые пробелы выровненного текста (до ≈ 0.85·size) — нет; в моноширинной строке (`monoCharWidth`: шрифт с моноширинным именем у большинства прогонов или ≥ 4 прогонов с одной шириной символа ≥ 0.55·size) порог просвета — не меньше 1.5 ширины символа: пробел (0.6·size) не режет «БИК 044525901»; двойная отрисовка (имитация жирного) — один раз |
+| `stripRepeating` | строки верхних/нижних 8 % страницы: номера страниц (`3`, `- 3 -`, `Страница 2 из 4`, `Page 2 of 4`, `2 из 4`) удаляются; текст (цифры → `#`), повторяющийся в той же полосе на ≥ 3 страницах или ≥ 50 % (не меньше двух), и одиночная крайняя строка кеглем ≤ 0.85 основного — колонтитул (`header`/`footer`, по одному на текст); крайняя строка полосы обычного кегля без жирного, отделённая от соседней строки шагом > `HEADER_GAP` (1.5) обычного, — тоже, и на одностраничном документе (колонтитул LibreOffice 12 pt: шаг 1.54) |
+| `detectColumns` | участок строк, все сегменты которых лежат в половинах, ≥ 3 строки в каждой, ≥ 50 % строк каждой колонки заполняют ≥ 75 % её ширины (проза, а не ячейки); участок обрывается, где обе половины строки начинаются не там, где колонки, и на строке левой половины ниже последней строки правой колонки, набранной иначе (кегль ±15 % или жирная после промежутка) — заголовок на всю ширину после колонок; строка, пересекающая середину, в участок не входит; читается слева направо |
+| `detectTables` | ≥ 3 строки из ≥ 2 сегментов с общими x-началами (±0.5·size) — или общими правыми краями для сегментов вне колонок по началу (числа и суммы вправо; колонка по началу внутри такой — та же колонка), одиночные строки внутри — продолжение ячейки (у начала колонки, не шире её, обычным шагом); ячейки колонки сливаются, если предыдущая строка дошла до правого края ячейки (начало следующей колонки − 2 поля, поле — отступ текста таблицы от края текста страницы; у последней колонки — ширина предыдущей, но не меньше её самой длинной строки) или кончилась дефисом; не сливаются строки с общим правым краем и разным началом и суммы/количества (`AMOUNT_RE`); строки таблицы — по y начала ячеек, пустые ячейки дополняются |
 | `linePitch` | обычный шаг строк — наименьший частый шаг (кластер 1 pt, ≥ 2 и ≥ 10 % шагов), без частых — наименьший |
-| `mergeParagraphs` | новый абзац: шаг > `1.3` обычного, смена кегля > 15 %, жирный ↔ не жирный, отступ первой строки > `1.5·size`, строка по центру, маркер списка, «….» + нумерация «1.3. », первое слово следующей строки поместилось бы в предыдущую; другая страница/колонка — продолжение, если предыдущая строка дошла до края и не кончилась `.!?:;` (абзац склеивается, `hr` — после него) |
-| `dehyphenate` | `U+00AD` в конце — удалить; «слово-» + строчная → без дефиса (левая часть ≥ 3 букв, справа не частица `то/либо/нибудь/таки/ка/де/с/за/под/над/т`); заглавная, цифры, почта/URL (`@ / . : _`) — дефис остаётся без пробела; иначе — пробел |
+| `mergeParagraphs` | новый абзац: шаг > `1.3` обычного, смена кегля > 15 %, жирный ↔ не жирный, отступ первой строки > `1.5·size`, строка по центру, маркер списка, «….» + нумерация «1.3. », первое слово следующей строки поместилось бы в предыдущую; другая страница/колонка — продолжение, если предыдущая строка дошла до края и не кончилась `.!?:` (`;` — конец, только если дальше не строчная буква или нумерация) (абзац склеивается, `hr` — после него); узкий блок (`narrowBlocks`: ≥ 2 строки вне колонок с общим x0, отступом > 1.5·size и обычным шагом, самая длинная заметно короче края страницы — надпись LibreOffice) — край строки считается по max x1 блока, строки разных блоков не склеиваются |
+| `dehyphenate` | `U+00AD` и `U+2010` в конце — удалить всегда; «цифры-» + «цифры» → без дефиса, если по любую сторону группа ≥ 4 цифр (ИНН с мягким переносом), группы 2–3 цифр (телефон) — дефис остаётся; «слово-» + строчная → без дефиса (левая часть ≥ 3 букв или 2 буквы с заглавной, кроме «По-видимому», «Во-первых»; справа не частица `то/либо/нибудь/таки/ка/де/с/за/под/над/т`); заглавная справа, почта/URL (`@ / . : _`) — дефис остаётся без пробела; иначе — пробел |
 | `classifyHeading` | ≤ 30 слов: кегль ≥ 1.5× медианного — `h1`, ≥ 1.2× — `h2`; ≥ 90 % жирного и ≤ 12 слов (не на `,;`) — `h2` |
 | `detectList` | маркер `• ‒ – — ○ ▪ ■ ✓ - · ◦ ● ►` + пробел → `li` без маркера; нумерация («1.», «1.1.») — обычный абзац: kb.js ищет начало условий по `^\s*1\.` |
 
@@ -690,9 +730,10 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
   `isSupported(file, settings)` (PDF — если `pdfMode !== 'off'`), `hasSupported`; `createInterceptor(flow, {isSupported})` (по умолчанию — только DOCX);
   `flow.js` обрабатывает все поддерживаемые файлы (`procIdx`), имя результата — по исходному файлу (`makeResultName(name, suffix, {ext})`, расширение — из
   `res.name`), тип — `resultType(original, res.mime)` (для PDF — `text/markdown`/`text/plain`, для DOCX — MIME исходника); `mappingFileName('a.anon.md') → 'a.mapping.json'`.
-- Панель: для `ENTITIES.kind === 'pdf'` — заметка `pdfNote` (`data-testid="pdf-note"`), `PDF_PAGES_NO_TEXT` → `warnPdfPages {pages}`; отказы — прежний экран ошибки с
-  «Загрузить как есть» (`btn-asis`); «Анонимизировать» доступна и когда все файлы помечены «как есть» (уходят оригиналы). Тексты — `err.PDF_*`, `stage.pdf`
-  (`ui/i18n/common.js`). Настройки: select `pdf-mode` и подсказка `pdf-mode-hint` в «Обработке».
+- Панель: для `ENTITIES.kind === 'pdf'` — заметка `pdfNote {ext}` (`data-testid="pdf-note"`; `ext` — `.md`/`.txt` по `pdfMode`, передаёт `flow.js`),
+  `PDF_PAGES_NO_TEXT` → `warnPdfPages {pages}`; отказы — прежний экран ошибки с «Загрузить как есть» (`btn-asis`); кнопка `btn-anonymize` доступна и когда все файлы
+  помечены «как есть» (уходят оригиналы), подпись тогда — `btnUpload` («Загрузить»). `TOO_LARGE` с `details.pages` (лимит страниц PDF) → `err.TOO_LARGE_PAGES
+  {pages, limit}`, без — `err.TOO_LARGE {limit}` (МБ). Тексты — `err.PDF_*`, `stage.pdf` (`ui/i18n/common.js`). Настройки: select `pdf-mode` и подсказка `pdf-mode-hint` в «Обработке».
 
 ### 7.5. Фикстуры и тесты
 
@@ -700,7 +741,10 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
 таблицы и вложенные таблицы, `w:numPr` → пункты, надписи — отдельными абзацами, без удалённого текста, полей, сносок) → Chromium `page.pdf` (A4, поля 20/15 мм,
 колонтитул и «Страница N из M» шаблонами). `two-companies` — абзацы 1–3 в две колонки, `english-contract` — абзацы 2–3 пунктами списка, `perf-50p` — 48 страниц,
 ≈ 18 600 слов, `scan` — страница-картинка, `mixed` — `ip-contract` + страница-картинка, `empty` — `/Count 0`, LibreOffice (если есть): `ip-contract.lo`,
-`two-companies.lo`, `encrypted` (пароль). К каждому текстовому PDF — `.gold.json` и снимок `.txt` (Markdown после разметки); снимки переписываются только
+`two-companies.lo`, `structures.lo` (надпись, мягкий перенос в ИНН, исправления), `sample-contract.lo` (колонтитулы обычного кегля на одной странице, сноски),
+`encrypted` (пароль). По ревью WP10-A — «дикие» PDF из HTML (реквизиты `WILD_GOLD`): `wild-mono` (Liberation Mono 12 pt), `wild-landscape` (альбомная, DejaVu Sans
+10 pt, таблица с числами вправо), `wild-2col` (две колонки, колонтитул 11 pt обычным кеглем, заголовок на всю ширину после колонок); `rotated` — `ip-contract`
+с `/Rotate 270` и содержимым, повёрнутым матрицей `cm` (`rotatePdf`: инкрементальное обновление PDF Chromium). К каждому текстовому PDF — `.gold.json` и снимок `.txt` (Markdown после разметки); снимки переписываются только
 с `--update-snapshots`, `--snapshots-only` — пересчёт из записанных PDF после правки разметки. Байты PDF недетерминированы → `pdf-fixtures.spec.js` сравнивает
 извлечение со снимком (всегда) и регенерацию в памяти со снимком (если есть Chromium, `SKIP_PDF_REGEN=1` — пропустить).
 
@@ -716,3 +760,8 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
 Измерения (Node 22, AMD Ryzen 9 7945HX): `perf-50p` (48 стр., ≈ 18 600 слов) — извлечение + разметка ≈ 0,32 с, анализ без NER ≈ 0,11 с (гейт К6 8 с); в Chromium
 `analyzeFile` того же PDF — 0,36 с. К3 — паритет DOCX/PDF 100 % по всем категориям на 9 фикстурах (`pdf-pipeline.spec.js` печатает таблицу), К2 — 0 утечек gold
 детекторами без подсказок на 10 фикстурах.
+
+После ревью WP10-A (19.10.2026): 16 текстовых фикстур; К2 — 0 утечек целиком **и частично** (фамилия любого gold-ФИО целым словом; номера ≥ 9 цифр после
+удаления дефисов, знаков переноса и пробелов между цифрами — `partialLeaks` в `pdf-pipeline.spec.js`); К3 — паритет с DOCX ≥ 95 % на каждой фикстуре с DOCX-исходником
+(`structures.lo` 8/8, `sample-contract.lo` 28/29 — LibreOffice рисует удалённый текст исправления рядом с адресом почты), на «диких» — 17/17 gold. Порядок абзацев
+(К4) для `structures.lo` и `sample-contract.lo` не меряется: исправления и сноски LibreOffice в теле страницы не сопоставляются с живым текстом DOCX.

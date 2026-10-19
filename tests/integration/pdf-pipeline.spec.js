@@ -1,5 +1,6 @@
-// Конвейер PDF → .anon.md на фикстурах (версия 0.3): К2 (утечки), К3 (паритет с DOCX), К4 (порядок, колонтитулы,
-// таблица реквизитов), К6 (50 страниц ≤ 8 с), кросс-проверка слов с pdftotext (если установлен).
+// Конвейер PDF → .anon.md на фикстурах (версия 0.3): К2 (утечки — целиком и частично: фамилии gold-ФИО и номера,
+// разорванные дефисом или пробелом), К3 (паритет с DOCX; для «диких» PDF без DOCX — полнота по gold), К4 (порядок,
+// колонтитулы, таблица реквизитов), К6 (50 страниц ≤ 8 с), кросс-проверка слов с pdftotext (если установлен).
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -32,9 +33,17 @@ const SOURCES = {
   'sample-contract': 'sample-contract',
   'ip-contract.lo': 'ip-contract',
   'two-companies.lo': 'two-companies',
+  'structures.lo': 'structures',
+  'sample-contract.lo': 'sample-contract',
+  rotated: 'ip-contract',
   mixed: 'ip-contract',
 };
-const LEAK_FIXTURES = [...Object.keys(SOURCES), 'perf-50p'];
+// LibreOffice рисует исправления (удалённый и вставленный текст подряд) и сноски в теле страницы — абзацы PDF не
+// сопоставляются с живым текстом DOCX по вхождению, поэтому порядок (К4) для них не меряется; К2 и К3 — меряются.
+const NO_ORDER = new Set(['structures.lo', 'sample-contract.lo']);
+// «Дикие» PDF (ревью WP10-A): другой шрифт и кегль, альбом, колонки — без DOCX-исходника, К3 по gold
+const WILD = ['wild-mono', 'wild-landscape', 'wild-2col'];
+const LEAK_FIXTURES = [...Object.keys(SOURCES), 'perf-50p', ...WILD];
 const HEADERS =
   /Договор оказания услуг № 5\/ИП-2026$|— Договор транспортной экспедиции № 88$|— Services Agreement$|— Договор № 3$|— Договор № 12\/К$|— Договор поставки № 17\/ПС-2026$/;
 const PDFTOTEXT = spawnSync('pdftotext', ['-v']).status === 0;
@@ -78,7 +87,38 @@ beforeAll(() => {
   docx = Object.fromEntries([...buildFixtures().map((f) => [f.name, f.bytes]), ['sample-contract', buildSampleDocx().bytes]]);
 });
 
-describe('К2: в .anon.md нет ни одного gold-значения', () => {
+/**
+ * Частичные утечки: фамилия любого gold-ФИО целым словом (без учёта регистра) и номера из ≥ 9 цифр, в том числе
+ * разорванные в тексте дефисом, знаком переноса или пробелом («ИНН 7805-003215» — мягкий перенос LibreOffice).
+ * Фамилия — первое слово русского ФИО («Иванов Пётр Сергеевич», «Иванова П.С.»), последнее — латинского («John Smith»).
+ * @returns {string[]} ключи gold с утечкой
+ */
+function partialLeaks(goldList, text) {
+  const words = new Set(
+    (
+      text
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .match(/\p{L}+/gu) || []
+    ).filter((w) => w.length >= 3),
+  );
+  const digits = text.replace(/(?<=\d)[\s\-\u2010\u2011\u00AD]+(?=\d)/g, '');
+  const leaks = [];
+  for (const g of goldList) {
+    if (g.category === 'PERSON') {
+      const toks = g.value.split(/\s+/).filter((t) => /^\p{L}{3,}$/u.test(t));
+      const surname = /^\p{Script=Latin}/u.test(g.value) ? toks[toks.length - 1] : toks[0];
+      if (surname && words.has(surname.toLowerCase().replace(/ё/g, 'е'))) leaks.push(`${g.key}~${g.category}`);
+    }
+    const num = g.value.replace(/\D/g, '');
+    if (['INN', 'KPP', 'OGRN', 'OGRNIP', 'BIK', 'ACCOUNT', 'SNILS', 'PASSPORT'].includes(g.category) && num.length >= 9) {
+      if (new RegExp(`(?<!\\d)${num}(?!\\d)`).test(digits)) leaks.push(`${g.key}~${g.category}`);
+    }
+  }
+  return leaks;
+}
+
+describe('К2: в .anon.md нет ни одного gold-значения — ни целиком, ни частью', () => {
   for (const n of LEAK_FIXTURES) {
     it(`${n}: только детекторы`, async () => {
       const { text } = await pdfPipeline(n);
@@ -88,9 +128,20 @@ describe('К2: в .anon.md нет ни одного gold-значения', () =
           .filter((g) => out.includes(norm(g.value)))
           .map((g) => g.key),
       ).toEqual([]);
+      expect(partialLeaks(gold(n), text), 'частичные утечки').toEqual([]);
       expect(text).toMatch(/\[[A-ZА-ЯЁ_]+_\d+\]/u);
     }, 30000);
   }
+  it('проверка частичных утечек ловит фамилию и ИНН, разорванный дефисом', () => {
+    const g = [
+      { key: 'p', category: 'PERSON', value: 'Тихонов Борис Львович' },
+      { key: 'i', category: 'INN', value: '7805003215' },
+      { key: 'e', category: 'PERSON', value: 'John Smith' },
+    ];
+    expect(partialLeaks(g, 'директор [ФИО_1], ИНН [ИНН_1]; [PERSON_1]')).toEqual([]);
+    expect(partialLeaks(g, 'подписал ТИХОНОВ, ИНН 7805-003215, Mr. Smith')).toEqual(['p~PERSON', 'i~INN', 'e~PERSON']);
+    expect(partialLeaks(g, 'ИНН 7805 003215')).toEqual(['i~INN']);
+  });
   it('с gold как пользовательскими сущностями (конвейерная часть) — и в .txt', async () => {
     for (const n of ['ip-contract', 'structures', 'sample-contract']) {
       const { text } = await pdfPipeline(n, { injectGold: true, textFormat: 'txt' });
@@ -126,11 +177,27 @@ describe('К3: паритет с DOCX (детекторы без gold)', () => {
     const table = Object.fromEntries(Object.entries(byCat).map(([c, v]) => [c, { ...v, recall: +(v.pdf / v.docx).toFixed(3) }]));
     console.table(table);
   }, 60000);
+
+  it('«дикие» PDF без DOCX: ≥ 95 % gold-значений найдены детекторами', async () => {
+    const key = (s) =>
+      s
+        .toLowerCase()
+        .replace(/ё/g, 'е')
+        .replace(/[^\p{L}\p{N}]/gu, '');
+    for (const n of WILD) {
+      const { analysis } = await pdfPipeline(n);
+      const found = new Set(analysis.groups.flatMap((g) => g.occurrences.map((o) => key(o.text.slice(o.keepPrefix, o.text.length - o.keepSuffix)))));
+      const list = gold(n);
+      const miss = list.filter((g) => !found.has(key(g.value))).map((g) => `${g.key}:${g.category}`);
+      console.log(`${n}: gold ${list.length - miss.length}/${list.length}`);
+      expect((list.length - miss.length) / list.length, `${n}: ${miss}`).toBeGreaterThanOrEqual(0.95);
+    }
+  }, 60000);
 });
 
 describe('К4: разметка', () => {
   it('порядок абзацев совпадает с DOCX, колонтитулы и номера страниц не попадают в текст', async () => {
-    for (const [n, src] of Object.entries(SOURCES)) {
+    for (const [n, src] of Object.entries(SOURCES).filter(([x]) => !NO_ORDER.has(x))) {
       const { layout } = await pdfPipeline(n);
       const dd = parseDocx(docx[src]);
       const paras = dd.paragraphs

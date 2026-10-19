@@ -23,15 +23,17 @@ export const BUNDLED = (() => {
 export const profileDirs = new WeakMap();
 
 export const test = base.extend({
-  // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
-    if (!existsSync(join(DIST, 'manifest.json'))) throw new Error('Сначала npm run build:e2e');
+  // Каталог распакованного расширения: по умолчанию dist-e2e/; тест может подменить его копией (test.use({extensionDir}),
+  // например с испорченным zip встроенной модели — tests/e2e/bundled-model.spec.js, WP10-C)
+  extensionDir: [DIST, { option: true }],
+  context: async ({ extensionDir }, use) => {
+    if (!existsSync(join(extensionDir, 'manifest.json'))) throw new Error('Сначала npm run build:e2e');
     const userDataDir = mkdtempSync(join(tmpdir(), 'docx-anon-e2e-'));
     const context = await chromium.launchPersistentContext(userDataDir, {
       channel: 'chromium',
       headless: !process.env.E2E_HEADED,
       // порт CDP на 127.0.0.1 (случайный): helpers/network.js слушает через него сеть offscreen-документа и воркеров
-      args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`, '--remote-debugging-port=0'],
+      args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`, '--remote-debugging-port=0'],
     });
     profileDirs.set(context, userDataDir);
     await use(context);

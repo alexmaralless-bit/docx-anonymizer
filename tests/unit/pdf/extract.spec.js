@@ -1,12 +1,15 @@
 // Извлечение PDF (версия 0.3, К5) на заглушке pdf.js: коды отказов, предупреждение о страницах без текста, прогресс,
 // сигнатура. Настоящий pdf.js — в tests/integration/pdf-*.spec.js.
 import { describe, it, expect } from 'vitest';
-import { extractPdf, isPdf, lettersOnPage, mapPdfError, BASE_DOC_OPTIONS } from '../../../src/core/pdf/extract.js';
+import { extractPdf, isPdf, lettersOnPage, mapPdfError, pageSpace, BASE_DOC_OPTIONS } from '../../../src/core/pdf/extract.js';
 import { CoreError } from '../../../src/core/errors.js';
 
 const TEXT = 'Договор поставки между ООО «Ромашка» и АО «Вектор-М» о поставке товара.';
 
-/** Заглушка pdf.js: страницы — массив строк (пустая строка — страница без текста) или ошибка открытия. */
+/**
+ * Заглушка pdf.js: страницы — массив строк (пустая строка — страница без текста) или объектов {items} с готовыми
+ * элементами (повёрнутый текст), либо ошибка открытия.
+ */
 function stubPdfjs({ pages = [TEXT], openError = null, fonts = {} } = {}) {
   const calls = { getDocument: null, destroyed: 0, operatorLists: 0 };
   const pdfjs = {
@@ -20,11 +23,13 @@ function stubPdfjs({ pages = [TEXT], openError = null, fonts = {} } = {}) {
             numPages: pages.length,
             async getPage(i) {
               const str = pages[i - 1];
+              const ready = typeof str === 'object' ? str.items : null;
               return {
                 view: [0, 0, 595, 842],
                 async getTextContent() {
                   return {
-                    items: str ? [{ str, transform: [12, 0, 0, 12, 50, 742], width: str.length * 6, height: 12, fontName: 'f1', hasEOL: false }] : [],
+                    items:
+                      ready || (str ? [{ str, transform: [12, 0, 0, 12, 50, 742], width: str.length * 6, height: 12, fontName: 'f1', hasEOL: false }] : []),
                     styles: { f1: {} },
                   };
                 },
@@ -122,5 +127,38 @@ describe('extractPdf: коды и предупреждения', () => {
     expect(L.warnings).toEqual([{ code: 'PDF_PAGES_NO_TEXT', count: 2, details: { pages: [2, 5] } }]);
     expect(progress).toEqual([20, 40, 60, 80, 100]);
     expect(L.pages).toBe(5);
+  });
+});
+
+describe('повёрнутые страницы (ревью WP10-A, Д5)', () => {
+  const it2 = (str, transform) => ({ str, transform, width: str.length * 6, height: 12, fontName: 'f1', hasEOL: false });
+
+  it('только водяные знаки по диагонали (букв больше 20) → PDF_NO_TEXT, а не пустой результат', async () => {
+    const mark = { items: [it2('КОНФИДЕНЦИАЛЬНО КОНФИДЕНЦИАЛЬНО', [8, 8, -8, 8, 100, 300])] };
+    const err = await extractPdf(stubPdfjs({ pages: [mark, mark] }).pdfjs, new Uint8Array(1)).catch((e) => e);
+    expect(err.code).toBe('PDF_NO_TEXT');
+  });
+
+  it('страница без текста по-обычному среди текстовых → PDF_PAGES_NO_TEXT', async () => {
+    const mark = { items: [it2('КОНФИДЕНЦИАЛЬНО КОНФИДЕНЦИАЛЬНО', [8, 8, -8, 8, 100, 300])] };
+    const L = await extractPdf(stubPdfjs({ pages: [TEXT, mark] }).pdfjs, new Uint8Array(1));
+    expect(L.warnings).toEqual([{ code: 'PDF_PAGES_NO_TEXT', count: 1, details: { pages: [2] } }]);
+  });
+
+  it('текст страницы целиком повёрнут на 90° (снизу вверх) — извлекается, страница «с текстом»', async () => {
+    const rotated = { items: [it2(TEXT, [0, 12, -12, 0, 100, 50])] };
+    const L = await extractPdf(stubPdfjs({ pages: [rotated] }).pdfjs, new Uint8Array(1));
+    expect(L.blocks.map((b) => b.text)).toEqual([TEXT]);
+    expect(L.warnings).toEqual([]);
+  });
+
+  it('pageSpace: матрица viewport (y вниз) → «y вверх» видимой страницы; без getViewport — сдвиг на начало view', () => {
+    expect(pageSpace({ view: [10, 20, 605, 862] })).toEqual({ width: 595, height: 842, toPage: [1, 0, 0, 1, -10, -20] });
+    // /Rotate 90: viewport pdf.js для view [0 0 595 842] — [0, 1, 1, 0, 0, 0], ширина 842, высота 595
+    const sp = pageSpace({ view: [0, 0, 595, 842], getViewport: () => ({ width: 842, height: 595, transform: [0, 1, 1, 0, 0, 0] }) });
+    expect([sp.width, sp.height]).toEqual([842, 595]);
+    // точка PDF (x=100, y=500) у верхнего края экрана после поворота: x' = 500, y' = 595 − 100
+    const [a, b, c, d, e, f] = sp.toPage;
+    expect([a * 100 + c * 500 + e, b * 100 + d * 500 + f]).toEqual([500, 495]);
   });
 });

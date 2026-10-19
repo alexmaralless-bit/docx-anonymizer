@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { buildFixtures } from '../../scripts/gen-fixtures.mjs';
 import { buildSampleDocx } from '../../scripts/make-sample.mjs';
-import { buildPdfFixtures, layoutSnapshot, PDF_FIXTURES_DIR, perfDocument } from '../../scripts/gen-pdf-fixtures.mjs';
+import { buildPdfFixtures, layoutSnapshot, PDF_FIXTURES_DIR, perfDocument, WILD_GOLD } from '../../scripts/gen-pdf-fixtures.mjs';
 import { isPdf } from '../../src/core/pdf/extract.js';
 
 const DIR = PDF_FIXTURES_DIR;
@@ -34,6 +34,8 @@ describe('PDF-фикстуры (К1)', () => {
     for (const n of ['ip-contract', 'two-companies', 'english-contract', 'structures', 'third-persons', 'sample-contract', 'perf-50p', 'mixed']) {
       expect(TEXT_PDFS, n).toContain(n);
     }
+    // ревью WP10-A: моноширинный, альбомный, две колонки с колонтитулом обычного кегля, /Rotate 270, LibreOffice
+    for (const n of ['wild-mono', 'wild-landscape', 'wild-2col', 'rotated', 'structures.lo', 'sample-contract.lo']) expect(TEXT_PDFS, n).toContain(n);
     // отказы: скан, пустой, с паролем
     for (const n of ['scan', 'empty']) expect(existsSync(join(DIR, `${n}.pdf`)), n).toBe(true);
     for (const f of readdirSync(DIR).filter((x) => x.endsWith('.pdf'))) expect(isPdf(new Uint8Array(readFileSync(join(DIR, f)))), f).toBe(true);
@@ -43,10 +45,16 @@ describe('PDF-фикстуры (К1)', () => {
     const docs = Object.fromEntries(buildFixtures().map((f) => [f.name, f.gold]));
     for (const n of TEXT_PDFS) {
       const gold = JSON.parse(readFileSync(join(DIR, `${n}.gold.json`), 'utf8'));
-      const base = n.replace(/\.lo$/, '').replace(/^mixed$/, 'ip-contract');
+      const base = n.replace(/\.lo$/, '').replace(/^(?:mixed|rotated)$/, 'ip-contract');
       if (docs[base]) expect(gold, n).toEqual(docs[base]);
-      else if (n === 'sample-contract') expect(gold.map((g) => g.value)).toEqual(Object.values(buildSampleDocx().gold));
+      else if (base === 'sample-contract')
+        expect(
+          gold.map((g) => g.value),
+          n,
+        ).toEqual(Object.values(buildSampleDocx().gold));
       else if (n === 'perf-50p') expect(gold).toEqual(perfDocument().gold);
+      else if (n.startsWith('wild-')) expect(gold, n).toEqual(WILD_GOLD);
+      else throw new Error(`нет источника gold для ${n}`);
     }
   });
 

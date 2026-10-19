@@ -174,15 +174,21 @@ export class Panel {
     if (e.key !== 'Escape' || this.destroyed) return;
     e.preventDefault();
     e.stopPropagation();
-    // WP10-D: открытое меню «Ещё» закрывается первым, панель остаётся
-    if (this.menuOpen) return this.closeMenu();
+    // WP10-D: открытое меню «Ещё» закрывается первым, панель остаётся, фокус — на кнопке меню
+    if (this.menuOpen) {
+      this.closeMenu();
+      this.btnMore?.focus();
+      return;
+    }
     if (this.phase === 'applying') return;
     if (this.phase === 'confirm-original' || this.phase === 'confirm-close') return this.backFromConfirm();
     this.requestClose();
   }
 
   requestClose() {
-    if (this.phase === 'done' || this.phase === 'mapping-hint') return this.o.handlers.onCancel();
+    // WP10-D: «×» и Esc на экране «готово» — как «Закрыть»: подсказка о ключе восстановления не обходится
+    if (this.phase === 'done') return this.closeDone();
+    if (this.phase === 'mapping-hint') return this.o.handlers.onCancel();
     if (this.phase === 'applying') return;
     if (this.phase === 'notice') return this.o.handlers.onCancel();
     this.showConfirm('close');
@@ -234,7 +240,7 @@ export class Panel {
     this.o.handlers.onDismissNerHint?.();
   }
 
-  /** @param {number} i @param {{entities: any[], warnings?: any[], restored?: boolean, kind?: 'docx'|'pdf', api: any}} d */
+  /** @param {number} i @param {{entities: any[], warnings?: any[], restored?: boolean, kind?: 'docx'|'pdf', ext?: string, api: any}} d */
   setReady(i, d) {
     const f = this.files[i];
     if (!f) return;
@@ -265,7 +271,8 @@ export class Panel {
       warns.push(hint);
     }
     // PDF (версия 0.3): в чат уйдёт текст, а не PDF — объясняем заранее
-    if (d.kind === 'pdf') warns.push(h('div', { class: 'note', text: this.t('pdfNote'), 'data-testid': 'pdf-note' }));
+    // расширение результата — по pdfMode (FR-53): «.md» или «.txt»
+    if (d.kind === 'pdf') warns.push(h('div', { class: 'note', text: this.t('pdfNote', { ext: d.ext || '.md' }), 'data-testid': 'pdf-note' }));
     for (const w of d.warnings || []) {
       const reason = w.details?.reason === 'MODEL_LOAD_FAILED' ? 'MODEL_LOAD_FAILED' : 'INFERENCE_FAILED';
       const text =
@@ -403,13 +410,15 @@ export class Panel {
     const t = this.t;
     clear(this.footer);
     const total = this.files.reduce((n, f) => n + (f.preview ? f.preview.plannedReplacements() : 0), 0);
+    // все файлы решено загрузить как есть (скан PDF, К5) — замен не будет, кнопка только загружает
+    const uploadOnly = this.files.length > 0 && this.files.every((f) => f.asIs);
     this.footer.append(
       h('button', { class: 'btn', type: 'button', text: t('btnCancel'), 'data-testid': 'btn-cancel', onClick: () => this.o.handlers.onCancel() }),
       h('button', { class: 'btn', type: 'button', text: t('btnOriginal'), 'data-testid': 'btn-original', onClick: () => this.showConfirm('original') }),
       h('button', {
         class: 'btn btn-primary',
         type: 'button',
-        text: t('btnAnonymize'),
+        text: uploadOnly ? t('btnUpload') : t('btnAnonymize'),
         title: total ? `${total}` : '',
         disabled: !this.canAnonymize,
         'data-testid': 'btn-anonymize',

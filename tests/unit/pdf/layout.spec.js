@@ -1,7 +1,20 @@
 // Разметка текста PDF (версия 0.3, К4): строки, слова, колонки, абзацы, переносы, заголовки, списки, таблицы,
 // колонтитулы и разрывы страниц — на синтетических снимках текстовых элементов pdf.js.
 import { describe, it, expect } from 'vitest';
-import { buildLayout, groupLines, normalizeItems, joinWords, dehyphenate, classifyHeading, detectList, linePitch } from '../../../src/core/pdf/layout.js';
+import {
+  buildLayout,
+  groupLines,
+  normalizeItems,
+  joinWords,
+  dehyphenate,
+  classifyHeading,
+  detectList,
+  linePitch,
+  findGutters,
+  orientPage,
+  orientationOf,
+  isUpright,
+} from '../../../src/core/pdf/layout.js';
 
 const H = 842;
 const W = 595;
@@ -194,5 +207,165 @@ describe('колонтитулы и страницы', () => {
   it('обычный шаг строк — наименьший частый шаг, а не медиана', () => {
     expect(linePitch([24, 24, 24, 15, 15, 24, 24])).toBe(15);
     expect(linePitch([14.4])).toBe(14.4);
+  });
+});
+
+describe('ревью WP10-A: переносы, моноширинный шрифт, надписи, поворот, таблицы, колонки, колонтитулы', () => {
+  it('Д1: «цифры-» + «цифры» — дефис мягкого переноса убирается при группе ≥ 4 цифр, телефон не ломается', () => {
+    expect(dehyphenate('директор, ИНН 7805-', '003215.')).toBe('директор, ИНН 7805003215.');
+    expect(dehyphenate('счёт 407-', '02810700000012345')).toBe('счёт 40702810700000012345');
+    expect(dehyphenate('тел. +7 (495) 123-', '45-67')).toBe('тел. +7 (495) 123-45-67');
+    expect(dehyphenate('тел. 8-900-', '123-45-67')).toBe('тел. 8-900-123-45-67');
+    expect(dehyphenate('СНИЛС 112-233-', '445 95')).toBe('СНИЛС 112-233-445 95');
+  });
+
+  it('Д2: U+2010 и U+00AD в конце строки склеиваются всегда; «Ан-» + «дреева» — перенос, «По-» + «видимому» — нет', () => {
+    expect(dehyphenate('директора Ан\u2010', 'дреева Петра')).toBe('директора Андреева Петра');
+    expect(dehyphenate('стороны за\u2010', 'ключили договор')).toBe('стороны заключили договор');
+    expect(dehyphenate('мягкий пере\u00AD', 'нос')).toBe('мягкий перенос');
+    expect(dehyphenate('директора Ан-', 'дреева Петра')).toBe('директора Андреева Петра');
+    expect(dehyphenate('По-', 'ставщик обязуется')).toBe('Поставщик обязуется');
+    expect(dehyphenate('По-', 'видимому, нет')).toBe('По-видимому, нет');
+    expect(dehyphenate('Во-', 'первых, стороны')).toBe('Во-первых, стороны');
+    expect(dehyphenate('из-', 'за просрочки')).toBe('из-за просрочки');
+    expect(dehyphenate('ул. Ле-', 'нина')).toBe('ул. Ленина');
+  });
+
+  it('Д3: моноширинный шрифт — пробел шириной в символ не режет «БИК 044525901» на ячейки', () => {
+    const mono = (str, x, y) => item(str, x, y, { w: str.length * 7.2 });
+    // три строки реквизитов: подпись и номер через один пробел (7.2 pt), вторая колонка — далеко
+    const rows = [
+      ['р/с', '40702810700000012345', 'E-mail: ivan@zvezda.example'],
+      ['к/с', '30101810300000000901', 'Банк: ПАО «Банк»'],
+      ['БИК', '044525901', 'Символ черты |'],
+    ];
+    // как в Chromium: каждое слово — отдельный элемент pdf.js, между словами — пробел шириной в символ
+    const words = (t, x, y) => {
+      let at = x;
+      return t.split(' ').map((w) => {
+        const it = mono(w, at, y);
+        at += (w.length + 1) * 7.2;
+        return it;
+      });
+    };
+    const items = rows.flatMap(([a, b, c], i) => [mono(a, 61, 300 + i * 18), mono(b, 61 + a.length * 7.2 + 7.2, 300 + i * 18), ...words(c, 300, 300 + i * 18)]);
+    const lines = groupLines(normalizeItems(page(1, items)));
+    expect(findGutters(lines).map((x) => [...x])).toEqual([[2], [2], [2]]);
+    const cells = buildLayout([page(1, items)]).blocks.filter((b) => b.kind === 'cell');
+    expect(cells.map((c) => c.text)).toContain('БИК 044525901');
+    expect(cells[0].table.cols).toBe(2);
+    // шрифт по имени (Liberation Mono) — тот же результат и при двух прогонах в строке
+    const named = rows.flatMap(([a, b], i) => [
+      { ...mono(a, 61, 300 + i * 18), fontName: 'm' },
+      { ...mono(b, 61 + a.length * 7.2 + 7.2, 300 + i * 18), fontName: 'm' },
+    ]);
+    const lines2 = groupLines(normalizeItems(page(1, named, { m: { name: 'BBBBBB+LiberationMono' } })));
+    expect(findGutters(lines2).every((x) => x.size === 0)).toBe(true);
+  });
+
+  it('Д4: узкая надпись с общим x0 — один абзац по локальному правому краю, следующий абзац отдельно', () => {
+    const body = para(LONG, 100);
+    const items = [
+      ...body.items,
+      item('Согласовано: Зайцева', 140, body.end + 20),
+      item('Ольга Петровна', 140, body.end + 20 + 14.4),
+      item('Надпись:', 50, body.end + 20 + 28.8),
+    ];
+    expect(texts(buildLayout([page(1, items)]))).toEqual([LONG, 'Согласовано: Зайцева Ольга Петровна', 'Надпись:']);
+  });
+
+  it('Д5: ориентация элементов и поворот страницы к преобладающей ориентации текста', () => {
+    expect(orientationOf([12, 0, 0, 12, 0, 0])).toBe(0);
+    expect(orientationOf([0, 12, -12, 0, 0, 0])).toBe(90);
+    expect(orientationOf([-12, 0, 0, -12, 0, 0])).toBe(180);
+    expect(orientationOf([0, -12, 12, 0, 0, 0])).toBe(270);
+    expect(orientationOf([8, 8, -8, 8, 0, 0])).toBe(null);
+    expect(isUpright([12, 0, 0, 12, 5, 5])).toBe(true);
+    expect(isUpright([-12, 0, 0, -12, 5, 5])).toBe(false); // вверх ногами
+    expect(isUpright([8, 8, -8, 8, 5, 5])).toBe(false); // водяной знак
+    const lines = ['Договор поставки между сторонами заключён в городе Москве.', 'Поставщик: ООО «Ромашка», ИНН 7736050003.'];
+    // текст снизу вверх (90°) у левого края книжной страницы; x элемента — расстояние от левого края
+    const rot90 = page(
+      1,
+      lines.map((t, i) => ({ str: t, transform: [0, 12, -12, 0, 100 + i * 14.4, 60], width: t.length * 6, height: 12, fontName: 'f1', hasEOL: false })),
+    );
+    const o = orientPage(rot90);
+    expect([o.width, o.height]).toEqual([H, W]);
+    expect(o.items.every((x) => isUpright(x.transform))).toBe(true);
+    expect(texts(buildLayout([rot90])).join(' ')).toBe(lines.join(' '));
+    // сверху вниз (270°) и вверх ногами (180°)
+    const rot270 = page(
+      1,
+      lines.map((t, i) => ({ str: t, transform: [0, -12, 12, 0, 500 - i * 14.4, 780], width: t.length * 6, height: 12, fontName: 'f1', hasEOL: false })),
+    );
+    expect(texts(buildLayout([rot270])).join(' ')).toBe(lines.join(' '));
+    const rot180 = page(
+      1,
+      lines.map((t, i) => ({ str: t, transform: [-12, 0, 0, -12, 545, 100 + i * 14.4], width: t.length * 6, height: 12, fontName: 'f1', hasEOL: false })),
+    );
+    expect(texts(buildLayout([rot180])).join(' ')).toBe(lines.join(' '));
+    // обычная страница с диагональным водяным знаком — без изменений, знак отброшен
+    const plain = page(1, [item(lines[0], 50, 100), { str: 'КОПИЯ КОПИЯ КОПИЯ', transform: [8, 8, -8, 8, 200, 400], width: 90, height: 12, fontName: 'f1' }]);
+    expect(orientPage(plain)).toBe(plain);
+    expect(texts(buildLayout([plain]))).toEqual([lines[0]]);
+  });
+
+  it('Д6: числа, выровненные вправо, — своя колонка таблицы («2 | Отчёт | 2 | 120 500,50»)', () => {
+    const rows = [
+      ['1', 'Консультация', '10', '15 000,00'],
+      ['2', 'Отчёт', '2', '120 500,50'],
+      ['3', 'Сопровождение', '1', '7 000,00'],
+    ];
+    const right = (t, x1, y) => item(t, x1 - t.length * 6, y);
+    const items = rows.flatMap((r, i) => [
+      item(r[0], 61, 300 + i * 16),
+      item(r[1], 127, 300 + i * 16),
+      right(r[2], 573, 300 + i * 16),
+      right(r[3], 797, 300 + i * 16),
+    ]);
+    const L = buildLayout([{ ...page(1, items), width: 842, height: 595 }]);
+    const cells = L.blocks.filter((b) => b.kind === 'cell');
+    expect(cells[0].table.cols).toBe(4);
+    expect(cells.filter((c) => c.table.row === 1).map((c) => c.text)).toEqual(['2', 'Отчёт', '2', '120 500,50']);
+  });
+
+  it('Д7: заголовок другого кегля после двух колонок — не хвост левой колонки', () => {
+    const items = [];
+    for (let i = 0; i < 4; i++) {
+      items.push(item(`Левая колонка строка ${i + 1} с текстом до правого`, 50, 100 + i * 14.4, { w: 230 }));
+      items.push(item(`Правая колонка строка ${i + 1} с текстом до правого`, 320, 100 + i * 14.4, { w: 230 }));
+    }
+    items.push(item('Левая колонка строка 5 последняя.', 50, 100 + 4 * 14.4, { w: 180 }));
+    items.push(item('РЕКВИЗИТЫ И ПОДПИСИ СТОРОН', 50, 100 + 6 * 14.4, { size: 14, w: 200 }));
+    const all = texts(buildLayout([page(1, items)]));
+    expect(all[all.length - 1]).toBe('РЕКВИЗИТЫ И ПОДПИСИ СТОРОН');
+    const joined = all.join(' ');
+    expect(joined.indexOf('Левая колонка строка 5')).toBeLessThan(joined.indexOf('Правая колонка строка 1'));
+  });
+
+  it('Д8: крайняя строка полосы обычного кегля, отделённая от текста, — колонтитул и на одной странице', () => {
+    const body = para(LONG, 80);
+    const items = [item('ООО «Ромашка» — Договор поставки № 17/ПС-2026', 280, 47), ...body.items, item('Тел.: +7 (495) 123-45-67. Стр. 1', 85, 804)];
+    const L = buildLayout([page(1, items)]);
+    expect(texts(L, 'header')).toEqual(['ООО «Ромашка» — Договор поставки № 17/ПС-2026']);
+    expect(texts(L, 'footer')).toEqual(['Тел.: +7 (495) 123-45-67. Стр. 1']);
+    expect(texts(L, 'p')).toEqual([LONG]);
+    // крупный (заголовок) в полосе — не колонтитул
+    const title = buildLayout([page(1, [item('ДОГОВОР ПОСТАВКИ', 200, 47, { size: 16 }), ...body.items])]);
+    expect(texts(title, 'header')).toEqual([]);
+  });
+
+  it('Д12: «;» на границе страницы — не конец абзаца, если дальше строчная; нумерация — новый абзац', () => {
+    const full = (t, y) => item(t, 50, y, { w: 495 });
+    const p1 = [
+      full('Стороны руководствуются условиями договора и действующим законодательством', 760),
+      full('Российской Федерации и иными обязательными нормативными актами страны;', 774.4),
+    ];
+    const L = buildLayout([page(1, p1), page(2, [item('все уведомления направляются в письменной форме.', 50, 80)])]);
+    expect(texts(L, 'p')).toEqual([
+      'Стороны руководствуются условиями договора и действующим законодательством Российской Федерации и иными обязательными нормативными актами страны; все уведомления направляются в письменной форме.',
+    ]);
+    const L2 = buildLayout([page(1, p1), page(2, [item('а) уведомления направляются в письменной форме.', 50, 80)])]);
+    expect(texts(L2, 'p')).toHaveLength(2);
   });
 });

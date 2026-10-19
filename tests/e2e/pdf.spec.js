@@ -91,6 +91,8 @@ test.describe('PDF: перехват и результат (К9)', () => {
   test("pdfMode: 'text' → .anon.txt (text/plain); pdfMode: 'off' → PDF проходит как есть, панели нет", async ({ context, extensionId, site }) => {
     let page = await setup(context, extensionId, site, { pdfMode: 'text' });
     await page.setInputFiles('#multi-input', writeTemp('t.pdf', SAMPLE));
+    // заметка называет расширение результата по pdfMode (FR-53)
+    await expect(panel(page).host.locator('[data-testid="pdf-note"]')).toContainText('.txt', { timeout: 60000 });
     await panel(page).anonymize.click({ timeout: 60000 });
     const [r] = await waitReceived(page, 1, 60000);
     expect([r.name, r.type]).toEqual(['t.anon.txt', 'text/plain']);
@@ -116,6 +118,7 @@ test.describe('PDF: отказы и предупреждения (К5)', () => {
     expect(await received(page)).toEqual([]);
     await ui.host.locator('[data-testid="btn-asis"]').click();
     await expect(ui.anonymize).toBeEnabled();
+    await expect(ui.anonymize).toHaveText('Загрузить'); // все файлы — как есть: замен не будет
     await ui.anonymize.click();
     const [r] = await waitReceived(page, 1);
     expect(r.name).toBe('скан.pdf');
@@ -159,6 +162,24 @@ test.describe('PDF: конвейер через клиент протокола'
     expect(cold.resultName).toBe('договор.anon.md');
     expect(cold.analyzeMs).toBeLessThan(5000);
     expect(perf.analyzeMs).toBeLessThan(15000);
+  });
+
+  test('повёрнутая страница (/Rotate 270) и «дикие» PDF в воркере Chromium: текст есть, gold не утекает (ревью WP10-A)', async ({ context, extensionId }) => {
+    const ext = await context.newPage();
+    await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    await installClient(ext);
+    for (const n of ['rotated', 'wild-mono', 'wild-landscape', 'wild-2col']) {
+      const run = await runPipeline(ext, { name: `${n}.pdf`, bytes: pdf(n) });
+      const text = Buffer.from(run.b64, 'base64').toString('utf8');
+      const g = JSON.parse(readFileSync(join(DIR, `${n}.gold.json`), 'utf8'));
+      expect(text.length, n).toBeGreaterThan(500);
+      expect(text, n).toMatch(/\[ФИО_\d+\]/u);
+      expect(run.ent.warnings ?? [], n).toEqual([]);
+      expect(
+        g.filter((x) => text.toLowerCase().includes(x.value.toLowerCase())).map((x) => x.key),
+        n,
+      ).toEqual([]);
+    }
   });
 
   test('восстановление ответа по карте PDF-сессии со склонением (К10)', async ({ context, extensionId }) => {

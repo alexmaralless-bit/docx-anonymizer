@@ -1,0 +1,87 @@
+[
+  {
+    "key": "w0",
+    "category": "COMPANY",
+    "value": "Звёздный путь"
+  },
+  {
+    "key": "w1",
+    "category": "INN",
+    "value": "7736050003"
+  },
+  {
+    "key": "w2",
+    "category": "KPP",
+    "value": "773601001"
+  },
+  {
+    "key": "w3",
+    "category": "OGRN",
+    "value": "1025004012340"
+  },
+  {
+    "key": "w4",
+    "category": "COMPANY",
+    "value": "Вектор-М"
+  },
+  {
+    "key": "w5",
+    "category": "INN",
+    "value": "500400123402"
+  },
+  {
+    "key": "w6",
+    "category": "PERSON",
+    "value": "Петров Иван Сергеевич"
+  },
+  {
+    "key": "w7",
+    "category": "PERSON",
+    "value": "Петрова Ивана Сергеевича"
+  },
+  {
+    "key": "w8",
+    "category": "PERSON",
+    "value": "Смирновой Елены Александровны"
+  },
+  {
+    "key": "w9",
+    "category": "PERSON",
+    "value": "Смирнова Елена Александровна"
+  },
+  {
+    "key": "w10",
+    "category": "PHONE",
+    "value": "+7 (495) 765-43-21"
+  },
+  {
+    "key": "w11",
+    "category": "EMAIL",
+    "value": "ivan.petrov@zvezda.example"
+  },
+  {
+    "key": "w12",
+    "category": "ACCOUNT",
+    "value": "40702810700000012345"
+  },
+  {
+    "key": "w13",
+    "category": "ACCOUNT",
+    "value": "30101810300000000901"
+  },
+  {
+    "key": "w14",
+    "category": "BIK",
+    "value": "044525901"
+  },
+  {
+    "key": "w15",
+    "category": "PASSPORT",
+    "value": "45 05 123456"
+  },
+  {
+    "key": "w16",
+    "category": "SNILS",
+    "value": "112-233-445 95"
+  }
+]

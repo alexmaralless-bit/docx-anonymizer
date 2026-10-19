@@ -17,6 +17,8 @@ import { Link, contextValid, readOpenShadowFlag } from './runtime.js';
 
 /** Подсказка «установите модель NER» закрыта крестиком (WP10-C, К16): до перезагрузки страницы больше не показывается. */
 let nerHintDismissed = false;
+/** Полная сборка (WP10-C): модель ставится сама — подсказку об установке в панели не показываем. define из scripts/build.mjs. */
+const BUNDLED = typeof __BUNDLED_MODEL__ !== 'undefined' ? __BUNDLED_MODEL__ : null;
 
 /**
  * @param {{getSettings: () => import('../core/settings.js').Settings, onInvalidated?: () => void}} deps
@@ -128,8 +130,8 @@ async function runOnce(originals, deps) {
     },
   };
 
-  // WP10-C: модели нет и встроенная не ставилась (лёгкая сборка) — закрываемая подсказка в панели
-  const nerHint = !settings.nerModel && !settings.bundledModelSha && !nerHintDismissed;
+  // WP10-C: лёгкая сборка и модели нет — закрываемая подсказка в панели (в полной модель ставится сама или есть «Восстановить»)
+  const nerHint = !BUNDLED && !settings.nerModel && !nerHintDismissed;
   const panel = new Panel({ lang, catalog, origin, position: settings.panelPosition?.[origin], openShadow, handlers, nerHint });
   panel.mount();
 
@@ -143,7 +145,9 @@ async function runOnce(originals, deps) {
     if (isInvalidatedError(err) || !contextValid()) return invalidated();
     const code = err instanceof ProtocolError ? err.code : 'INTERNAL';
     const limit = settings.maxFileSizeMB;
-    const known = tt(`err.${code}`, { limit });
+    // TOO_LARGE от разбора PDF — лимит страниц (details.pages), а не мегабайт (core/pdf/extract.js)
+    const pages = code === 'TOO_LARGE' ? err.details?.pages : undefined;
+    const known = pages ? tt('err.TOO_LARGE_PAGES', { pages, limit: err.details?.limitPages ?? '' }) : tt(`err.${code}`, { limit });
     panel.setError(procIdx.indexOf(i), {
       code,
       message: known.startsWith('err.') ? err.message : known,
@@ -173,6 +177,7 @@ async function runOnce(originals, deps) {
         warnings: ent.warnings,
         restored: ent.restoredDecisions,
         kind: ent.kind,
+        ext: settings.pdfMode === 'text' ? '.txt' : '.md',
         api: {
           getText: (from, count) => link.get().request(MSG.GET_TEXT, { docId: ent.docId, from, count }),
           addEntity: async (category, text) => (await link.get().request(MSG.ADD_ENTITY, { docId: ent.docId, category, text, replaceAll: true })).entities,

@@ -4,7 +4,7 @@
 // откуда грузить CMaps и шрифты, решает вызывающий через `docOptions`.
 // Тексты ошибок не содержат текста документа (NFR-14).
 import { CoreError } from '../errors.js';
-import { buildLayout } from './layout.js';
+import { buildLayout, isUpright, mulTransform, orientPage, MONO_FONT_RE } from './layout.js';
 
 /** Меньше стольких букв на странице — страница «без текста» (скан, картинка). */
 export const MIN_LETTERS = 20;
@@ -56,6 +56,19 @@ export function lettersOnPage(items) {
 }
 
 /**
+ * Пространство страницы для разметки: размеры видимой страницы (с учётом /Rotate) и матрица из пространства PDF
+ * в «y вверх» этой страницы. Без getViewport (заглушки в тестах) — сдвиг на начало page.view.
+ * @param {any} page страница pdf.js
+ * @returns {{width: number, height: number, toPage: number[]}}
+ */
+export function pageSpace(page) {
+  const [x0, y0, x1, y1] = page.view || [0, 0, 0, 0];
+  const vp = typeof page.getViewport === 'function' ? page.getViewport({ scale: 1 }) : null;
+  if (!vp?.transform) return { width: x1 - x0, height: y1 - y0, toPage: [1, 0, 0, 1, -x0, -y0] };
+  return { width: vp.width, height: vp.height, toPage: mulTransform([1, 0, 0, -1, 0, vp.height], vp.transform) };
+}
+
+/**
  * Исключение pdf.js → CoreError с кодом протокола. Сообщения pdf.js в ответ не попадают.
  * @param {any} err
  */
@@ -83,7 +96,7 @@ async function pageFonts(pdfjs, page, styles) {
       if (!page.commonObjs.has(fn)) continue;
       const f = page.commonObjs.get(fn);
       const name = String(f?.name || '');
-      fonts[fn] = { name, bold: !!f?.bold || BOLD_FONT_RE.test(name) };
+      fonts[fn] = { name, bold: !!f?.bold || BOLD_FONT_RE.test(name), mono: !!f?.isMonospace || MONO_FONT_RE.test(name) };
     }
   } catch {
     /* шрифты неизвестны — заголовки определятся по кеглю */
@@ -125,25 +138,29 @@ export async function extractPdf(pdfjs, bytes, opts = {}) {
     const noText = [];
     for (let i = 1; i <= n; i++) {
       const page = await doc.getPage(i);
-      const [x0, y0, x1, y1] = page.view;
+      // Экранные координаты: матрица viewport учитывает /Rotate и смещение MediaBox/CropBox (y вниз) — переводим её
+      // обратно в «y вверх» размера видимой страницы. Без /Rotate это прежний сдвиг на начало view.
+      const { width, height, toPage } = pageSpace(page);
       const tc = await page.getTextContent({ includeMarkedContent: false });
       const items = [];
       for (const it of tc.items) {
         if (!it || typeof it.str !== 'string') continue;
-        const t = it.transform;
         items.push({
           str: it.str,
-          transform: [t[0], t[1], t[2], t[3], t[4] - x0, t[5] - y0],
+          transform: mulTransform(toPage, it.transform || [1, 0, 0, 1, 0, 0]),
           width: it.width,
           height: it.height,
           fontName: it.fontName,
           hasEOL: it.hasEOL,
         });
       }
-      const letters = lettersOnPage(items);
+      // повёрнутое содержимое (матрица cm) — к преобладающей ориентации текста; «без текста» — по буквам, которые
+      // разметка действительно возьмёт (не повёрнутые водяные знаки), иначе страница ушла бы пустой без предупреждения
+      const oriented = orientPage({ page: i, width, height, items });
+      const letters = lettersOnPage(oriented.items.filter((it) => isUpright(it.transform)));
       if (letters < MIN_LETTERS) noText.push(i);
       const fonts = letters >= MIN_LETTERS && opts.fonts !== false ? await pageFonts(pdfjs, page, tc.styles) : {};
-      pages.push({ page: i, width: x1 - x0, height: y1 - y0, items, fonts });
+      pages.push({ ...oriented, fonts });
       try {
         page.cleanup();
       } catch {

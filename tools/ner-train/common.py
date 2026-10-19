@@ -33,9 +33,12 @@ def load_config(argv: list[str] | None = None, extra_args=None) -> tuple[dict, a
         key, _, raw = item.partition("=")
         node = cfg
         parts = key.split(".")
-        for p in parts[:-1]:
-            node = node.setdefault(p, {})
-        node[parts[-1]] = _parse_value(raw)
+        for p in parts[:-1]:  # list items by index: --set data.sources.1.weight=0.5
+            node = node[int(p)] if isinstance(node, list) else node.setdefault(p, {})
+        if isinstance(node, list):
+            node[int(parts[-1])] = _parse_value(raw)
+        else:
+            node[parts[-1]] = _parse_value(raw)
     labels = cfg["labels"]
     assert labels[0] == "O" and labels == ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC"], labels
     return cfg, args

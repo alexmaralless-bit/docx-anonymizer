@@ -1,4 +1,4 @@
-"""Optional knowledge distillation: train a larger teacher on the same WikiANN ru+en data and store its
+"""Optional knowledge distillation: train a larger teacher on the same training mix (prepare.py) and store its
 word-level logits for the student's train split.
 
 The teacher (default FacebookAI/xlm-roberta-base, MIT) is only used to produce soft labels; it is not distributed.
@@ -11,7 +11,9 @@ import json
 import time
 
 import numpy as np
-from common import load_config, run_dir, set_seed  # noqa: E402
+from pathlib import Path
+
+from common import ROOT, load_config, run_dir, set_seed  # noqa: E402
 import torch
 from datasets import Dataset, load_from_disk
 from seqeval.metrics import classification_report, f1_score
@@ -76,45 +78,69 @@ def main():
     max_len = int(cfg["data"]["max_length"])
     tr = retokenize(data["train"], tok, max_len)
     va = retokenize(data["validation"], tok, max_len)
-    model = AutoModelForTokenClassification.from_pretrained(
-        dc["teacher"], num_labels=len(labels), id2label=dict(enumerate(labels)), label2id={l: i for i, l in enumerate(labels)})
     collator = DataCollatorForTokenClassification(tok)
+    reuse = dc.get("teacher_from")
+    if reuse:
+        # reuse a teacher trained in another run (e.g. on a superset of this mix): only recompute the word logits
+        # for this train split; teacher.json records the source
+        src = (ROOT / reuse).resolve() if not Path(reuse).is_absolute() else Path(reuse)
+        tmodel = AutoModelForTokenClassification.from_pretrained(str(src)).to(
+            "cuda" if torch.cuda.is_available() else "cpu")
+        seconds = 0.0
+    else:
+        model = AutoModelForTokenClassification.from_pretrained(
+            dc["teacher"], num_labels=len(labels), id2label=dict(enumerate(labels)), label2id={l: i for i, l in enumerate(labels)})
+        if dc.get("teacher_freeze_embeddings"):
+            # XLM-R large on 8 GB: the 250k x 1024 embedding table is a third of the weights; freezing it saves the
+            # gradients and AdamW states of ~256M parameters
+            for prm in model.base_model.embeddings.parameters():
+                prm.requires_grad = False
 
-    def compute_metrics(p):
-        lg, gold = p
-        pred = lg.argmax(-1)
-        yt = [[labels[x] for x in g[g != -100]] for g in gold]
-        yp = [[labels[x] for x in pr[g != -100]] for pr, g in zip(pred, gold)]
-        return {"f1": f1_score(yt, yp)}
+        def compute_metrics(p):
+            lg, gold = p
+            pred = lg.argmax(-1)
+            yt = [[labels[x] for x in g[g != -100]] for g in gold]
+            yp = [[labels[x] for x in pr[g != -100]] for pr, g in zip(pred, gold)]
+            return {"f1": f1_score(yt, yp)}
 
-    args = TrainingArguments(
-        output_dir=str(td / "checkpoints"), learning_rate=float(dc["teacher_lr"]),
-        per_device_train_batch_size=int(dc["teacher_batch"]), per_device_eval_batch_size=128,
-        num_train_epochs=float(dc["teacher_epochs"]), warmup_ratio=0.1, weight_decay=0.01,
-        eval_strategy="epoch", save_strategy="epoch", save_total_limit=1, load_best_model_at_end=True,
-        metric_for_best_model="f1", fp16=torch.cuda.is_available(), seed=cfg["seed"], data_seed=cfg["seed"],
-        logging_steps=200, report_to=[], dataloader_num_workers=2)
-    rm = ["tokens", "ner_tags", "word_ids"]
-    trainer = Trainer(model=model, args=args, train_dataset=tr.remove_columns(rm), eval_dataset=va.remove_columns(rm),
-                      data_collator=collator, processing_class=tok, compute_metrics=compute_metrics)
-    t0 = time.time()
-    trainer.train()
-    seconds = time.time() - t0
-    trainer.save_model(str(td / "model"))
+        args = TrainingArguments(
+            output_dir=str(td / "checkpoints"), learning_rate=float(dc["teacher_lr"]),
+            per_device_train_batch_size=int(dc["teacher_batch"]),
+            per_device_eval_batch_size=int(dc.get("teacher_eval_batch", 128)),
+            gradient_accumulation_steps=int(dc.get("teacher_grad_accum", 1)),
+            gradient_checkpointing=bool(dc.get("teacher_gradient_checkpointing", False)),
+            # non-reentrant checkpointing: with frozen embeddings the reentrant variant gets inputs without
+            # requires_grad and silently drops the gradients of all encoder layers
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+            num_train_epochs=float(dc["teacher_epochs"]), warmup_ratio=0.1, weight_decay=0.01,
+            eval_strategy="epoch", save_strategy="epoch", save_total_limit=1, load_best_model_at_end=True,
+            metric_for_best_model="f1", fp16=torch.cuda.is_available(), seed=cfg["seed"], data_seed=cfg["seed"],
+            logging_steps=200, report_to=[], dataloader_num_workers=2)
+        rm = ["tokens", "ner_tags", "word_ids"]
+        trainer = Trainer(model=model, args=args, train_dataset=tr.remove_columns(rm), eval_dataset=va.remove_columns(rm),
+                          data_collator=collator, processing_class=tok, compute_metrics=compute_metrics)
+        t0 = time.time()
+        trainer.train()
+        seconds = time.time() - t0
+        trainer.save_model(str(td / "model"))
+
+        tmodel = trainer.model
 
     report = {}
     for name in ("test_ru", "test_en"):
         ds = retokenize(data[name], tok, max_len)
-        wl = word_logits(trainer.model, ds, collator)
+        wl = word_logits(tmodel, ds, collator, batch_size=int(dc.get("teacher_eval_batch", 128)))
         yt = [[labels[t] for t in tags] for tags in data[name]["ner_tags"]]
         yp = [[labels[int(k)] for k in a.argmax(-1)] for a in wl]
         rep = classification_report(yt, yp, output_dict=True)
         report[name] = {k: round(float(rep[k]["f1-score"]), 4) for k in ("PER", "ORG", "LOC", "micro avg")}
         print(f"teacher {name}: {report[name]}")
 
-    wl = word_logits(trainer.model, tr, collator)
+    wl = word_logits(tmodel, tr, collator, batch_size=int(dc.get("teacher_eval_batch", 128)))
     Dataset.from_dict({"word_logits": [a.tolist() for a in wl]}).save_to_disk(str(td / "train_word_logits"))
-    info = {"teacher": dc["teacher"], "seconds": round(seconds, 1), "test_f1": report}
+    data_info = json.loads((rd / "data_info.json").read_text(encoding="utf-8"))
+    info = {"teacher": dc["teacher"], "teacher_from": reuse, "seconds": round(seconds, 1), "test_f1": report,
+            "train_fingerprint": data_info.get("train_fingerprint"), "train_sentences": len(tr)}
     (td / "teacher.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     print(f"teacher training time: {seconds:.0f} s")
 

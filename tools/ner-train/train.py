@@ -1,4 +1,4 @@
-"""Fine-tune rubert-tiny2 for token classification on the prepared WikiANN ru+en data.
+"""Fine-tune rubert-tiny2 for token classification on the prepared training mix (prepare.py).
 
 The best checkpoint by eval_f1 (seqeval micro F1 on ru+en validation) is saved to runs/<run_id>/model/.
 """
@@ -18,11 +18,15 @@ from transformers import (AutoModelForTokenClassification, AutoTokenizer, DataCo
 EXTRA_COLUMNS = ["tokens", "ner_tags", "lang", "word_ids"]
 
 
-def add_teacher_logits(train, teacher_path):
+def add_teacher_logits(train, teacher_path, fingerprint=None):
     """Attach teacher word logits to the student's first sub-token positions (zeros elsewhere)."""
     from datasets import load_from_disk as _load
     tl = _load(str(teacher_path))
     assert len(tl) == len(train), "teacher logits do not match the train split; rerun teacher.py"
+    tjson = teacher_path.parent / "teacher.json"
+    if fingerprint and tjson.exists():
+        tfp = json.loads(tjson.read_text(encoding="utf-8")).get("train_fingerprint")
+        assert tfp in (None, fingerprint), "teacher was trained on a different train split; rerun teacher.py"
     train = train.add_column("_teacher_words", tl["word_logits"])
 
     def fn(row):
@@ -87,7 +91,8 @@ def main():
     distill = bool(dc.get("enabled"))
     train_ds = data["train"]
     if distill:
-        train_ds = add_teacher_logits(train_ds, rd / "teacher" / "train_word_logits")
+        data_info = json.loads((rd / "data_info.json").read_text(encoding="utf-8"))
+        train_ds = add_teacher_logits(train_ds, rd / "teacher" / "train_word_logits", data_info.get("train_fingerprint"))
     train_ds = train_ds.remove_columns(EXTRA_COLUMNS)
     eval_ds = data["validation"].remove_columns(EXTRA_COLUMNS)
 
@@ -153,7 +158,9 @@ def main():
             "best_checkpoint": trainer.state.best_model_checkpoint, "best_eval": best,
             "epochs": [{"epoch": h["epoch"], "eval_f1": h["eval_f1"], "eval_loss": h["eval_loss"]} for h in history],
             "hyperparameters": tc, "torch": torch.__version__,
-            "data": {"oversample": cfg["data"].get("oversample"), "synth": cfg["data"]["synth"]}}
+            "data": {"mode": cfg["data"].get("mode", "sources"),
+                     "sources": [{"id": x["id"], "weight": x.get("weight", 1)} for x in cfg["data"]["sources"]],
+                     "synth": cfg["data"]["synth"]}}
     if distill:
         tinfo = json.loads((rd / "teacher" / "teacher.json").read_text(encoding="utf-8"))
         info["distillation"] = {"teacher": dc["teacher"], "teacher_license": dc.get("teacher_license"),

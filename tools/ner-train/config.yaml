@@ -2,20 +2,62 @@
 # Any key can be overridden from the command line: --set train.epochs=10 --set run_id=exp1
 id: rubert-tiny2-ner-ruen          # model pack id
 run_id: rubert-tiny2-ner-ruen      # artifacts go to runs/<run_id>/
-version: 1.0.0
+version: 1.1.0
 base_model: cointegrated/rubert-tiny2
 seed: 42
 labels: [O, B-PER, I-PER, B-ORG, I-ORG, B-LOC, I-LOC]
 
 data:
-  dataset: unimelb-nlp/wikiann
-  configs: [ru, en]
   max_length: 128
-  oversample: {ru: 1, en: 1}   # repeat the train split of a language N times
+  # sources: corpus mix of the training split. weight = how many times the train split is repeated
+  # (a fractional part subsamples, e.g. 1.5 = once + a random half). Licenses: README «Источники 1.1.0».
+  # mode: sources        — every source below;
+  #       teacher_synth  — fallback when external corpora are rejected: only kind=wikiann sources are kept and the
+  #                        synthetic share is raised to >= synth.teacher_synth_min_share (teacher soft labels on it).
+  mode: sources
+  sources:
+    - id: wikiann-ru
+      kind: wikiann
+      dataset: unimelb-nlp/wikiann
+      config: ru
+      lang: ru
+      weight: 1
+      license: "WikiANN annotations (Pan et al. 2017; Rahimi et al. 2019); text from Wikipedia, CC BY-SA 3.0"
+      url: https://huggingface.co/datasets/unimelb-nlp/wikiann
+      citation: "Pan et al., Cross-lingual Name Tagging and Linking for 282 Languages, ACL 2017; Rahimi et al., Massively Multilingual Transfer for NER, ACL 2019"
+    - id: wikiann-en
+      kind: wikiann
+      dataset: unimelb-nlp/wikiann
+      config: en
+      lang: en
+      weight: 1
+      license: "WikiANN annotations (Pan et al. 2017; Rahimi et al. 2019); text from Wikipedia, CC BY-SA 3.0"
+      url: https://huggingface.co/datasets/unimelb-nlp/wikiann
+      citation: "Pan et al., Cross-lingual Name Tagging and Linking for 282 Languages, ACL 2017; Rahimi et al., Massively Multilingual Transfer for NER, ACL 2019"
+    - id: factrueval-2016
+      kind: factru
+      lang: ru
+      weight: 2
+      commit: dfe96237fce79fde13b2021d1938587e4ea3042e
+      sha256: 300469ac74e5bd1a46b45464c0508fe968db3f964169fc3bebcc53ce9b715ea7
+      holdout_docs: 0.2      # share of documents held out as test_factru (informational metric)
+      license: "MIT (annotations, dialogue-evaluation 2015); texts from OpenCorpora, CC BY-SA 3.0"
+      url: https://github.com/dialogue-evaluation/factRuEval-2016
+      citation: "Starostin et al., FactRuEval 2016: Evaluation of Named Entity Recognition and Fact Extraction Systems for Russian, Dialogue 2016"
   synth:
-    enabled: true       # contract-style synthetic sentences (synth.py); see README
-    ratio: 0.1          # share of synthetic sentences relative to the WikiANN train size (<= 0.2)
+    enabled: true
+    share: 0.35          # share of synthetic sentences in the final train split
+    max_ratio: 0.5       # upper bound for share (was a hard 20 % assert in 1.0.0)
+    teacher_synth_min_share: 0.5   # share used in data.mode=teacher_synth
+    genre_share: 0.8     # genre templates among synthetic sentences (the rest: contract templates of 1.0.0)
+    negative_share: 0.45 # entity-free sentences among genre sentences
+    min_negative_share: 0.3        # assert: entity-free share of all synthetic sentences
     seed: 7
+    test_seed: 20261019  # synth_genre_test: held-out word lists, no sentence equal to a training one
+    test_size: 2000
+    # genre corpus gold (WP11-B, path from the repository root): word-list items sharing a proper-name word with its
+    # PERSON / COMPANY values are dropped, so eval-genres stays a held-out measurement (data_info.json gold_exclusion)
+    exclude_gold: "tests/fixtures/genres/**/*.gold.json"
 
 train:
   learning_rate: 2.0e-4   # 5e-5 (spec default) gave ORG 0.708; see README
@@ -43,12 +85,13 @@ calibrate:
   grid_stop: 0.95
   grid_step: 0.05
 
-gates:
-  ru_per_f1: 0.85
-  ru_org_f1: 0.75
-  en_per_f1: 0.80     # informational
+gates:                          # concept 0.4, K8; evaluate.py --strict exits 1 when a gate fails
+  ru_per_f1: 0.91
+  ru_org_f1: 0.75               # "no regression to 1.0.0" (coordinator, WP11-C2); 0.78 is not reachable by rubert-tiny2
+  synth_genre_org_precision: 0.85
+  en_per_f1: 0.80               # informational
 
-# Optional knowledge distillation (teacher.py, then train.py uses the teacher's soft labels)
+# Knowledge distillation (teacher.py, then train.py uses the teacher's soft labels)
 distill:
   enabled: true
   teacher: FacebookAI/xlm-roberta-base   # MIT; used only to produce soft labels, not distributed

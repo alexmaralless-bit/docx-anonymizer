@@ -78,13 +78,13 @@
       "expect": [{ "category": "COMPANY", "text": "Иванов Пётр" }]
     },
     {
-      "name": "ner побеждает weak",
+      "name": "находка модели внутри адреса не вытесняет адрес (0.4: иначе индекс и дом оставались открытыми)",
       "text": "123456, г. Москва, ул. Ленина, д. 1",
       "inject": [
         { "category": "ADDRESS", "match": "123456, г. Москва, ул. Ленина, д. 1", "confidence": "weak" },
         { "category": "PERSON", "match": "Ленина", "confidence": "ner", "source": "ner" }
       ],
-      "expect": [{ "category": "PERSON", "text": "Ленина" }]
+      "expect": [{ "category": "ADDRESS", "text": "123456, г. Москва, ул. Ленина, д. 1" }]
     },
     {
       "name": "EMAIL validated против KB-варианта названия в домене",

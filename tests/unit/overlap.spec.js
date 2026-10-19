@@ -34,6 +34,17 @@ describe('resolveOverlaps (FR-20)', () => {
     // FR-21: внутри COMPANY с ОПФ «ИП» ФИО не выделяется — детектор WP2 должен выдать COMPANY уровнем выше PERSON
     expect(ids(resolveOverlaps([e('COMPANY', 0, 22, 'labeled'), e('PERSON', 3, 22, 'kb')], catalog))).toEqual(['COMPANY:0-22']);
   });
+  it('находка модели внутри более длинной находки правил не вытесняет её (0.4: адрес weak против LOC модели)', () => {
+    // «630002, г. Новосибирск, ул. Советская, д. 77»: адрес без метки — weak, «Новосибирск» модели — ner
+    expect(ids(resolveOverlaps([e('ADDRESS', 0, 44, 'weak'), e('ADDRESS', 11, 22, 'ner', 'ner'), e('ADDRESS', 28, 36, 'ner', 'ner')], catalog))).toEqual([
+      'ADDRESS:0-44',
+    ]);
+    // и другой категории (PER «Пушкина» внутри адреса)
+    expect(ids(resolveOverlaps([e('ADDRESS', 0, 30, 'weak'), e('PERSON', 5, 12, 'ner', 'ner')], catalog))).toEqual(['ADDRESS:0-30']);
+    // модель за пределами находки правил и частичное пересечение — по прежним правилам (уровень)
+    expect(ids(resolveOverlaps([e('ADDRESS', 0, 20, 'weak'), e('PERSON', 15, 30, 'ner', 'ner')], catalog))).toEqual(['PERSON:15-30']);
+    expect(ids(resolveOverlaps([e('ADDRESS', 0, 20, 'weak'), e('PERSON', 25, 30, 'ner', 'ner')], catalog))).toEqual(['ADDRESS:0-20', 'PERSON:25-30']);
+  });
   it('при равенстве — раньше начавшийся, затем длиннее', () => {
     expect(ids(resolveOverlaps([e('ADDRESS', 5, 30), e('ADDRESS', 0, 10)], catalog))).toEqual(['ADDRESS:0-10']);
     expect(ids(resolveOverlaps([e('ADDRESS', 0, 10), e('ADDRESS', 0, 30)], catalog))).toEqual(['ADDRESS:0-30']);

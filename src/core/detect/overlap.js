@@ -40,7 +40,13 @@ export function resolveOverlaps(entities, catalog) {
     arr.push(e);
   }
   const out = [];
-  for (const list of byStream.values()) {
+  for (const all of byStream.values()) {
+    // Находка модели целиком внутри более длинной находки правил/KB/пользователя не вытесняет её (0.4, найдено корпусом жанров):
+    // адрес без метки имеет уровень weak < ner, и обрывок «Новосибирск» от модели отбрасывал весь адрес «630002, г. Новосибирск,
+    // ул. Советская, д. 77» — индекс и дом оставались открытыми. Правило сильнее по полноте: модель здесь лишь подтверждает часть.
+    const list = all.filter(
+      (e) => e.source !== 'ner' || !all.some((k) => k.source !== 'ner' && k.start <= e.start && e.end <= k.end && k.end - k.start > e.end - e.start),
+    );
     const ranked = [...list].sort((a, b) => compareStrength(a, b, catalog.byId));
     const kept = [];
     for (const e of ranked) {

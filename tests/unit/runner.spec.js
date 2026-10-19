@@ -4,6 +4,9 @@ import { analyze } from '../../src/core/detect/runner.js';
 import { applyDecisions } from '../../src/core/apply.js';
 import { clearDetectors, registerDetector, registerDocumentDetector, mergeDecisions } from '../../src/core/contracts/index.js';
 import { defaultSettings } from '../../src/core/settings.js';
+
+/** Коммерческая группа включена (политика 0.4): COMPANY ищется, как в 0.3. */
+const commercial = (patch = {}) => ({ ...defaultSettings(), commercial: true, ...patch });
 import { PlaceholderAllocator } from '../../src/core/placeholders.js';
 import { makeDocx, run, para, unzipText } from '../helpers/docx.js';
 
@@ -24,7 +27,7 @@ describe('analyze: конвейер детекторов', () => {
     const doc = parseDocx(
       makeDocx(para(run('ООО «Ромашка», ИНН 7736050003, CONTRACT, 100 руб.')) + para(run('Повторно: ИНН 7736050003 и 5004001234; ООО «Вектор»'))),
     );
-    const r = await analyze(doc, defaultSettings());
+    const r = await analyze(doc, commercial());
     const view = r.groups.map((g) => [g.category, g.value, g.placeholder, g.occurrences.length]);
     expect(view).toEqual([
       ['COMPANY', 'Ромашка', '[КОМПАНИЯ_1]', 1],
@@ -37,7 +40,7 @@ describe('analyze: конвейер детекторов', () => {
 
   it('ОПФ и кавычки остаются вне плейсхолдера; маппинг и режимы', async () => {
     const doc = parseDocx(makeDocx(para(run('ООО «Ромашка», ИНН 7736050003'))));
-    const r = await analyze(doc, defaultSettings());
+    const r = await analyze(doc, commercial());
     const out = applyDecisions(doc, r.groups, { mode: 'placeholder', createdAt: '2026-01-01T00:00:00Z' });
     expect(unzipText(out.docxBytes)['word/document.xml']).toContain('ООО «[КОМПАНИЯ_1]», ИНН [ИНН_1]');
     const comp = out.mapping.entries.find((e) => e.category === 'COMPANY');
@@ -52,7 +55,7 @@ describe('analyze: конвейер детекторов', () => {
 
   it('ручная замена побеждает режим (FR-26); исключённое вхождение не заменяется', async () => {
     const doc = parseDocx(makeDocx(para(run('ИНН 7736050003 и 7736050003'))));
-    const r = await analyze(doc, defaultSettings());
+    const r = await analyze(doc, commercial());
     const g = r.groups[0];
     const out = applyDecisions(
       doc,
@@ -68,7 +71,7 @@ describe('analyze: конвейер детекторов', () => {
         'word/comments.xml': `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:comment w:id="0" w:author="Петров Олег" w:initials="ПО"><w:p><w:r><w:t>к</w:t></w:r></w:p></w:comment><w:comment w:id="1" w:author="Сидорова Анна" w:initials="СА"><w:p/></w:comment></w:comments>`,
       }),
     );
-    const r = await analyze(doc, defaultSettings());
+    const r = await analyze(doc, commercial());
     expect(r.groups.map((g) => [g.value, g.placeholder, g.occurrences.length])).toEqual([
       ['Петров Олег', '[ФИО_1]', 3],
       ['Сидорова Анна', '[ФИО_2]', 2],
@@ -85,7 +88,7 @@ describe('analyze: конвейер детекторов', () => {
       ),
     );
     const doc = parseDocx(makeDocx(para(run('в лице Иванова Петра')) + para(run('Иванов Пётр'))));
-    const r = await analyze(doc, defaultSettings());
+    const r = await analyze(doc, commercial());
     expect(r.groups).toHaveLength(1);
     expect(r.groups[0]).toMatchObject({ value: 'Иванов Пётр', placeholder: '[ФИО_1]', level: 'labeled' });
     expect(r.groups[0].occurrences.map((o) => o.variantOf)).toEqual(['Иванов Пётр', undefined]);
@@ -97,14 +100,14 @@ describe('analyze: конвейер детекторов', () => {
       throw new Error('boom');
     });
     const doc = parseDocx(makeDocx(para('<w:r><w:t>ab</w:t><w:br/><w:t>cd</w:t></w:r>')));
-    const r = await analyze(doc, defaultSettings());
+    const r = await analyze(doc, commercial());
     expect(r.groups).toHaveLength(0);
     expect(r.warnings.map((w) => w.code)).toContain('DETECTOR_FAILED');
   });
 
   it('NER: сбой провайдера → NER_FAILED (NFR-13); исключения пользователя применяются (FR-32)', async () => {
     const doc = parseDocx(makeDocx(para(run('ИНН 7736050003'))));
-    const s = { ...defaultSettings(), exclusions: [{ value: '7736050003', category: 'INN' }] };
+    const s = commercial({ exclusions: [{ value: '7736050003', category: 'INN' }] });
     const r = await analyze(doc, s, {
       nerProvider: {
         name: 'bad',
@@ -124,5 +127,60 @@ describe('analyze: конвейер детекторов', () => {
     const b = await analyze(parseDocx(makeDocx(para(run('ИНН 5004001234, ИНН 7736050003')))), defaultSettings(), { allocator: alloc });
     expect(a.groups.map((g) => g.placeholder)).toEqual(['[ИНН_1]']);
     expect(b.groups.map((g) => g.placeholder)).toEqual(['[ИНН_2]', '[ИНН_1]']);
+  });
+  it('политика 0.4 (К1, К3): выключенная COMPANY не выдаётся правилами, но user и list принимаются; pii/ids нельзя выключить', async () => {
+    registerDocumentDetector('list-stub', (doc) => {
+      const s = doc.streams.find((x) => x.type === 'live');
+      const i = s.text.indexOf('Вектор');
+      return i < 0 ? [] : [{ streamId: s.id, category: 'COMPANY', start: i, end: i + 6, confidence: 'labeled', source: 'list', canonical: 'Вектор' }];
+    });
+    const doc = parseDocx(makeDocx(para(run('ООО «Ромашка», ИНН 7736050003, Вектор'))));
+    const off = { ...defaultSettings(), categories: { ...defaultSettings().categories, INN: false, PERSON: false } };
+    const r = await analyze(doc, off, {
+      userEntities: [{ streamId: doc.streams[0].id, category: 'COMPANY', start: 0, end: 13, confidence: 'labeled', source: 'user' }],
+    });
+    const view = r.groups.map((g) => [g.category, g.value, g.occurrences[0].source]);
+    // ИНН выключить нельзя (ids); «ООО «Ромашка»» правилом — нет (commercial выключен), но вручную — да; «Вектор» из списка — да
+    expect(view).toEqual([
+      ['COMPANY', 'ООО «Ромашка»', 'user'],
+      ['INN', '7736050003', 'rule'],
+      ['COMPANY', 'Вектор', 'list'],
+    ]);
+    const on = await analyze(doc, commercial());
+    expect(on.groups.map((g) => [g.category, g.value])).toEqual([
+      ['COMPANY', 'Ромашка'],
+      ['INN', '7736050003'],
+      ['COMPANY', 'Вектор'],
+    ]);
+  });
+
+  it('NER (0.4, К10): у ORG свой порог nerThresholdOrg; фильтр получает вид блока; при выключенной COMPANY ORG не выдаётся', async () => {
+    const seen = [];
+    const provider = {
+      name: 'stub',
+      init: async () => {},
+      detect: async (text) => {
+        seen.push(text);
+        const out = [];
+        const add = (word, label, score) => {
+          const i = text.indexOf(word);
+          if (i >= 0) out.push({ start: i, end: i + word.length, label, score });
+        };
+        add('Иван Петров', 'PER', 0.75);
+        add('Ромашка', 'ORG', 0.8);
+        add('Вектор', 'ORG', 0.9);
+        return out;
+      },
+    };
+    const doc = parseDocx(makeDocx(para(run('Иван Петров, Ромашка и Вектор'))));
+    const r = await analyze(doc, commercial({ nerThreshold: 0.7, nerThresholdOrg: 0.85 }), { nerProvider: provider });
+    // PER 0.75 ≥ 0.7 — есть; ORG 0.8 < 0.85 — нет; ORG 0.9 — есть
+    expect(r.groups.map((g) => [g.category, g.value])).toEqual([
+      ['PERSON', 'Иван Петров'],
+      ['COMPANY', 'Вектор'],
+    ]);
+    const off = await analyze(doc, { ...defaultSettings(), nerThreshold: 0.7, nerThresholdOrg: 0.5 }, { nerProvider: provider });
+    expect(off.groups.map((g) => [g.category, g.value])).toEqual([['PERSON', 'Иван Петров']]);
+    expect(doc.paragraphs[0].kind).toBe('p');
   });
 });

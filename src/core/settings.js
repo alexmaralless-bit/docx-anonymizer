@@ -1,9 +1,9 @@
 // КОНТРАКТ: настройки (FR-34, таблица §4.8). Хранятся в chrome.storage.local под ключом 'settings'.
 // Ядро не знает про chrome.* — обёртка хранилища в src/shared/settings-store.js.
-import { BUILTIN_CATEGORIES } from './categories.js';
+import { ALWAYS_ON_IDS, BUILTIN_CATEGORIES } from './categories.js';
 
 export const SETTINGS_KEY = 'settings';
-export const SETTINGS_SCHEMA_VERSION = 2;
+export const SETTINGS_SCHEMA_VERSION = 3;
 
 export const DEFAULT_ALLOWLIST = Object.freeze([
   'https://chatgpt.com',
@@ -13,10 +13,28 @@ export const DEFAULT_ALLOWLIST = Object.freeze([
   'https://www.perplexity.ai',
 ]);
 
-const PROFILE_FIELDS = ['categories', 'mode', 'language', 'placeholderLanguage', 'keepMetadata', 'stripEmbedded', 'govEntities', 'dictNames', 'nerThreshold'];
+const PROFILE_FIELDS = [
+  'categories',
+  'commercial',
+  'mode',
+  'language',
+  'placeholderLanguage',
+  'keepMetadata',
+  'stripEmbedded',
+  'govEntities',
+  'dictNames',
+  'nerThreshold',
+  'nerThresholdOrg',
+];
 
+/** Категории групп `pii`/`ids` всегда `true` (политика 0.4, К1); `commercial` — по `defaultOn` внутри группы. */
 function defaultCategories() {
-  return Object.fromEntries(BUILTIN_CATEGORIES.map((c) => [c.id, c.defaultOn]));
+  return Object.fromEntries(BUILTIN_CATEGORIES.map((c) => [c.id, ALWAYS_ON_IDS.includes(c.id) || c.defaultOn]));
+}
+
+/** Включает категории `pii`/`ids` в объекте категорий (миграция 2 → 3 и импорт старых конфигураций). */
+function forceAlwaysOn(categories) {
+  return { ...categories, ...Object.fromEntries(ALWAYS_ON_IDS.map((id) => [id, true])) };
 }
 
 /**
@@ -26,12 +44,17 @@ function defaultCategories() {
  * @property {'all'|'allowlist'} siteMode
  * @property {string[]} allowlist
  * @property {string[]} blocklist
- * @property {Record<string, boolean>} categories
+ * @property {Record<string, boolean>} categories  переключатели внутри группы `commercial`; для `pii`/`ids` значения всегда true (К1 0.4)
+ * @property {boolean} commercial         группа «Коммерческая информация» (COMPANY, CONTRACT, AMOUNT) включена (0.4, Ц1); по умолчанию выключена
+ * @property {{name: string, aliases: string[]}[]} maskedCompanies  список компаний для маскирования (0.4, Ц3, FR списка компаний); ищутся всегда
+ * @property {boolean} orgPolicyHintPending  показать один раз подсказку «организации теперь по желанию» (0.4, миграция 2 → 3); не экспортируется
  * @property {'placeholder'|'mask'|'delete'} mode
  * @property {'auto'|'ru'|'en'|'both'} language
  * @property {'document'|'ru'|'en'} placeholderLanguage
  * @property {boolean} nerEnabled
- * @property {number} nerThreshold
+ * @property {number} nerThreshold       порог модели для PER/LOC
+ * @property {number} nerThresholdOrg    порог модели для ORG (0.4, концепция п. 4; по умолчанию 0.85)
+ * @property {string[]} nerStoplist      пользовательское дополнение стоп-списка модельных организаций (0.4, К10)
  * @property {string} nerModel           id установленного пакета модели NER ('' — нет; WP8), не экспортируется
  * @property {string} bundledModelSha    sha256 встроенного пакета, который профиль уже обработал ('' — ни одного; WP10-C, Ц7), не экспортируется
  * @property {string} bundledModelError  код последней неудачной автоустановки встроенного пакета ('' — нет; WP10-C, К15), не экспортируется
@@ -61,12 +84,19 @@ export function defaultSettings() {
     allowlist: [...DEFAULT_ALLOWLIST],
     blocklist: [],
     categories: defaultCategories(),
+    // политика 0.4: названия организаций, номера договоров и суммы — по желанию; у всех после обновления выключено
+    commercial: false,
+    maskedCompanies: [],
+    orgPolicyHintPending: false,
     mode: 'placeholder',
     language: 'auto',
     placeholderLanguage: 'document',
     nerEnabled: true,
     // порог NER = recommendedThreshold пакета rubert-tiny2-ner-ruen (WP9, калибровка tools/ner-train/calibrate.py; docs/contracts.md §6.7)
     nerThreshold: 0.7,
+    // порог для ORG выше: модель 1.0.0 на жанрах вне договоров давала десятки ложных организаций (концепция 0.4, п. 4)
+    nerThresholdOrg: 0.85,
+    nerStoplist: [],
     nerModel: '',
     // WP10-C: пишет только background по ответу MODEL_INSTALLED; удаление модели пользователем поле не трогает (модель не вернётся сама)
     bundledModelSha: '',
@@ -110,11 +140,16 @@ export const VALIDATORS = Object.freeze({
   allowlist: (v) => Array.isArray(v) && v.every(isOriginPattern),
   blocklist: (v) => Array.isArray(v) && v.every(isOriginPattern),
   categories: (v) => isPlainObject(v) && Object.values(v).every((x) => typeof x === 'boolean'),
+  commercial: (v) => typeof v === 'boolean',
+  maskedCompanies: (v) => Array.isArray(v) && v.length <= 200 && v.every(isMaskedCompany),
+  orgPolicyHintPending: (v) => typeof v === 'boolean',
   mode: (v) => ['placeholder', 'mask', 'delete'].includes(v),
   language: (v) => ['auto', 'ru', 'en', 'both'].includes(v),
   placeholderLanguage: (v) => ['document', 'ru', 'en'].includes(v),
   nerEnabled: (v) => typeof v === 'boolean',
   nerThreshold: (v) => typeof v === 'number' && v >= 0 && v <= 1,
+  nerThresholdOrg: (v) => typeof v === 'number' && v >= 0 && v <= 1,
+  nerStoplist: (v) => Array.isArray(v) && v.length <= 500 && v.every((x) => typeof x === 'string' && x.length <= 80),
   // = PACK_ID_RE из core/ner/pack.js (не импортируется, чтобы не тянуть разбор пакета в content.js; равенство — в тесте)
   nerModel: (v) => v === '' || (typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,40}$/.test(v)),
   bundledModelSha: (v) => v === '' || (typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)),
@@ -148,6 +183,24 @@ export const MIGRATIONS = {
   // 1 → 2 (0.2, WP9): порог NER по умолчанию 0.6 → 0.7. В 0.1 модели не было, поэтому 0.6 — это всегда прежний
   // дефолт, а не выбор пользователя; другие значения не трогаем. Профили со своим порогом тоже не трогаем.
   1: (s) => ({ ...s, schemaVersion: 2, ...(s.nerThreshold === 0.6 ? { nerThreshold: 0.7 } : {}) }),
+  // 2 → 3 (0.4, политика маскирования): категории групп pii/ids включаются принудительно — и в настройках, и в
+  // сохранённых профилях; группа commercial у всех выключена (нового ключа в объекте нет → дефолт false, политика
+  // едина). Существующий профиль (есть `categories`) получает одноразовую подсказку о смене политики.
+  2: (s) => {
+    const out = { ...s, schemaVersion: 3 };
+    if (isPlainObject(s.categories)) {
+      out.categories = forceAlwaysOn(s.categories);
+      out.orgPolicyHintPending = true;
+    }
+    if (Array.isArray(s.profiles)) {
+      out.profiles = s.profiles.map((p) =>
+        isPlainObject(p) && isPlainObject(p.values) && isPlainObject(p.values.categories)
+          ? { ...p, values: { ...p.values, categories: forceAlwaysOn(p.values.categories) } }
+          : p,
+      );
+    }
+    return out;
+  },
 };
 
 /**
@@ -187,8 +240,9 @@ export function migrateSettings(stored) {
     const val = s[k];
     out[k] = val !== undefined && VALIDATORS[k]?.(val) ? val : def;
   }
-  // Новые встроенные категории получают defaultOn
-  out.categories = { ...defaults.categories, ...out.categories };
+  // Новые встроенные категории получают defaultOn; pii/ids всегда включены (К1 0.4) — даже если сохранённый объект
+  // текущей версии был изменён вручную
+  out.categories = forceAlwaysOn({ ...defaults.categories, ...out.categories });
   out.schemaVersion = SETTINGS_SCHEMA_VERSION;
   const changed = JSON.stringify(out) !== JSON.stringify(stored);
   return { settings: out, changed };
@@ -220,6 +274,17 @@ export function effectiveSettings(settings, profileId = settings.activeProfile) 
 
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/** Запись списка компаний (0.4): название 1–120 символов, до 20 псевдонимов. */
+function isMaskedCompany(x) {
+  return (
+    isPlainObject(x) &&
+    typeof x.name === 'string' &&
+    x.name.trim().length >= 1 &&
+    x.name.length <= 120 &&
+    (x.aliases === undefined || (Array.isArray(x.aliases) && x.aliases.length <= 20 && x.aliases.every((a) => typeof a === 'string' && a.length <= 120)))
+  );
 }
 
 function isOriginPattern(v) {

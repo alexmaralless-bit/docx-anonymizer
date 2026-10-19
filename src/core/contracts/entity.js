@@ -5,8 +5,8 @@
 
 /** @typedef {import('../categories.js').Level} Level */
 
-/** Источник кандидата. */
-export const SOURCES = Object.freeze(['rule', 'label', 'kb', 'user', 'ner']);
+/** Источник кандидата. `list` — список компаний для маскирования (0.4, WP11-A): маскируется и при выключенной COMPANY. */
+export const SOURCES = Object.freeze(['rule', 'label', 'kb', 'user', 'ner', 'list']);
 
 /** Уровни уверенности по убыванию (FR-20). */
 export const LEVELS = Object.freeze(['validated', 'labeled', 'kb', 'ner', 'weak']);
@@ -17,7 +17,7 @@ export const LEVELS = Object.freeze(['validated', 'labeled', 'kb', 'ner', 'weak'
  * @property {number} start            начало в virtualText потока (включительно)
  * @property {number} end              конец (исключительно)
  * @property {Level} confidence        уровень уверенности
- * @property {'rule'|'label'|'kb'|'user'|'ner'} [source='rule']
+ * @property {'rule'|'label'|'kb'|'user'|'ner'|'list'} [source='rule']
  * @property {string} [validator]      имя пройденного валидатора ('inn', 'luhn', …)
  * @property {string} [category]       только для document-детекторов; потоковые получают категорию из регистрации
  * @property {string} [streamId]       только для document-детекторов

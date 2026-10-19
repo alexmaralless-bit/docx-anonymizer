@@ -26,7 +26,16 @@ export function parseCategoriesFile(text) {
 // hintMappingShown — одноразовая подсказка о ключе восстановления (WP10-D): состояние этого браузера, не настройка.
 // bundledModelSha — какой встроенный пакет модели этот профиль уже обработал (WP10-C): тоже состояние браузера;
 // bundledModelError — код последней неудачной автоустановки этого пакета (WP10-C): тоже.
-export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel', 'hintMappingShown', 'bundledModelSha', 'bundledModelError']);
+// orgPolicyHintPending — одноразовая подсказка о политике 0.4 (организации по желанию): состояние этого браузера.
+export const NOT_EXPORTED = new Set([
+  'schemaVersion',
+  'panelPosition',
+  'nerModel',
+  'hintMappingShown',
+  'bundledModelSha',
+  'bundledModelError',
+  'orgPolicyHintPending',
+]);
 /** «Сбросить настройки» не трогает установленную модель и состояние автоустановки встроенной (WP10-C). */
 export const KEPT_ON_RESET = Object.freeze(['nerModel', 'bundledModelSha', 'bundledModelError']);
 

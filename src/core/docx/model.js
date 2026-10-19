@@ -1,6 +1,6 @@
 // Разбор DOCX в модель потоков (ТЗ §2, §4.2, §6.1–6.2).
 import { readZip, inflateEntry } from './zip.js';
-import { tokenize, parseAttrs, unescapeXml } from './xml.js';
+import { tokenize, parseAttrs, getAttr, unescapeXml } from './xml.js';
 import { CoreError } from '../errors.js';
 
 /**
@@ -46,6 +46,8 @@ import { CoreError } from '../errors.js';
  * @property {number} depth   вложенность (0 — верхний уровень, 1 — в текстовом поле и т.п.)
  * @property {number} pos
  * @property {{live?: string, deleted?: string, field?: string}} streams  id потоков
+ * @property {'p'|'heading'|'li'|string} [kind]  вид абзаца (0.4, К10): 'heading' — стиль заголовка (w:pStyle Heading1, Title, «1»…«9»),
+ *   'li' — пункт списка (w:numPr); у текстовой модели (PDF) — вид блока разметки (h1/h2/li/cell/…)
  */
 
 /**
@@ -68,6 +70,9 @@ import { CoreError } from '../errors.js';
  * @property {string} language                       'ru'|'en'|'both' — авто-определение FR-19
  * @property {number} size                            размер исходного файла
  */
+
+/** Идентификаторы стилей заголовков: английские Heading1/Title/Subtitle и русские «1»…«9» (Word даёт styleId цифрой). */
+const HEADING_STYLE_RE = /^(heading\d*|title|subtitle|\d)$/i;
 
 export const TEXT_PART_RE = /^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments|commentsExtended|glossary\/document)\.xml$/;
 export const PEOPLE_PART_RE = /^word\/people\.xml$/;
@@ -220,7 +225,7 @@ function parseTextPart(name, xml, ctx) {
 
   const newParagraph = (pos) => {
     const pid = `p${ctx.pidCounter++}`;
-    const para = { pid, part: name, depth: pStack.length, pos, streams: {}, _builders: {} };
+    const para = { pid, part: name, depth: pStack.length, pos, streams: {}, kind: 'p', _builders: {} };
     ctx.paragraphs.push(para);
     pStack.push(para);
   };
@@ -249,6 +254,13 @@ function parseTextPart(name, xml, ctx) {
       const nm = t.name;
       // Атрибуты-авторы, alt-тексты, w:instr у fldSimple — в любом месте
       if (t.attrEnd > t.attrStart + 1) scanAttrs(nm, t.attrStart, t.attrEnd);
+
+      // Вид абзаца по свойствам (0.4, К10): стиль заголовка или нумерация списка
+      if (parent === 'w:pPr' && pStack.length) {
+        const para = pStack[pStack.length - 1];
+        if (nm === 'w:pStyle' && HEADING_STYLE_RE.test(getAttr(xml, t.attrStart, t.attrEnd, 'w:val')?.raw || '')) para.kind = 'heading';
+        else if (nm === 'w:numPr' && para.kind === 'p') para.kind = 'li';
+      }
 
       if (t.type === 'open') {
         if (nm === 'w:p') newParagraph(t.start);

@@ -23,7 +23,8 @@ export function goldEntities(doc, gold) {
 export async function anonymize(bytes, opts = {}) {
   const doc = parseDocx(bytes);
   const userEntities = opts.gold ? goldEntities(doc, opts.gold) : undefined;
-  const analysis = await analyze(doc, { ...defaultSettings(), ...(opts.settings || {}) }, { userEntities });
+  // коммерческая группа включена (политика 0.4): фикстуры договоров 0.1–0.3 проверяют и названия организаций
+  const analysis = await analyze(doc, { ...defaultSettings(), commercial: true, ...(opts.settings || {}) }, { userEntities });
   const res = applyDecisions(doc, analysis.groups, {
     mode: 'placeholder',
     ...FIXED,

@@ -24,7 +24,8 @@ import { PDF_FIXTURES_DIR, perfDocument } from '../../scripts/gen-pdf-fixtures.m
 import { unescapeXml } from '../../src/core/docx/xml.js';
 
 const DIR = PDF_FIXTURES_DIR;
-const SETTINGS = { ...defaultSettings(), nerEnabled: false };
+// коммерческая группа включена (политика 0.4): gold фикстур содержит названия организаций
+const SETTINGS = { ...defaultSettings(), nerEnabled: false, commercial: true };
 // PDF-фикстура → DOCX-исходник (для паритета и порядка абзацев)
 const SOURCES = {
   'ip-contract': 'ip-contract',

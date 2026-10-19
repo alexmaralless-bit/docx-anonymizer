@@ -20,11 +20,16 @@ export function registerNames({ withNames = true, extra } = {}) {
   if (extra) extra({ registerDetector, registerDocumentDetector });
 }
 
-/** Настройки: все встроенные категории включены. */
+/** Настройки: все встроенные категории включены (в т.ч. коммерческая группа — политика 0.4). */
 export function allOnSettings(patch = {}) {
   const s = defaultSettings();
   for (const k of Object.keys(s.categories)) s.categories[k] = true;
-  return { ...s, ...patch };
+  return { ...s, commercial: true, ...patch };
+}
+
+/** Настройки по умолчанию с включённой коммерческой группой (поведение 0.3: названия организаций маскируются). */
+export function commercialSettings(patch = {}) {
+  return { ...defaultSettings(), commercial: true, ...patch };
 }
 
 export async function analyzeParagraphs(paras, settings = defaultSettings()) {

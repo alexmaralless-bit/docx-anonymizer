@@ -19,15 +19,23 @@ describe('settings', () => {
     expect(s.categories.AMOUNT).toBe(false);
     expect(s.categories.INN).toBe(true);
     expect(s.maxFileSizeMB).toBe(50);
+    // политика 0.4: коммерческая группа выключена, список компаний пуст, порог ORG выше общего
+    expect(s.commercial).toBe(false);
+    expect(s.maskedCompanies).toEqual([]);
+    expect(s.orgPolicyHintPending).toBe(false);
+    expect(s.nerThresholdOrg).toBe(0.85);
+    expect(s.nerStoplist).toEqual([]);
   });
   it('миграция: пусто → дефолты; v0 → текущая; невалидные поля заменяются; новые категории добавляются', () => {
     expect(migrateSettings(undefined).changed).toBe(true);
-    const { settings } = migrateSettings({ interceptEnabled: true, mode: 'bogus', categories: { INN: false }, maxFileSizeMB: 500 });
+    const { settings } = migrateSettings({ interceptEnabled: true, mode: 'bogus', categories: { INN: false, AMOUNT: true }, maxFileSizeMB: 500 });
     expect(settings.schemaVersion).toBe(SETTINGS_SCHEMA_VERSION);
     expect(settings.interceptEnabled).toBe(true);
     expect(settings.mode).toBe('placeholder');
     expect(settings.maxFileSizeMB).toBe(50);
-    expect(settings.categories.INN).toBe(false);
+    // политика 0.4 (К1): идентификатор нельзя выключить даже в сохранённом объекте; переключатель коммерческой группы сохраняется
+    expect(settings.categories.INN).toBe(true);
+    expect(settings.categories.AMOUNT).toBe(true);
     expect(settings.categories.PERSON).toBe(true);
     expect(migrateSettings(settings).changed).toBe(false);
   });
@@ -37,7 +45,7 @@ describe('settings', () => {
   });
   it('nerThreshold (WP9): по умолчанию 0.7 = recommendedThreshold пакета; миграция 1 → 2 меняет только прежний дефолт 0.6', () => {
     expect(defaultSettings().nerThreshold).toBe(0.7);
-    expect(SETTINGS_SCHEMA_VERSION).toBe(2);
+    expect(SETTINGS_SCHEMA_VERSION).toBe(3);
     expect(migrateSettings({ schemaVersion: 1, nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.7);
     expect(migrateSettings({ schemaVersion: 1, nerThreshold: 0.45 }).settings.nerThreshold).toBe(0.45);
     expect(migrateSettings({ nerThreshold: 0.6 }).settings.nerThreshold).toBe(0.7); // v0 → 1 → 2
@@ -58,10 +66,56 @@ describe('settings', () => {
     expect(parseConfigFile(file({ schemaVersion: 99 }, { nerThreshold: 0.6 })).patch).toEqual({ nerThreshold: 0.6 });
     // общая функция чистая: вход не меняется, частичный объект остаётся частичным
     const patch = { nerThreshold: 0.6 };
-    expect(applyMigrations(patch, 1)).toEqual({ nerThreshold: 0.7, schemaVersion: 2 });
+    expect(applyMigrations(patch, 1)).toEqual({ nerThreshold: 0.7, schemaVersion: 3 });
     expect(patch).toEqual({ nerThreshold: 0.6 });
-    expect(applyMigrations({ nerThreshold: 0.6 })).toEqual({ nerThreshold: 0.7, schemaVersion: 2 });
-    expect(applyMigrations({ nerThreshold: 0.6 }, 2)).toEqual({ nerThreshold: 0.6 });
+    expect(applyMigrations({ nerThreshold: 0.6 })).toEqual({ nerThreshold: 0.7, schemaVersion: 3 });
+    expect(applyMigrations({ nerThreshold: 0.6 }, 2)).toEqual({ nerThreshold: 0.6, schemaVersion: 3 });
+    expect(applyMigrations({ nerThreshold: 0.6 }, 3)).toEqual({ nerThreshold: 0.6 });
+  });
+  it('миграция 2 → 3 (политика 0.4, К1): pii/ids включаются в настройках и профилях, commercial выключен у всех, подсказка один раз', async () => {
+    const stored = {
+      ...defaultSettings(),
+      schemaVersion: 2,
+      categories: { PERSON: false, INN: false, COMPANY: true, AMOUNT: true },
+      profiles: [{ id: 'p1', name: { ru: 'П', en: 'P' }, builtin: false, values: { categories: { PHONE: false, CONTRACT: true } } }],
+    };
+    delete stored.commercial;
+    delete stored.orgPolicyHintPending;
+    const { settings, changed } = migrateSettings(stored);
+    expect(changed).toBe(true);
+    expect(settings.schemaVersion).toBe(3);
+    expect(settings.categories).toMatchObject({ PERSON: true, INN: true, COMPANY: true, AMOUNT: true });
+    expect(settings.commercial).toBe(false);
+    expect(settings.orgPolicyHintPending).toBe(true);
+    expect(settings.profiles[0].values.categories).toMatchObject({ PHONE: true, CONTRACT: true, INN: true });
+    // у текущей версии подсказка не возвращается
+    expect(migrateSettings({ ...settings, orgPolicyHintPending: false }).settings.orgPolicyHintPending).toBe(false);
+    // частичный объект без categories (патч импорта) — только версия
+    expect(applyMigrations({ mode: 'mask' }, 2)).toEqual({ mode: 'mask', schemaVersion: 3 });
+    // импорт старого конфига: pii/ids включены, подсказка (состояние браузера) не импортируется
+    const { parseConfigFile, CONFIG_KIND, NOT_EXPORTED } = await import('../../src/options/config-io.js');
+    const r = parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, version: 1, schemaVersion: 2, settings: { categories: { INN: false } } }));
+    expect(r.patch.categories.INN).toBe(true);
+    expect(r.patch.orgPolicyHintPending).toBeUndefined();
+    expect(NOT_EXPORTED.has('orgPolicyHintPending')).toBe(true);
+    expect(NOT_EXPORTED.has('commercial')).toBe(false);
+    expect(NOT_EXPORTED.has('maskedCompanies')).toBe(false);
+  });
+  it('новые поля 0.4: валидаторы commercial, maskedCompanies, nerThresholdOrg, nerStoplist; commercial и nerThresholdOrg — в профилях', () => {
+    expect(validateSettingsPatch({ commercial: true, maskedCompanies: [{ name: 'Ромашка' }, { name: 'Вектор', aliases: ['Vector'] }] })).toEqual([]);
+    expect(validateSettingsPatch({ maskedCompanies: [{ name: '' }] })).toEqual(['maskedCompanies']);
+    expect(validateSettingsPatch({ maskedCompanies: [{ name: 'A', aliases: [1] }] })).toEqual(['maskedCompanies']);
+    expect(validateSettingsPatch({ maskedCompanies: Array.from({ length: 201 }, () => ({ name: 'A' })) })).toEqual(['maskedCompanies']);
+    expect(validateSettingsPatch({ nerThresholdOrg: 1.5, nerStoplist: ['ЭДО', 2] })).toEqual(['nerThresholdOrg', 'nerStoplist']);
+    expect(validateSettingsPatch({ nerThresholdOrg: 0.9, nerStoplist: ['ЭДО', 'MVP'], orgPolicyHintPending: true })).toEqual([]);
+    const s = {
+      ...defaultSettings(),
+      profiles: [{ id: 'x', name: { ru: 'x', en: 'x' }, builtin: false, values: { commercial: true, nerThresholdOrg: 0.5, nerStoplist: ['a'] } }],
+    };
+    const eff = effectiveSettings(s, 'x');
+    expect(eff.commercial).toBe(true);
+    expect(eff.nerThresholdOrg).toBe(0.5);
+    expect(eff.nerStoplist).toEqual([]); // не поле профиля
   });
   it('nerModel (WP8): по умолчанию пусто, id пакета проверяется, в профили и экспорт конфига не попадает', async () => {
     expect(defaultSettings().nerModel).toBe('');

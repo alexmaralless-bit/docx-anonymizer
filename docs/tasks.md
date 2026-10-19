@@ -1,6 +1,6 @@
 # Рабочие пакеты
 
-Пакеты WP1–WP5 — MVP (версия 0.1). Пакеты WP6–WP9 — версия 0.2 (`docs/concept-0.2.md`). Пакеты WP10-A…D — версия 0.3 (`docs/concept-0.3.md`).
+Пакеты WP1–WP5 — MVP (версия 0.1). Пакеты WP6–WP9 — версия 0.2 (`docs/concept-0.2.md`). Пакеты WP10-A…D — версия 0.3 (`docs/concept-0.3.md`). Пакеты WP11-A…C — версия 0.4 (`docs/concept-0.4.md`).
 
 Фундамент готов: каркас MV3, ядро DOCX, контракты, протокол, конвейер popup → offscreen → worker (см. `docs/contracts.md`).
 Оставшаяся работа MVP (`docs/mvp-scope.md`) разбита на 5 независимых пакетов. Пакеты работают параллельно:
@@ -31,6 +31,9 @@
 добавлены `src/shared/bundled-model.js`, `src/offscreen/{package-fetch,pdf-loader}.js`. Остальной фундамент (`src/core/contracts/**`, `src/core/docx/**`,
 `src/core/detect/{index,runner,overlap}.js`, `src/core/{mapping,placeholders,sites,search,text-view}.js`, `src/background/offscreen-manager.js`) в 0.3 не менялся
 и по-прежнему меняется только через координатора.
+В 0.4 (волна 0, координатор) изменены `src/core/{categories,settings}.js` (группы категорий, схема 3), `src/core/contracts/entity.js` и `schemas/protocol.schema.json`
+(источник `list`), `src/core/detect/runner.js` (гейт `user`/`list`, порог ORG, вызов `core/ner/filters.js`), `src/core/docx/model.js` и `src/core/text/model.js`
+(`paragraph.kind`), `src/options/config-io.js` — см. `docs/contracts.md` §8. Пакетам WP11 эти файлы менять не нужно; нужна правка — через координатора.
 
 ---
 
@@ -247,6 +250,123 @@ e2e: снимок записи сети после автоустановки, �
 **Приёмка:** К16 (меню и подсказка), К13.
 
 **Статус:** выполнено, коммит `d691fff` (`hintMappingShown` и `content/flow.js` — в общем коммите `64bdb9f`); доработка «×»/Esc по ревью — `e76285a`. `hintMappingShown` (не экспортируется), `done-hint.js`, меню «Ещё ▾» с `btn-download-mapping`, подсказка `mapping-hint`, флаг из `content/flow.js`; тесты `done-hint`, `settings`, e2e `intercept.spec.js` (+2), контракт DOM в `tests/e2e/helpers/chat.js`. Доработка по ревью: «×» и Esc на экране «готово» идут через `closeDone()` (подсказка не обходится), Esc в открытом меню возвращает фокус на «Ещё ▾»; e2e `intercept.spec.js` (+2).
+
+---
+
+## WP11-A — политика маскирования, список компаний, панель и настройки (версия 0.4)
+
+**Файлы.** Новые: `src/core/detect/names/company-list.js`, `tests/unit/names/company-list.spec.js`, `tests/unit/ui/org-policy-hint.spec.js`.
+Изменяемые: `src/core/detect/names/{index,kb,company,lexicon}.js`, `src/ui/preview/{preview,model}.js`, `src/ui/panel/{panel,styles}.js`, `src/content/flow.js`,
+`src/options/options.js`, `src/ui/i18n/{options,panel,preview,help}.js`, `src/help/help.js`, `tests/unit/{settings,help-dict}.spec.js`,
+`tests/unit/names/{kb,sample,person-dict,categories}.spec.js`, `tests/integration/{fixtures-detectors,sample,fixtures-docs,host,pdf-pipeline}.spec.js`,
+`tests/e2e/{options,intercept,pdf}.spec.js`, `tests/e2e/helpers/chat.js`, gold `ip-contract` (`scripts/gen-fixtures.mjs`, `tests/fixtures/docs/*`), этот раздел.
+Не трогать: файлы волны 0 (см. выше), `src/core/ner/**`, `scripts/gen-genre-fixtures.mjs`, `scripts/eval-genres.mjs` (WP11-B).
+
+**Сделать** (`docs/contracts.md` §8, план D3, D5, D6, D10, D11):
+1. **ИП — человек** (решение владельца 1): «ИП Фамилия И.О.» и «Индивидуальный предприниматель Фамилия Имя Отчество» всегда дают PERSON с `keepPrefix` на форму
+   («ИП », «Индивидуальный предприниматель »); `canonical` — запись персоны, чтобы «Иванов И.И.» дальше по тексту получил ту же метку. COMPANY для ИП не порождается
+   ни в одном режиме. В коммерческом режиме при выключенной COMPANY (`commercial: false`) `kb.js` не порождает компании и **не занимает** их спаны (персоны рядом не теряются).
+2. **Правило «Студия/Агентство/Бюро/Компания/Группа компаний/Холдинг + Название»** (1–3 слова с заглавной) → COMPANY `labeled`, `keepPrefix` = родовое слово; только при включённой COMPANY.
+3. **Детектор списка** `company-list.js` (§8.2): регистрируется в `names/index.js` после `kb`; ядро названия без ОПФ/кавычек (regex-ы `lexicon.js`); поиск во всех потоках
+   (кроме container-сегментов): точное слово без учёта регистра; русская морфология (кириллическое слово ≥ 5 букв → основа без последней гласной группы + хвост `[а-яё]{0,3}`;
+   слова ≤ 4 букв и латиница — точно); границы слова как `glued()` в `person-dict.js`; кросс-скрипт через `crossScriptMatch` при `skeletonWeight ≥ 3`; ОПФ-префикс и кавычки
+   в `keepPrefix`/`keepSuffix` как в `company.js`; `aliases` — как ещё одно название. Выход `category: 'COMPANY', source: 'list', confidence: 'labeled', canonical: name`.
+   Работает при `commercial: false`. `exclusions` применяются после (в `ignoreForever` для `source: 'list'` кладётся canonical).
+4. **Панель и превью**: подпись источника `list` («из списка»); в строке COMPANY (коммерческий режим, `source ≠ list`) кнопка «Маскировать всегда» (`pv-mask-always`)
+   → `api.maskAlways(item)` → `saveSettingsPatch({maskedCompanies: [...cur, {name: item.value, aliases: []}]})` + тост; вкладка «Текст», «Анонимизировать как»:
+   при выборе COMPANY флажок «запомнить» (`pv-sel-remember`) — то же сохранение перед `ADD_ENTITY`. Одноразовая подсказка `org-policy-hint` в `setReady`
+   (как `ner-hint`: «×» `org-policy-hint-close`, ссылка на `options.html#categories`), показывается при `settings.orgPolicyHintPending`; при показе
+   `onOrgPolicyHintShown` → `saveSettingsPatch({orgPolicyHintPending: false})`.
+5. **Настройки**: раздел «Что маскируется» (`#categories`): блоки «Персональные данные — всегда» и «Идентификаторы — всегда» (чипы без переключателей, состав из
+   `CATEGORY_GROUPS`), «Коммерческая информация» — переключатель `commercial` (testid `commercial`) + прежние `cat-COMPANY|CONTRACT|AMOUNT` внутри (активны всегда,
+   действуют при включённой группе). Новый раздел «Компании для маскирования» (`#companies`, после categories, в nav): `company-name`, `company-add`, список `.chips`
+   с «×», поле псевдонимов `company-aliases-<i>`, предупреждение `company-short` (название < 4 символов или из `COMMON_NOUNS`), `companies-export`/`companies-import`
+   (JSON `{kind: 'docx-anonymizer-companies', version: 1, companies: […]}`). Раздел NER: поле `ner-threshold-org`, textarea `ner-stoplist` (строки → массив).
+   Справка ru/en: раздел о политике (сохранить слова, которые пинят `help-dict.spec`/`ner-i18n.spec`).
+6. **Тесты 0.3 с изменёнными ожиданиями** — перечислить здесь (К11): какие, почему (COMPANY по умолчанию не ищется; ИП → PERSON).
+
+**Приёмка** (К1, К2 часть правил, К3, К11, К13 часть):
+
+| Проверка | Как |
+|---|---|
+| pii/ids нельзя выключить; миграция 2 → 3 чинит профили; `commercial` по умолчанию `false`; экспорт/импорт сохраняет `commercial` и `maskedCompanies` | `tests/unit/{settings,categories}.spec.js` (есть с волны 0, дополнить экспортом/импортом) |
+| «Ромашка» → «Ромашки», «Ромашке», «Ромашкой»; «ООО «Ромашка»», без ОПФ, «Romashka», «Ромашка-Трейд», alias; одна метка; `exclusions` снимает; 3-буквенное название — точное слово; «Ромашкаус» не совпадает; DOCX и PDF (`fromText`) | `tests/unit/names/company-list.spec.js` |
+| «ИП Иванов И.И.» → PERSON (`keepPrefix 3`), «Иванов И.И.» далее — та же метка; при `commercial: false` «ООО «Ромашка»» не находится, «Петров П.П.» рядом — находится | `tests/unit/names/kb.spec.js` |
+| Обычный режим на всех фикстурах договоров: ноль утечек pii/ids, ноль COMPANY кроме списка; коммерческий — все gold-организации 0.3 найдены | `tests/integration/{fixtures-detectors,pdf-pipeline}.spec.js` в двух режимах |
+| Настройки: блоки «всегда» без переключателей; `commercial` показывает `cat-*`; добавление/удаление компании; экспорт/импорт списка | e2e `options.spec.js` |
+| Документ с «ООО «Ромашка»» при `maskedCompanies: [{name: 'Ромашка'}]`, `commercial: false` → строка COMPANY `list`; при `commercial: true` «Маскировать всегда» пишет запись в storage; подсказка по политике показана один раз | e2e `intercept.spec.js` |
+| gold PDF-фикстур с `commercial: true` | e2e `pdf.spec.js` |
+| `npm run lint`, `npm test`, `npm run e2e` зелёные | запуск |
+
+**Статус:** в работе.
+
+---
+
+## WP11-B — корпус жанров, отчёт, фильтры модельных организаций (версия 0.4)
+
+**Файлы.** Новые: `scripts/gen-genre-fixtures.mjs`, `scripts/eval-genres.mjs`, `tests/fixtures/genres/**`, `tests/integration/genres.spec.js`,
+`src/core/ner/stoplist.js`, `tests/unit/ner/filters.spec.js`. Изменяемые: `src/core/ner/filters.js` (наполнение заглушки волны 0), `scripts/gen-pdf-fixtures.mjs`
+(экспорт `htmlToPdf`/`htmlPage`), `package.json` (скрипты `gen-genre-fixtures`, `eval-genres`), `tests/integration/ner-provider.spec.js`, этот раздел.
+Не трогать: `src/options/**`, `src/ui/**`, `src/content/**`, `src/core/detect/**` (WP11-A); `src/core/detect/runner.js` — только через координатора.
+
+**Сделать** (`docs/contracts.md` §8.3–8.4, план D7, D8):
+1. `filters.js`: `createOrgFilterContext(doc, settings)` (частоты слов, множество капс-строк, стоп-список = `stoplist.js` ∪ `settings.nerStoplist`),
+   `filterOrgSpans(spans, {text, blockKind, …ctx})`: отбросить ORG, если (1) спан = весь поток, поток ≤ 3 слов, без ОПФ/кавычек, и `blockKind ∈ {h1, h2, li, cell, heading}`
+   или текст капсом / оканчивается на «:»; (2) спан целиком в стоп-списке; (3) одно слово без ОПФ, встречающееся в документе только в капс-строках. Сохранять: ОПФ + кавычки,
+   названия внутри предложения («Ромашка-Трейд»), «Студия Ромашка». `stoplist.js`: аббревиатуры (ЭДО, ВЭД, УПД, ТЗ, ФИО, КП, НДС, MVP, API, CRM, ERP, SaaS, KPI, QR, PDF, DOCX…),
+   продукты (Word, Excel, PowerPoint, Outlook, Teams, Telegram, WhatsApp, Zoom, Google, Яндекс, 1С, Bitrix24…).
+2. `gen-genre-fixtures.mjs` → `tests/fixtures/genres/<genre>/<name>.{docx,pdf,gold.json}` + `<name>.pdf.txt` (снимок разметки, как `tests/fixtures/pdf`). Жанры:
+   `proposal` (КП), `letter`, `invoice` (счёт + УПД), `reconciliation` (акт сверки), `manual` (регламент), `deck` (презентация, только PDF), `resume`, `chat` (переписка);
+   `letter` и `resume` дополнительно en. ≥ 3 документа на жанр; PRNG mulberry32 с фиксированным сидом (как `gen-ner-eval.mjs`); вымышленные словари; переиспользовать
+   `make-sample.mjs`, `gen-fixtures.mjs` (`pack/tbl/cell/title`), `gen-pdf-fixtures.mjs` (`documentToHtml`, Chromium). Gold `{entities: [{key, category, value}], negatives: [{value, category}]}`:
+   `negatives` — заголовки капсом, аббревиатуры, продукты, бренд «Студия <Бренд>», которые не должны стать COMPANY/PERSON. Синтетический аналог КП Sitimlab в `proposal/`
+   (обложка капсом, нумерованные разделы «05 Цены», таблица цен, ЭДО/ВЭД/УПД/MVP, Word/Excel, реквизиты с ИНН/КПП/счётом).
+3. `eval-genres.mjs` (`npm run eval-genres [--model=<dir>] [--json] [--private]`): по жанру × категории × режиму (`normal`/`commercial`) — точность, полнота, число ложных;
+   с моделью при `NER_MODEL_DIR` (загрузчик из `bench-ner.mjs`); использует `tests/integration/support/pipeline.js`. `tests/fixtures/private/` (gitignored) — гейт `PRIVATE_FIXTURES=1`,
+   файлы `*.pdf|*.docx` + необязательный `*.gold.json`; в выводе — только счётчики по категориям, без значений.
+
+**Приёмка** (К2 часть, К4 синтетика, К5, К7 часть правил, К10, К12 часть):
+
+| Проверка | Как |
+|---|---|
+| К10: капс-заголовок, строка списка 1–3 слов, аббревиатура из стоп-списка, ячейка без ОПФ — отброшены; «ООО «Ромашка»», «Ромашка-Трейд» в предложении, «Студия Ромашка» — сохранены; `nerStoplist` работает; `blockKind` из PDF `h1` и DOCX `Heading1` достигает фильтра | `tests/unit/ner/filters.spec.js` (+ интеграционно через `fromText`/`parseDocx` и стаб-провайдер в `analyze`) |
+| К5: 8 жанров × ≥ 3 документа, ru + en для `letter`/`resume`, DOCX и PDF; детерминизм (двойная генерация → те же DOCX-байты и `.pdf.txt`) | `tests/integration/genres.spec.js` |
+| Обычный режим: ноль утечек pii/ids, ноль COMPANY, `negatives` не найдены ни в одной категории; коммерческий без модели: полнота организаций с ОПФ ≥ 0,95, ложных COMPANY на `proposal` ≤ 2; при `NER_MODEL_DIR` — числа в отчёт (гейт К6/К7 для 1.1.0 включает WP11-C3) | `genres.spec.js`, `npm run eval-genres` |
+| `PRIVATE_FIXTURES=1` прогоняет `private/` без падения, печатает счётчики без значений | `genres.spec.js` |
+| `npm run lint`, `npm test`, `npm run e2e` (регрессия, под flock) зелёные | запуск |
+
+**Статус:** в работе.
+
+---
+
+## WP11-C — переобучение модели и пакет 1.1.0 (версия 0.4)
+
+Исполнитель C1/C2 — `ner-trainer` (Python, без JS-тестов), C3 — `wp-implementer`.
+
+**C1 (спайк и подготовка, параллельно с A и B).** Файлы: `tools/ner-train/**`. Спайк лицензий Nerus, factRuEval-2016, RuREBus (файл лицензии/условия в источнике;
+совместимость с распространением обученных весов под MIT и упоминанием в NOTICE) → `tools/ner-train/README.md` «Источники 1.1.0» (включён/отклонён, почему);
+при отклонении всех — путь «учитель + синтетика жанров ≥ 50 %». Код: `synth.py` — шаблоны жанров (≥ 6 жанров ru, 2 en: КП, письма, счета, регламенты, резюме, переписка;
+заголовки капсом, нумерованные заголовки «05 Цены», аббревиатуры, продукты — как O; ≥ 30 % синтетики — отрицательные предложения без сущностей); `prepare.py` — источники
+с весами (`config.yaml data.sources[]`, конвертация меток в `PER/ORG/LOC`), снятие `assert ≤ 20 %` (параметр `synth.max_ratio`), отложенный набор `synth_genre_test`;
+`evaluate.py` — гейты `ru_per_f1 ≥ 0.91`, `ru_org_f1 ≥ 0.78`, новый `synth_genre_org_precision ≥ 0.85`; `make_pack_src.py` — источники/лицензии из конфига, `version: 1.1.0`
+(`minExtensionVersion` остаётся `0.2.0`). Пробный прогон `--set run_id=x-genre-probe` с числами в отчёте.
+
+**C2 (обучение, после корпуса B).** Финальный прогон `rubert-tiny2-ner-ruen` 1.1.0: `prepare → teacher → train → evaluate → export_onnx → quantize → verify_onnx →
+calibrate → bench_ort → make_tokenizer_fixture → make_pack_src`; `npm run pack:model -- --id=rubert-tiny2-ner-ruen` → `release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.1.0.zip`
++ sha256. Координатор прогоняет `NER_MODEL_DIR=models-src/rubert-tiny2-ner-ruen npm run eval-genres` и `ner-provider.spec`; при провале К6/К7 — до 2 итераций весов
+смешивания, затем честная фиксация результата.
+
+**C3 (интеграция пакета).** Файлы: `src/core/ner/known-packs.js` (+ запись 1.1.0, 1.0.0 остаётся), `scripts/pack.mjs` (`findModelZip` — zip с наибольшей версией из
+`KNOWN_PACKS` или `--model=`), `tests/integration/{pack,manifest}.spec.js` (имя zip из `KNOWN_PACKS`, гейт полного архива ≤ 45 МБ), `tests/unit/background/bundled-model.spec.js`
+и `tests/integration/host.spec.js` (установленный `{id, sha_old}` + bundled `sha_new` → `install`, старый слот удалён), `tests/e2e/bundled-model.spec.js` (сценарий «поверх 1.0.0»,
+гейт `NER_PACK_PREV`: импорт 1.0.0 через настройки → `MODEL_BOOTSTRAP` → 1.1.0), `tests/integration/{genres,ner-provider}.spec.js` (гейты К6/К7 для 1.1.0), `README.md`
+(таблица метрик 1.1.0: WikiANN + жанры), `docs/contracts.md` §6.7, `tests/fixtures/ner/*` при переэкспорте токенизатора.
+
+**Приёмка** (К5–К9, К12): гейты `evaluate.py` PASS; int8 ≤ 40 МБ; `bench-ner` холодный старт ≤ 0,5 с, 20 страниц ≤ 3 с; `eval-genres` с 1.1.0: люди P ≥ 0,90 / R ≥ 0,85
+по жанрам, организации в коммерческом режиме P ≥ 0,80, ложных на `proposal` ≤ 2; договоры без регрессии (пороги `ner-provider.spec` 0.3); полный архив ≤ 45 МБ, лёгкий ≤ 12 МБ;
+`bundled-model.spec` зелёный с `--with-model=…1.1.0.zip`.
+
+**Статус:** в работе.
 
 ---
 

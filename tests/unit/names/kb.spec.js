@@ -1,7 +1,7 @@
 // FR-21–FR-23: база знаний сторон — фикстура kb-forms.json, зоны сторон, ИП.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { registerNames, analyzeParagraphs, allOnSettings, docFromParagraphs } from './helpers.js';
+import { registerNames, analyzeParagraphs, allOnSettings, commercialSettings, docFromParagraphs } from './helpers.js';
 import { findPartyZones } from '../../../src/core/detect/names/kb.js';
 
 const fx = JSON.parse(readFileSync(new URL('../../fixtures/kb-forms.json', import.meta.url), 'utf8'));
@@ -74,7 +74,8 @@ describe('ИП (FR-21)', () => {
   beforeEach(() => registerNames());
 
   it('«ИП Иванов И.И.» → COMPANY целиком с ОПФ в keepPrefix; ФИО отдельно не выделяется', async () => {
-    const r = await analyzeParagraphs(['ДОГОВОР', '1. Предмет', 'Реквизиты сторон', 'ИП Иванов И.И., ИНН 500400123402']);
+    // коммерческий режим (поведение 0.3); политика 0.4 «ИП — человек» — WP11-A
+    const r = await analyzeParagraphs(['ДОГОВОР', '1. Предмет', 'Реквизиты сторон', 'ИП Иванов И.И., ИНН 500400123402'], commercialSettings());
     const ents = r.entities.filter((e) => e.category === 'PERSON' || e.category === 'COMPANY');
     expect(ents.map((e) => [e.category, e.text, e.keepPrefix])).toEqual([['COMPANY', 'ИП Иванов И.И.', 3]]);
   });
@@ -87,11 +88,14 @@ describe('ИП (FR-21)', () => {
     expect(off.entities.filter((e) => e.category === 'COMPANY').map((e) => e.text)).toEqual(['ПАО Сбербанк', 'АО «Ромашка»']);
   });
 
-  it('выключенные PERSON/COMPANY не выдаются', async () => {
+  it('выключенная COMPANY не выдаётся; PERSON выключить нельзя (политика 0.4, К1)', async () => {
     const s = allOnSettings();
     s.categories.PERSON = false;
     s.categories.COMPANY = false;
     const r = await analyzeParagraphs(['ООО «Ромашка», в лице Иванова Петра Сергеевича'], s);
-    expect(r.entities).toEqual([]);
+    expect(r.entities.map((e) => [e.category, e.text])).toEqual([['PERSON', 'Иванова Петра Сергеевича']]);
+    // выключенная коммерческая группа — то же, что выключенная COMPANY
+    const off = await analyzeParagraphs(['ООО «Ромашка», в лице Иванова Петра Сергеевича']);
+    expect(off.entities.map((e) => [e.category, e.text])).toEqual([['PERSON', 'Иванова Петра Сергеевича']]);
   });
 });

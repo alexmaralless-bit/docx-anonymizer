@@ -12,3 +12,6 @@ tools/ner-train/runs/
 tools/ner-train/.venv/
 tools/ner-train/.cache/
 *.onnx
+
+# Настоящие документы владельца для прогона по гейту PRIVATE_FIXTURES (версия 0.4, К4) — в репозиторий не попадают
+tests/fixtures/private/

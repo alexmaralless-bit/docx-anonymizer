@@ -5,6 +5,7 @@
 /**
  * @typedef {'validated'|'labeled'|'kb'|'ner'|'weak'} Level
  * @typedef {'text'|'lower'|'alnum'|'alnumUpper'} NormalizeKind
+ * @typedef {'pii'|'ids'|'commercial'} CategoryGroup
  *
  * @typedef {object} CategoryDef
  * @property {string} id                     'PERSON' | … | 'custom:<slug>'
@@ -12,6 +13,7 @@
  * @property {{ru: string, en: string}} placeholderPrefix   без скобок и номера: 'ФИО' → [ФИО_1]
  * @property {string} color                  цвет метки в UI
  * @property {boolean} defaultOn
+ * @property {CategoryGroup} group        группа политики 0.4: 'pii' и 'ids' маскируются всегда, 'commercial' — по переключателю `commercial`
  * @property {Level[]} allowedLevels         кандидаты других уровней отбрасываются ядром
  * @property {{ru: string[], en: string[]}} labels  лейблы-подсказки для детекторов
  * @property {string|null} validator         имя валидатора в core/validators.js (WP1)
@@ -27,6 +29,7 @@ const L = (ru, en) => ({ ru, en });
 const BUILTIN = [
   {
     id: 'PASSPORT',
+    group: 'pii',
     label: L('Паспорт', 'Passport'),
     placeholderPrefix: L('ПАСПОРТ', 'PASSPORT'),
     color: '#c0392b',
@@ -39,6 +42,7 @@ const BUILTIN = [
   },
   {
     id: 'SNILS',
+    group: 'pii',
     label: L('СНИЛС', 'SNILS'),
     placeholderPrefix: L('СНИЛС', 'SNILS'),
     color: '#d35400',
@@ -51,6 +55,7 @@ const BUILTIN = [
   },
   {
     id: 'INN',
+    group: 'ids',
     label: L('ИНН', 'INN'),
     placeholderPrefix: L('ИНН', 'INN'),
     color: '#e67e22',
@@ -63,6 +68,7 @@ const BUILTIN = [
   },
   {
     id: 'OGRN',
+    group: 'ids',
     label: L('ОГРН / ОГРНИП', 'OGRN'),
     placeholderPrefix: L('ОГРН', 'OGRN'),
     color: '#f39c12',
@@ -75,6 +81,7 @@ const BUILTIN = [
   },
   {
     id: 'ACCOUNT',
+    group: 'ids',
     label: L('Банковский счёт', 'Bank account'),
     placeholderPrefix: L('СЧЕТ', 'ACCOUNT'),
     color: '#16a085',
@@ -90,6 +97,7 @@ const BUILTIN = [
   },
   {
     id: 'CARD',
+    group: 'pii',
     label: L('Банковская карта', 'Card'),
     placeholderPrefix: L('КАРТА', 'CARD'),
     color: '#1abc9c',
@@ -102,6 +110,7 @@ const BUILTIN = [
   },
   {
     id: 'IBAN',
+    group: 'ids',
     label: L('IBAN', 'IBAN'),
     placeholderPrefix: L('IBAN', 'IBAN'),
     color: '#27ae60',
@@ -114,6 +123,7 @@ const BUILTIN = [
   },
   {
     id: 'SWIFT',
+    group: 'ids',
     label: L('SWIFT', 'SWIFT'),
     placeholderPrefix: L('SWIFT', 'SWIFT'),
     color: '#2ecc71',
@@ -126,6 +136,7 @@ const BUILTIN = [
   },
   {
     id: 'BIK',
+    group: 'ids',
     label: L('БИК', 'BIK'),
     placeholderPrefix: L('БИК', 'BIK'),
     color: '#2980b9',
@@ -138,6 +149,7 @@ const BUILTIN = [
   },
   {
     id: 'KPP',
+    group: 'ids',
     label: L('КПП', 'KPP'),
     placeholderPrefix: L('КПП', 'KPP'),
     color: '#3498db',
@@ -150,6 +162,7 @@ const BUILTIN = [
   },
   {
     id: 'SSN',
+    group: 'pii',
     label: L('SSN', 'SSN'),
     placeholderPrefix: L('SSN', 'SSN'),
     color: '#8e44ad',
@@ -162,6 +175,7 @@ const BUILTIN = [
   },
   {
     id: 'TAXID',
+    group: 'ids',
     label: L('Налоговый ID (иностр.)', 'Tax ID'),
     placeholderPrefix: L('НАЛОГ_ID', 'TAXID'),
     color: '#9b59b6',
@@ -174,6 +188,7 @@ const BUILTIN = [
   },
   {
     id: 'EMAIL',
+    group: 'pii',
     label: L('Эл. почта', 'Email'),
     placeholderPrefix: L('EMAIL', 'EMAIL'),
     color: '#2c3e50',
@@ -185,6 +200,7 @@ const BUILTIN = [
   },
   {
     id: 'URL',
+    group: 'ids',
     label: L('Ссылка', 'URL'),
     placeholderPrefix: L('URL', 'URL'),
     color: '#34495e',
@@ -196,6 +212,7 @@ const BUILTIN = [
   },
   {
     id: 'PHONE',
+    group: 'pii',
     label: L('Телефон', 'Phone'),
     placeholderPrefix: L('ТЕЛ', 'PHONE'),
     color: '#7f8c8d',
@@ -208,6 +225,7 @@ const BUILTIN = [
   },
   {
     id: 'BIRTHDATE',
+    group: 'pii',
     label: L('Дата рождения', 'Date of birth'),
     placeholderPrefix: L('ДАТА_РОЖД', 'DOB'),
     color: '#e84393',
@@ -219,6 +237,7 @@ const BUILTIN = [
   },
   {
     id: 'PERSON',
+    group: 'pii',
     label: L('ФИО', 'Person'),
     placeholderPrefix: L('ФИО', 'PERSON'),
     color: '#d63031',
@@ -230,6 +249,7 @@ const BUILTIN = [
   },
   {
     id: 'COMPANY',
+    group: 'commercial',
     label: L('Организация', 'Company'),
     placeholderPrefix: L('КОМПАНИЯ', 'COMPANY'),
     color: '#0984e3',
@@ -241,6 +261,7 @@ const BUILTIN = [
   },
   {
     id: 'ADDRESS',
+    group: 'pii',
     label: L('Адрес', 'Address'),
     placeholderPrefix: L('АДРЕС', 'ADDRESS'),
     color: '#00b894',
@@ -252,6 +273,7 @@ const BUILTIN = [
   },
   {
     id: 'CONTRACT',
+    group: 'commercial',
     label: L('Номер договора', 'Contract No.'),
     placeholderPrefix: L('ДОГОВОР', 'CONTRACT'),
     color: '#636e72',
@@ -263,6 +285,7 @@ const BUILTIN = [
   },
   {
     id: 'AMOUNT',
+    group: 'commercial',
     label: L('Сумма', 'Amount'),
     placeholderPrefix: L('СУММА', 'AMOUNT'),
     color: '#b2bec3',
@@ -278,6 +301,22 @@ const BUILTIN = [
 export const BUILTIN_CATEGORIES = Object.freeze(BUILTIN.map((c, i) => Object.freeze({ ...c, priority: i + 1, builtin: true })));
 
 export const BUILTIN_IDS = Object.freeze(BUILTIN_CATEGORIES.map((c) => c.id));
+
+/**
+ * Группы политики маскирования (версия 0.4, `docs/concept-0.4.md` п. 1): состав и порядок показа в настройках.
+ * `pii` (персональные данные) и `ids` (идентификаторы компаний) маскируются безусловно — переключателей у них нет;
+ * `commercial` (названия организаций, номера договоров, суммы) включается одним переключателем `settings.commercial`
+ * (по умолчанию выключен), внутри действуют прежние переключатели `settings.categories[id]`.
+ * @type {Readonly<Record<CategoryGroup, readonly string[]>>}
+ */
+export const CATEGORY_GROUPS = Object.freeze({
+  pii: Object.freeze(BUILTIN_CATEGORIES.filter((c) => c.group === 'pii').map((c) => c.id)),
+  ids: Object.freeze(BUILTIN_CATEGORIES.filter((c) => c.group === 'ids').map((c) => c.id)),
+  commercial: Object.freeze(BUILTIN_CATEGORIES.filter((c) => c.group === 'commercial').map((c) => c.id)),
+});
+
+/** Категории, которые нельзя выключить (группы `pii` и `ids`). */
+export const ALWAYS_ON_IDS = Object.freeze([...CATEGORY_GROUPS.pii, ...CATEGORY_GROUPS.ids]);
 
 /** Уровни уверенности по убыванию (FR-20 шаг 2). */
 export const LEVEL_RANK = Object.freeze({ validated: 0, labeled: 1, kb: 2, ner: 3, weak: 4 });
@@ -314,11 +353,14 @@ export function buildCatalog(settings = {}) {
 }
 
 /**
- * Включена ли категория с учётом настроек (settings.categories[id] ?? defaultOn;
- * для пользовательских — поле enabled).
+ * Включена ли категория с учётом настроек (политика 0.4, Ц1/К1):
+ * группы `pii` и `ids` — всегда; `commercial` — только при `settings.commercial === true`, дальше
+ * `settings.categories[id] ?? defaultOn`; пользовательские — поле enabled.
  */
 export function isCategoryEnabled(cat, settings = {}) {
   if (!cat.builtin) return cat.defaultOn;
+  if (cat.group === 'pii' || cat.group === 'ids') return true;
+  if (cat.group === 'commercial' && settings.commercial !== true) return false;
   const v = settings.categories?.[cat.id];
   return typeof v === 'boolean' ? v : cat.defaultOn;
 }

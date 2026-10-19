@@ -165,6 +165,8 @@ test.describe('PDF: конвейер через клиент протокола'
   });
 
   test('повёрнутая страница (/Rotate 270) и «дикие» PDF в воркере Chromium: текст есть, gold не утекает (ревью WP10-A)', async ({ context, extensionId }) => {
+    // gold содержит названия организаций — коммерческий режим (политика 0.4)
+    await setExtensionSettings(context, extensionId, { commercial: true });
     const ext = await context.newPage();
     await ext.goto(`chrome-extension://${extensionId}/popup/popup.html`);
     await installClient(ext);

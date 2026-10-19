@@ -20,7 +20,7 @@ beforeAll(async () => {
   const s = buildSampleDocx();
   gold = s.gold;
   doc = parseDocx(s.bytes);
-  res = await analyze(doc, defaultSettings());
+  res = await analyze(doc, { ...defaultSettings(), commercial: true });
 });
 
 describe('образец договора (WP2)', () => {

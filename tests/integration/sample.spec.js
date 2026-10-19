@@ -46,7 +46,7 @@ async function anonymize(bytes, opts = {}) {
     if (!category) throw new Error(`нет категории для ${k}`);
     for (const o of findOccurrences(doc, v)) userEntities.push({ ...o, category, confidence: 'labeled' });
   }
-  const analysis = await analyze(doc, defaultSettings(), { userEntities });
+  const analysis = await analyze(doc, { ...defaultSettings(), commercial: true }, { userEntities });
   const res = applyDecisions(doc, analysis.groups, { mode: 'placeholder', placeholderLanguage: 'ru', createdAt: '2026-10-04T00:00:00Z', ...opts });
   return { doc, analysis, ...res };
 }

@@ -3,6 +3,7 @@
 import { buildCatalog, isCategoryEnabled, normalizeValue } from '../categories.js';
 import { getDetectors, getDocumentDetectors } from '../contracts/detector.js';
 import { NER_LABEL_TO_CATEGORY } from '../contracts/ner.js';
+import { createOrgFilterContext, filterOrgSpans } from '../ner/filters.js';
 import { resolveOverlaps } from './overlap.js';
 import { PlaceholderAllocator, resolvePlaceholderLanguage } from '../placeholders.js';
 
@@ -48,9 +49,13 @@ export async function analyze(doc, settings, opts = {}) {
 
   const accept = (cand, category, stream, defaultSource) => {
     const cat = catalog.byId.get(category);
-    if (!cat || !isEnabled(category)) return;
+    if (!cat) return;
     const source = cand.source || defaultSource;
-    if (source !== 'user' && !cat.allowedLevels.includes(cand.confidence)) return;
+    // Политика 0.4 (Ц1, К3): выключенная категория не отбрасывает то, о чём пользователь попросил явно — сущности,
+    // добавленные вручную (user), и компании из списка для маскирования (list); уровни для них тоже не проверяются
+    const explicit = source === 'user' || source === 'list';
+    if (!explicit && !isEnabled(category)) return;
+    if (!explicit && !cat.allowedLevels.includes(cand.confidence)) return;
     if (!Number.isInteger(cand.start) || !Number.isInteger(cand.end) || cand.start < 0 || cand.end > stream.text.length || cand.end <= cand.start) return;
     const text = stream.text.slice(cand.start, cand.end);
     if (BOUNDARY_RE.test(text)) return;
@@ -130,11 +135,24 @@ export async function analyze(doc, settings, opts = {}) {
     try {
       await opts.nerProvider.init();
       const live = doc.streams.filter((s) => s.type === 'live');
+      // Политика 0.4 (концепция п. 4, К10): у ORG свой порог и фильтр ложных организаций; вид блока (заголовок,
+      // пункт списка, ячейка) приходит из paragraph.kind (DOCX: w:pStyle/w:numPr, PDF: разметка)
+      const wantOrg = isEnabled('COMPANY');
+      const orgCtx = wantOrg ? createOrgFilterContext(doc, settings) : null;
+      const kindByPid = new Map(doc.paragraphs.map((p) => [p.pid, p.kind]));
+      const thresholdFor = (label) => (label === 'ORG' ? (settings.nerThresholdOrg ?? 0.85) : (settings.nerThreshold ?? 0.7));
       for (let i = 0; i < live.length; i++) {
         const s = live[i];
-        const spans = await opts.nerProvider.detect(s.text, { language });
+        let spans = (await opts.nerProvider.detect(s.text, { language })).filter((sp) => sp.score >= thresholdFor(sp.label));
+        if (wantOrg && spans.some((sp) => sp.label === 'ORG')) {
+          const others = spans.filter((sp) => sp.label !== 'ORG');
+          const orgs = filterOrgSpans(
+            spans.filter((sp) => sp.label === 'ORG'),
+            { ...orgCtx, text: s.text, blockKind: kindByPid.get(s.pid) },
+          );
+          spans = [...others, ...orgs];
+        }
         for (const sp of spans) {
-          if (sp.score < (settings.nerThreshold ?? 0.7)) continue;
           const cat = NER_LABEL_TO_CATEGORY[sp.label];
           if (cat) accept({ start: sp.start, end: sp.end, confidence: 'ner', source: 'ner', score: sp.score }, cat, s, 'ner');
         }

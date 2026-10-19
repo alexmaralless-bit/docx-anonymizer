@@ -38,7 +38,8 @@ export function fromText(blocks, meta = {}) {
       const part = b.kind === 'header' ? TEXT_HEADER_PART : b.kind === 'footer' ? TEXT_FOOTER_PART : TEXT_MAIN_PART;
       const id = `${pid}:live`;
       streams.push({ id, part, pid, type: 'live', text: blk.text, pos: i, order: 0 });
-      paragraphs.push({ pid, part, depth: b.kind === 'cell' ? 1 : 0, pos: i, streams: { live: id } });
+      // kind блока разметки (h1/h2/li/cell/p/header/footer) — фильтрам модельных организаций (0.4, К10)
+      paragraphs.push({ pid, part, depth: b.kind === 'cell' ? 1 : 0, pos: i, streams: { live: id }, kind: b.kind });
       blk.pid = pid;
       if (b.table) {
         let t = tables.get(b.table.index);

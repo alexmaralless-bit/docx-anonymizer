@@ -110,7 +110,8 @@ popup / content / options / restore ──port "docx"──► background (route
 | `Entity` | ядро из кандидата | + `id`, `category`, `text`, `normalized`, `streamId`, `enabled` |
 | `EntityGroup` | ядро (группировка) | одно значение = один плейсхолдер: `id` (`e1`…), `value`, `normalized`, `placeholder` (`[ФИО_1]`), `level`, `enabled`, `replacement?`, `excludedOccurrences?`, `occurrences[]` |
 
-- **Уровни** (`confidence`): `validated > labeled > kb > ner > weak`. Кандидат с уровнем вне `category.allowedLevels` ядро **молча отбрасывает** (кроме `source: 'user'`).
+- **Уровни** (`confidence`): `validated > labeled > kb > ner > weak`. Кандидат с уровнем вне `category.allowedLevels` ядро **молча отбрасывает** (кроме `source: 'user'` и `'list'`).
+- **Источники** (`source`): `rule`, `label`, `kb`, `user`, `ner`, `list` (0.4: список компаний для маскирования). Кандидаты `user` и `list` принимаются и при **выключенной** категории — это явная просьба пользователя (§8).
 - **Границы**: сущность не может содержать `\n` или `U+FFFC` — такие кандидаты отбрасываются. `\t` допустим (адреса, телефоны).
 - **`keepPrefix`/`keepSuffix`** — сколько символов по краям остаётся вне плейсхолдера. COMPANY `ООО «Ромашка»` → `keepPrefix: 5, keepSuffix: 1` → `ООО «[КОМПАНИЯ_1]»`. Нормализация и `value` считаются по «ядру» без обёртки.
 - **`canonical`** — для вариантов (KB: падежи, инициалы, транслитерация): нормализованное значение основной сущности. Все кандидаты с одним `(category, canonical|normalized)` получают один плейсхолдер. Ядро пропускает `canonical` через `normalizeValue`, так что `ё/е` и регистр не важны.
@@ -227,11 +228,18 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
 
 - `BUILTIN_CATEGORIES` — 21 запись: `id, label{ru,en}, placeholderPrefix{ru,en}, color, defaultOn, allowedLevels, labels{ru[],en[]}, validator, priority, builtin, normalize, numeric?`.
 - `buildCatalog(settings) → {list, byId}` — встроенные + пользовательские. **UI берёт список категорий только отсюда** (FR-17).
-- `isCategoryEnabled(cat, settings)` — `settings.categories[id] ?? defaultOn`.
+- `isCategoryEnabled(cat, settings)` — политика 0.4 (§8): группы `pii`/`ids` → всегда `true`; `commercial` → `settings.commercial === true && (settings.categories[id] ?? defaultOn)`; пользовательские — `enabled`.
+- `CATEGORY_GROUPS` (`{pii, ids, commercial}` → id[]), `ALWAYS_ON_IDS` (0.4) — состав групп для настроек и справки; у каждой встроенной категории поле `group`.
 - Настройки: `defaultSettings()`, `migrateSettings(stored) → {settings, changed}` (миграции — `MIGRATIONS[n]` + `SETTINGS_SCHEMA_VERSION`),
   `validateSettingsPatch(patch) → badKeys[]`, `VALIDATORS[key]`, `effectiveSettings(settings, profileId)`, `applyMigrations(obj, fromVersion)` — те же миграции
   для частичного объекта (импорт файла настроек, `options/config-io.js`).
-- `SETTINGS_SCHEMA_VERSION` = 2 (0.2): миграция 1 → 2 меняет `nerThreshold` 0.6 (прежний дефолт) на 0.7, другие значения порога не трогает.
+- `SETTINGS_SCHEMA_VERSION` = 3 (0.4): миграция 1 → 2 (0.2) меняет `nerThreshold` 0.6 (прежний дефолт) на 0.7, другие значения порога не трогает;
+  миграция 2 → 3 (0.4, §8) включает категории `pii`/`ids` в `categories` и в `profiles[].values.categories`, ставит `orgPolicyHintPending: true` объекту с `categories`
+  (существующий профиль); `commercial` у всех — дефолт `false`. `migrateSettings` дополнительно всегда включает `pii`/`ids` (К1) — даже в объекте текущей версии.
+- `commercial` (boolean, по умолчанию `false`, поле профиля; 0.4) — группа «Коммерческая информация» (COMPANY, CONTRACT, AMOUNT). Экспортируется.
+- `maskedCompanies` (`[{name, aliases?: string[]}]`, ≤ 200 записей, `name` 1–120 символов, ≤ 20 псевдонимов; 0.4) — список компаний для маскирования; не поле профиля, экспортируется. Пишут страница настроек, панель («Маскировать всегда») и вкладка «Текст» («запомнить»).
+- `orgPolicyHintPending` (boolean, по умолчанию `false`; 0.4) — показать один раз подсказку «организации теперь по желанию» в панели; ставит миграция 2 → 3, снимает content script. **Не экспортируется**.
+- `nerThresholdOrg` (0–1, по умолчанию **0.85**, поле профиля; 0.4) — порог модели для метки ORG; `nerThreshold` остаётся порогом PER/LOC. `nerStoplist` (string[] ≤ 500; 0.4) — пользовательское дополнение стоп-списка модельных организаций (§8); не поле профиля, экспортируется.
 - `dictNames` (boolean, по умолчанию `true`, поле профиля) — словарный детектор ФИО (WP7); тумблер в настройках, раздел «Обработка».
 - `nerEnabled` (boolean, `true`) и `nerThreshold` (0–1, по умолчанию **0.7** = `recommendedThreshold` пакета, поле профиля) — этап NER; без установленного пакета не действуют.
 - `nerModel` (string, по умолчанию `''`; иначе id пакета `/^[a-z0-9][a-z0-9-]{1,40}$/`) — установленный пакет модели NER (WP8). Не поле профиля, **не экспортируется** в файл настроек (`NOT_EXPORTED` в `options/config-io.js`): пакет живёт в OPFS этого браузера. Пишет только карточка «Модель NER».
@@ -243,7 +251,7 @@ registerDocumentDetector('kb', (doc, entities, ctx) => [{ streamId, category: 'P
   (`MODEL_INSTALLED failed`, `ERROR` хоста, `HOST_UNAVAILABLE`). Пишет только background (§6.8): код — при неудаче, `''` — в начале новой попытки и при
   `installed|present`; страница настроек стирает его сама перед «Повторить». **Не экспортируется** (`NOT_EXPORTED`).
 - `pdfMode` (`markdown` | `text` | `off`, по умолчанию `markdown`; 0.3, WP10-A) — что уходит в чат вместо PDF; не поле профиля, **экспортируется** (§7.4).
-- `NOT_EXPORTED` (`options/config-io.js`) = `schemaVersion`, `panelPosition`, `nerModel`, `hintMappingShown`, `bundledModelSha`, `bundledModelError`.
+- `NOT_EXPORTED` (`options/config-io.js`) = `schemaVersion`, `panelPosition`, `nerModel`, `hintMappingShown`, `bundledModelSha`, `bundledModelError`, `orgPolicyHintPending`.
 - «Сбросить настройки» (`config-reset`) сохраняет `KEPT_ON_RESET` = `nerModel`, `bundledModelSha`, `bundledModelError` (`options/config-io.js`): это состояние
   браузера (установленная модель и её автоустановка), а не настройки; без этого полная сборка после сброса висела бы в «устанавливается…» без попытки установки.
 - Хранилище — **только** через `src/shared/settings-store.js`: `loadSettings()`, `saveSettingsPatch(patch) → {settings, rejected}`, `onSettingsChanged(cb)`.
@@ -792,3 +800,46 @@ content (files.js: fileKind/isSupported по pdfMode) ──► host.onAnalyze: 
 удаления дефисов, знаков переноса и пробелов между цифрами — `partialLeaks` в `pdf-pipeline.spec.js`); К3 — паритет с DOCX ≥ 95 % на каждой фикстуре с DOCX-исходником
 (`structures.lo` 8/8, `sample-contract.lo` 28/29 — LibreOffice рисует удалённый текст исправления рядом с адресом почты), на «диких» — 17/17 gold. Порядок абзацев
 (К4) для `structures.lo` и `sample-contract.lo` не меряется: исправления и сноски LibreOffice в теле страницы не сопоставляются с живым текстом DOCX.
+
+---
+
+## 8. Политика маскирования и список компаний (версия 0.4, `docs/concept-0.4.md`)
+
+Решения владельца (19.10.2026): персональные данные и идентификаторы компаний маскируются **всегда**, названия организаций — **по желанию**;
+бренд «Sitimlab» не маскируется никогда; водяного знака в файлах нет.
+
+### 8.1. Группы категорий (волна 0, `core/categories.js`, `core/settings.js`)
+
+| Группа | Категории | Переключатель |
+|---|---|---|
+| `pii` | PERSON, PASSPORT, SNILS, SSN, PHONE, EMAIL, BIRTHDATE, ADDRESS, CARD | нет — всегда включены |
+| `ids` | INN, KPP, OGRN, ACCOUNT, IBAN, BIK, SWIFT, TAXID, URL | нет — всегда включены |
+| `commercial` | COMPANY, CONTRACT, AMOUNT | `settings.commercial` (по умолчанию `false`) + прежние `settings.categories[id]` внутри |
+
+- `isCategoryEnabled` — см. §3. `settings.categories[id] = false` для `pii`/`ids` игнорируется и исправляется `migrateSettings`.
+- «ИП Фамилия И.О.» — имя человека (решение 1): всегда PERSON с `keepPrefix` на форму «ИП » (WP11-A; до него — COMPANY, как в 0.3).
+- Ядро (`detect/runner.js`, `accept`): кандидаты `source: 'user'` и `'list'` **не** проверяются на включённость категории и `allowedLevels`.
+  Остальные источники — как раньше. Детекторы документа вызываются всегда; `kb.js` при выключенной COMPANY не порождает компании и не занимает их спаны.
+- Этап NER: порог по метке — `ORG` → `nerThresholdOrg`, `PER`/`LOC` → `nerThreshold`; спаны ORG проходят `filterOrgSpans(spans, {text, blockKind, ...ctx})`
+  из `core/ner/filters.js` (контекст документа — `createOrgFilterContext(doc, settings)`, один раз на анализ); при выключенной COMPANY фильтр не вызывается,
+  ORG отбрасывается `accept`.
+- `paragraph.kind` (0.4): DOCX — `'heading'` (`w:pStyle` = `Heading\d*`, `Title`, `Subtitle`, «1»…«9» — русский Word даёт styleId цифрой), `'li'` (`w:numPr`), иначе `'p'`;
+  текстовая модель — вид блока разметки PDF (`h1|h2|li|cell|p|header|footer`). Раннер передаёт его фильтру как `blockKind`.
+
+### 8.2. Список компаний (`detect/names/company-list.js`, WP11-A)
+
+Запись `{name, aliases}` → ядро названия без ОПФ и кавычек; поиск во всех потоках: точное слово, русские падежи (основа ≥ 5 букв + хвост до 3 букв; короткие и латиница —
+точно), кросс-скрипт (`crossScriptMatch`), с ОПФ/кавычками в `keepPrefix`/`keepSuffix`. Выход: `category: 'COMPANY'`, `source: 'list'`, `confidence: 'labeled'`,
+`canonical` = `name` из списка (одна метка на компанию). Срабатывает независимо от `commercial`; `exclusions` применяются после.
+
+### 8.3. Фильтры модельных организаций (`core/ner/{filters,stoplist}.js`, WP11-B)
+
+Только в коммерческом режиме. ORG отбрасывается: заголовок/пункт списка/ячейка ≤ 3 слов без ОПФ и кавычек (по `blockKind` или капсу/двоеточию); стоп-список
+аббревиатур и продуктов (`stoplist.js` + `settings.nerStoplist`); одиночное слово, встречающееся в документе только в капс-строках. Сохраняются ОПФ + кавычки,
+названия внутри предложения, «Студия/Агентство/Бюро + Название» (правило `company.js`, WP11-A).
+
+### 8.4. Корпус жанров (`scripts/gen-genre-fixtures.mjs`, `tests/fixtures/genres/`, WP11-B)
+
+8 жанров (`proposal`, `letter`, `invoice`, `reconciliation`, `manual`, `deck`, `resume`, `chat`; `letter`/`resume` + en) × ≥ 3 документа, DOCX + PDF, gold
+`{entities, negatives}`; детерминированный PRNG. Настоящие документы владельца — `tests/fixtures/private/` (gitignored), гейт `PRIVATE_FIXTURES=1`.
+Отчёт `npm run eval-genres` — точность/полнота/ложные по жанру × категории × режиму (`normal`/`commercial`), с моделью при `NER_MODEL_DIR`.

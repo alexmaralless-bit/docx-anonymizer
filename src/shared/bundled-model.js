@@ -28,16 +28,25 @@ export function planBootstrap({ bundled, settings }) {
   return 'install';
 }
 
+/** Код ошибки для настройки bundledModelError: как в schemas/protocol.schema.json (A-Z и _), иначе INTERNAL. */
+export function errorCode(code) {
+  return typeof code === 'string' && /^[A-Z_]{1,40}$/.test(code) ? code : 'INTERNAL';
+}
+
 /**
- * Патч настроек по ответу хоста MODEL_INSTALLED. sha отмечается всегда (профиль обработал этот пакет), nerModel —
- * только если за время установки пользователь не выбрал другой пакет (гонка с ручным импортом). `failed` — ничего не пишем:
- * следующий запуск попробует снова.
- * @param {{status: 'installed'|'present'|'failed'}} result
+ * Патч настроек по ответу хоста MODEL_INSTALLED. installed|present: sha отмечается всегда (профиль обработал этот пакет),
+ * nerModel — только если за время установки пользователь не выбрал другой пакет (гонка с ручным импортом), прежняя ошибка
+ * стирается. failed: только код ошибки в bundledModelError (sha не отмечается — следующий запуск попробует снова; карточка
+ * «Модель NER» показывает «не удалось / повторить», docs/contracts.md §6.3).
+ * @param {{status: 'installed'|'present'|'failed', code?: string}} result
  * @param {BundledModel} bundled
  * @param {{nerModel?: string}} cur  текущие настройки
- * @returns {{nerModel?: string, bundledModelSha: string} | null}
+ * @returns {{nerModel?: string, bundledModelSha?: string, bundledModelError: string} | null}
  */
 export function settingsPatchFor(result, bundled, cur) {
-  if (!bundled || !result || (result.status !== 'installed' && result.status !== 'present')) return null;
-  return cur.nerModel && cur.nerModel !== bundled.id ? { bundledModelSha: bundled.sha256 } : { nerModel: bundled.id, bundledModelSha: bundled.sha256 };
+  if (!bundled || !result) return null;
+  if (result.status === 'failed') return { bundledModelError: errorCode(result.code) };
+  if (result.status !== 'installed' && result.status !== 'present') return null;
+  const done = { bundledModelSha: bundled.sha256, bundledModelError: '' };
+  return cur.nerModel && cur.nerModel !== bundled.id ? done : { nerModel: bundled.id, ...done };
 }

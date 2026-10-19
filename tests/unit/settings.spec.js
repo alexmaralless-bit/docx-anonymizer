@@ -104,6 +104,19 @@ describe('settings', () => {
     expect(NOT_EXPORTED.has('hintMappingShown')).toBe(true);
     expect(parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { hintMappingShown: true, mode: 'mask' } })).patch).toEqual({ mode: 'mask' });
   });
+  it('bundledModelError (WP10-C): по умолчанию пусто, только код A-Z/_, не экспортируется; сброс настроек его сохраняет', async () => {
+    expect(defaultSettings().bundledModelError).toBe('');
+    expect(validateSettingsPatch({ bundledModelError: 'HASH_MISMATCH' })).toEqual([]);
+    expect(validateSettingsPatch({ bundledModelError: '' })).toEqual([]);
+    for (const bad of ['hash', 'Ошибка', 'A B', 'X'.repeat(41), 1, null])
+      expect(validateSettingsPatch({ bundledModelError: bad }), String(bad)).toEqual(['bundledModelError']);
+    expect(migrateSettings({ bundledModelError: 'плохо' }).settings.bundledModelError).toBe('');
+    expect(migrateSettings({ bundledModelError: 'QUOTA' }).settings.bundledModelError).toBe('QUOTA');
+    const { NOT_EXPORTED, KEPT_ON_RESET, parseConfigFile, CONFIG_KIND } = await import('../../src/options/config-io.js');
+    expect(NOT_EXPORTED.has('bundledModelError')).toBe(true);
+    expect([...KEPT_ON_RESET].sort()).toEqual(['bundledModelError', 'bundledModelSha', 'nerModel']);
+    expect(parseConfigFile(JSON.stringify({ kind: CONFIG_KIND, settings: { bundledModelError: 'QUOTA', mode: 'mask' } })).patch).toEqual({ mode: 'mask' });
+  });
   it('bundledModelSha (WP10-C): по умолчанию пусто, только hex64, без миграции версии, не экспортируется', async () => {
     const sha = '0123456789abcdef'.repeat(4);
     expect(defaultSettings().bundledModelSha).toBe('');

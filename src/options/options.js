@@ -12,7 +12,7 @@ import { OPTIONS_DICT } from '../ui/i18n/options.js';
 import { confirmDialog, downloadJson, h } from '../ui/deanon/dom.js';
 import { madeByLine, helpLink } from '../ui/brand.js';
 import { guardRegex } from './regex-guard.js';
-import { CATEGORIES_KIND, CONFIG_KIND, NOT_EXPORTED, parseCategoriesFile, parseConfigFile } from './config-io.js';
+import { CATEGORIES_KIND, CONFIG_KIND, KEPT_ON_RESET, NOT_EXPORTED, parseCategoriesFile, parseConfigFile } from './config-io.js';
 import {
   MAX_PACK_BYTES,
   MODEL_STORE_ERROR_CODES,
@@ -350,8 +350,18 @@ async function notifyModelChanged(modelId) {
 // Сохранение nerModel может перерисовать страницу (onSettingsChanged) посреди импорта — последнее сообщение
 // живёт вне секции и пишется в актуальный элемент.
 const nerNote = { text: '', bad: false, /** @type {HTMLElement|null} */ el: null };
-/** «Восстановить встроенную модель» нажата, установка идёт в фоне (WP10-C): переживает перерисовку страницы. */
+/** «Восстановить встроенную модель»/«Повторить» нажата, установка идёт в фоне (WP10-C): переживает перерисовку страницы. */
 let nerRestoring = false;
+/**
+ * Сколько ждать итога автоустановки/восстановления встроенной модели, прежде чем показать «не удалось / повторить»
+ * (WP10-C, К15): ответ хоста мог потеряться (service worker уснул, offscreen закрыт) — карточка не должна висеть вечно.
+ */
+const BUNDLED_WAIT_MS = 60000;
+/** Начало ожидания: открытие страницы или нажатие «Восстановить»/«Повторить». */
+let bundledWaitFrom = Date.now();
+let bundledTimer = 0;
+/** refresh актуальной карточки NER (renderApp пересоздаёт её) — для таймера ожидания. */
+let nerRefresh = () => {};
 
 /** Восстановление встроенной модели: background ставит пакет из архива расширения сам и отвечает ACK сразу (MSG.MODEL_BOOTSTRAP). */
 async function requestBundledBootstrap() {
@@ -397,10 +407,22 @@ function nerSection() {
       fail(e);
     }
     const active = installed.find((m) => m.id === settings.nerModel);
-    // WP10-C (docs/contracts.md §6.3): без активной модели — три состояния. Полная сборка: встроенный пакет ещё не обработан
-    // профилем → «устанавливается» (импорт отключён); обработан, но модель удалена → кнопка «Восстановить». Лёгкая — три шага.
+    // WP10-C (docs/contracts.md §6.3): без активной модели. Полная сборка: встроенный пакет ещё не обработан профилем →
+    // «устанавливается» (импорт отключён); попытка не удалась или нет итога за BUNDLED_WAIT_MS → «не удалось ({код})» и
+    // «Повторить» (импорт включён); обработан, но модель удалена → кнопка «Восстановить». Лёгкая — три шага.
     const bundledPending = !!BUNDLED && !settings.nerModel && settings.bundledModelSha !== BUNDLED.sha256;
     const bundledRemoved = !!BUNDLED && !settings.nerModel && settings.bundledModelSha === BUNDLED.sha256;
+    // Неудача: код из bundledModelError (background по MODEL_INSTALLED failed/ERROR) или ожидание дольше BUNDLED_WAIT_MS → TIMEOUT
+    const waiting = !active && (bundledPending || (bundledRemoved && nerRestoring));
+    const waitLeft = bundledWaitFrom + BUNDLED_WAIT_MS - Date.now();
+    const failCode = !!BUNDLED && !active && !settings.nerModel ? settings.bundledModelError || (waiting && waitLeft <= 0 ? 'TIMEOUT' : '') : '';
+    clearTimeout(bundledTimer);
+    if (waiting && !failCode) bundledTimer = setTimeout(() => nerRefresh(), waitLeft + 50);
+    if (failCode && nerRestoring) {
+      nerRestoring = false;
+      // «устанавливается заново…» сменяется расшифровкой кода, если она есть (коды хранилища), иначе — только статус
+      say(NER_ERRORS.has(failCode) ? t(`ner_err_${failCode}`) : '', NER_ERRORS.has(failCode));
+    }
     if (active) {
       if (nerRestoring) say(t('ner_imported', label(active))); // «устанавливается заново…» сменяется итогом
       nerRestoring = false;
@@ -411,6 +433,9 @@ function nerSection() {
         ' · ',
         h('span', { class: active.verified ? 'ner-verified' : 'ner-unverified' }, t(active.verified ? 'ner_verified' : 'ner_unverified')),
       );
+    } else if (failCode) {
+      status.dataset.state = 'failed';
+      status.textContent = t('ner_bundled_failed', { code: failCode });
     } else if (bundledPending || (bundledRemoved && nerRestoring)) {
       status.dataset.state = 'installing';
       status.textContent = t(bundledPending ? 'ner_bundled_installing' : 'ner_bundled_restoring');
@@ -418,9 +443,11 @@ function nerSection() {
       status.dataset.state = 'none';
       status.textContent = t('ner_not_installed');
     }
-    importBtn.disabled = !active && bundledPending;
-    restoreBtn.hidden = !!active || !bundledRemoved;
+    importBtn.disabled = !active && bundledPending && !failCode;
+    restoreBtn.hidden = !!active || !bundledRemoved || !!failCode;
     restoreBtn.disabled = nerRestoring;
+    retryBtn.hidden = !failCode;
+    retryBtn.disabled = nerRestoring;
     placeOnboarding(!BUNDLED && !active);
     removeBtn.hidden = !installed.length;
   };
@@ -500,23 +527,33 @@ function nerSection() {
       class: 'btn',
       hidden: true,
       dataset: { testid: 'ner-restore' },
-      onclick: async () => {
-        nerRestoring = true;
-        restoreBtn.disabled = true;
-        status.dataset.state = 'installing';
-        status.textContent = t('ner_bundled_restoring');
-        say(t('ner_bundled_restoring'));
-        try {
-          await requestBundledBootstrap(); // итог придёт сменой настроек (nerModel) → перерисовка карточки
-        } catch (e) {
-          nerRestoring = false;
-          restoreBtn.disabled = false;
-          fail(e);
-        }
-      },
+      onclick: () => startBundled(restoreBtn),
     },
     t('ner_bundled_restore'),
   );
+  // «Повторить» после неудачной автоустановки (WP10-C, К15): то же, что «Восстановить», и стирает прежний код ошибки
+  const retryBtn = h(
+    'button',
+    { type: 'button', class: 'btn', hidden: true, dataset: { testid: 'ner-retry' }, onclick: () => startBundled(retryBtn) },
+    t('ner_bundled_retry'),
+  );
+  async function startBundled(btn) {
+    nerRestoring = true;
+    bundledWaitFrom = Date.now();
+    btn.disabled = true;
+    status.dataset.state = 'installing';
+    status.textContent = t('ner_bundled_restoring');
+    say(t('ner_bundled_restoring'));
+    try {
+      // ошибку стирает и background в начале попытки; здесь — чтобы перерисовка до его записи не вернула «не удалось»
+      if (settings.bundledModelError) settings = (await saveSettingsPatch({ bundledModelError: '' })).settings;
+      await requestBundledBootstrap(); // итог придёт сменой настроек (nerModel / bundledModelError) → перерисовка карточки
+    } catch (e) {
+      nerRestoring = false;
+      fail(e);
+      await refresh();
+    }
+  }
 
   // Онбординг лёгкой сборки (WP10-C, К16): три шага, пока модели нет. Ссылка на релизы и кнопка импорта — те же элементы,
   // что в обычном виде карточки (testid не дублируются): переезжают в шаги и обратно.
@@ -530,7 +567,7 @@ function nerSection() {
     h('h3', {}, t('ner_onboard_h')),
     h('ol', { class: 'steps' }, step1, step2, h('li', {}, t('ner_step_3'))),
   );
-  const row = h('div', { class: 'row', style: 'margin-top:10px' }, importBtn, file, removeBtn, restoreBtn);
+  const row = h('div', { class: 'row', style: 'margin-top:10px' }, importBtn, file, removeBtn, restoreBtn, retryBtn);
   function placeOnboarding(on) {
     onboarding.hidden = !on;
     if (on) {
@@ -557,6 +594,7 @@ function nerSection() {
     save({ nerThreshold: v }, threshold);
   });
 
+  nerRefresh = refresh;
   refresh();
   return card(
     'ner',
@@ -1160,7 +1198,9 @@ function dataSection() {
           dataset: { testid: 'config-reset' },
           onclick: async () => {
             if (!(await confirmDialog(t('reset_confirm'), { ok: t('reset'), cancel: t('cancel'), danger: true }))) return;
-            await save(defaultSettings());
+            // модель и её автоустановка — состояние этого браузера, не настройка (как в экспорте): сброс их не трогает,
+            // иначе полная сборка показала бы «устанавливается…» без попытки установки (WP10-C)
+            await save({ ...defaultSettings(), ...Object.fromEntries(KEPT_ON_RESET.map((k) => [k, settings[k]])) });
             msg.textContent = t('reset_done');
             renderApp();
           },

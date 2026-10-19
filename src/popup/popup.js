@@ -110,17 +110,18 @@ function renderSite() {
 
 /**
  * Строка о модели NER (WP10-C, К16): скрыта, когда модель выбрана; в полной сборке, пока встроенный пакет не обработан
- * профилем, — «устанавливается» без ссылки; иначе — ссылка на карточку «Модель NER» настроек.
+ * профилем и ошибки нет, — «устанавливается» без ссылки; иначе (в том числе после неудачной автоустановки —
+ * bundledModelError) — ссылка на карточку «Модель NER» настроек, где есть «Повторить».
  */
 function renderNer() {
   const p = $('ner-hint');
   p.hidden = !!settings.nerModel;
   if (p.hidden) return;
-  if (BUNDLED && settings.bundledModelSha !== BUNDLED.sha256) {
+  if (BUNDLED && settings.bundledModelSha !== BUNDLED.sha256 && !settings.bundledModelError) {
     p.dataset.state = 'installing';
     p.replaceChildren(t('nerInstalling'));
   } else {
-    p.dataset.state = 'none';
+    p.dataset.state = BUNDLED && settings.bundledModelError ? 'failed' : 'none';
     nerLink.textContent = t('nerHint');
     p.replaceChildren(nerLink);
   }

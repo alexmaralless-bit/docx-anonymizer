@@ -32,8 +32,17 @@ export function initRouter() {
   });
 }
 
+/** Сообщения только background ⇄ offscreen (WP10-C): клиентский порт их слать не может — хост ставит модель лишь по просьбе background. */
+const BOOTSTRAP_ONLY = new Set([MSG.MODEL_INSTALL, MSG.MODEL_INSTALLED]);
+
 async function forward(clientId, port, msg) {
   try {
+    // Дополнительный рубеж (К17, NFR-01): url в MODEL_INSTALL проверяет и воркер (offscreen/package-fetch.js), но от
+    // страниц такое сообщение в offscreen не пропускаем вовсе
+    if (BOOTSTRAP_ONLY.has(msg?.type)) {
+      port.postMessage(errorMessage(msg.requestId, { code: 'INTERNAL', message: 'Сообщение недоступно клиенту' }));
+      return;
+    }
     // WP10-C: «Восстановить встроенную модель» — установка идёт в фоне (bundled-model.js), клиенту сразу ACK;
     // итог он увидит по смене настроек (nerModel/bundledModelSha). offscreen поднимает сам bootstrap, если нужно.
     if (msg.type === MSG.MODEL_BOOTSTRAP) {

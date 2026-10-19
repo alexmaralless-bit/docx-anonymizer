@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { BOOTSTRAP_CLIENT, planBootstrap, settingsPatchFor } from '../../src/shared/bundled-model.js';
+import { BOOTSTRAP_CLIENT, errorCode, planBootstrap, settingsPatchFor } from '../../src/shared/bundled-model.js';
 import { readPackageFile } from '../../src/offscreen/package-fetch.js';
 import { ModelStoreError } from '../../src/shared/model-store.js';
 import { OPTIONS_DICT } from '../../src/ui/i18n/options.js';
@@ -38,17 +38,26 @@ describe('planBootstrap', () => {
 });
 
 describe('settingsPatchFor', () => {
-  it('installed / present → nerModel и bundledModelSha', () => {
+  it('installed / present → nerModel и bundledModelSha, прежняя ошибка стирается', () => {
     for (const status of ['installed', 'present']) {
-      expect(settingsPatchFor({ status }, BUNDLED, { nerModel: '' })).toEqual({ nerModel: 'test-pack', bundledModelSha: SHA });
-      expect(settingsPatchFor({ status }, BUNDLED, { nerModel: 'test-pack' })).toEqual({ nerModel: 'test-pack', bundledModelSha: SHA });
+      expect(settingsPatchFor({ status }, BUNDLED, { nerModel: '' })).toEqual({ nerModel: 'test-pack', bundledModelSha: SHA, bundledModelError: '' });
+      expect(settingsPatchFor({ status }, BUNDLED, { nerModel: 'test-pack' })).toEqual({ nerModel: 'test-pack', bundledModelSha: SHA, bundledModelError: '' });
     }
   });
-  it('пока шла установка, пользователь выбрал другой пакет → только bundledModelSha', () => {
-    expect(settingsPatchFor({ status: 'installed' }, BUNDLED, { nerModel: 'my' })).toEqual({ bundledModelSha: SHA });
+  it('пока шла установка, пользователь выбрал другой пакет → только bundledModelSha (и сброс ошибки)', () => {
+    expect(settingsPatchFor({ status: 'installed' }, BUNDLED, { nerModel: 'my' })).toEqual({ bundledModelSha: SHA, bundledModelError: '' });
   });
-  it('failed → null (ничего не пишем, следующий запуск попробует снова)', () => {
-    expect(settingsPatchFor({ status: 'failed', code: 'QUOTA' }, BUNDLED, { nerModel: '' })).toBeNull();
+  it('failed → только bundledModelError с кодом (sha не отмечается: следующий запуск попробует снова)', () => {
+    expect(settingsPatchFor({ status: 'failed', code: 'QUOTA' }, BUNDLED, { nerModel: '' })).toEqual({ bundledModelError: 'QUOTA' });
+    // код не по формату схемы (или его нет) → INTERNAL: в настройки попадает только A-Z и _
+    expect(settingsPatchFor({ status: 'failed', code: 'кракозябра' }, BUNDLED, { nerModel: '' })).toEqual({ bundledModelError: 'INTERNAL' });
+    expect(settingsPatchFor({ status: 'failed' }, BUNDLED, { nerModel: '' })).toEqual({ bundledModelError: 'INTERNAL' });
+    expect(errorCode('HASH_MISMATCH')).toBe('HASH_MISMATCH');
+    expect(errorCode('x'.repeat(41).toUpperCase())).toBe('INTERNAL');
+  });
+  it('неизвестный статус или нет описания пакета → null', () => {
+    expect(settingsPatchFor({ status: 'other' }, BUNDLED, { nerModel: '' })).toBeNull();
+    expect(settingsPatchFor({ status: 'installed' }, null, { nerModel: '' })).toBeNull();
   });
   it('clientId bootstrap', () => {
     expect(BOOTSTRAP_CLIENT).toBe('bootstrap');
@@ -73,6 +82,42 @@ describe('readPackageFile: только собственный пакет рас
       const err = await readPackageFile(url).catch((e) => e);
       expect(err, url).toBeInstanceOf(ModelStoreError);
       expect(err.code, url).toBe('IO');
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('обход пути, учётные данные, blob:, порт, query, файл вне models/ или не .zip → IO до вызова fetch (К17)', async () => {
+    own();
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    for (const url of [
+      'chrome-extension://abcdefgh/models/../background.js',
+      'chrome-extension://abcdefgh/models/../models/ok.zip',
+      'chrome-extension://abcdefgh/models/%2e%2e/manifest.json',
+      'chrome-extension://abcdefgh/models/%2E%2E/manifest.json',
+      'chrome-extension://abcdefgh/models/.%2e/ok.zip',
+      'chrome-extension://abcdefgh/models%2fok.zip',
+      'chrome-extension://abcdefgh/models/..%5cok.zip',
+      'chrome-extension://abcdefgh/models\\ok.zip',
+      'chrome-extension://user@abcdefgh/models/ok.zip',
+      'chrome-extension://user:pw@abcdefgh/models/ok.zip',
+      'chrome-extension://abcdefgh:80/models/ok.zip',
+      'chrome-extension://abcdefgh/models/ok.zip?x=1',
+      'chrome-extension://abcdefgh/models/ok.zip#x',
+      'blob:chrome-extension://abcdefgh/1234',
+      'data:application/zip;base64,AA==',
+      'chrome-extension://other/models/ok.zip',
+      'chrome-extension://ABCDEFGH/models/ok.zip',
+      'chrome-extension://abcdefgh/background.js',
+      'chrome-extension://abcdefgh/manifest.json',
+      'chrome-extension://abcdefgh/models/index.json',
+      'chrome-extension://abcdefgh/models/sub/ok.zip',
+      'chrome-extension://abcdefgh/models/.zip',
+      42,
+    ]) {
+      const err = await readPackageFile(/** @type {any} */ (url)).catch((e) => e);
+      expect(err, String(url)).toBeInstanceOf(ModelStoreError);
+      expect(err.code, String(url)).toBe('IO');
     }
     expect(fetch).not.toHaveBeenCalled();
   });

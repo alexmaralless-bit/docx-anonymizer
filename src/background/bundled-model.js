@@ -6,7 +6,7 @@
 // (service worker мог уснуть за время установки и проснётся на нём) и превращается в патч настроек. Значений документа нет —
 // в лог пишутся только коды.
 import { MSG, TARGET, makeRequestId } from '../shared/protocol.js';
-import { BOOTSTRAP_CLIENT, planBootstrap, settingsPatchFor } from '../shared/bundled-model.js';
+import { BOOTSTRAP_CLIENT, errorCode, planBootstrap, settingsPatchFor } from '../shared/bundled-model.js';
 import { loadSettings, migrateStoredSettings, saveSettingsPatch } from '../shared/settings-store.js';
 import { ensureOffscreen } from './offscreen-manager.js';
 
@@ -17,8 +17,10 @@ function bundled() {
 }
 const extVersion = () => (typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0');
 
-/** @type {Promise<string> | null} текущий запуск: повторные вызовы до отправки MODEL_INSTALL получают его же */
+/** @type {{promise: Promise<string>, force: boolean} | null} текущий запуск: повторные вызовы до отправки MODEL_INSTALL получают его же */
 let running = null;
+/** @type {Promise<string> | null} force-запуск, отложенный до конца текущего не-force (кнопка «Повторить»/«Восстановить» не теряется) */
+let queuedForce = null;
 
 /**
  * Слушатели верхнего уровня (MV3: регистрируются синхронно при каждом пробуждении service worker).
@@ -52,15 +54,34 @@ export function initBundledModel(api = chrome) {
  * @returns {Promise<string>}
  */
 export function bootstrapBundledModel({ force = false } = {}) {
-  if (!running) running = run(force).finally(() => (running = null));
-  return running;
+  if (!running) {
+    const promise = run(force).finally(() => {
+      if (running?.promise === promise) running = null;
+    });
+    running = { promise, force };
+    return promise;
+  }
+  if (!force || running.force) return running.promise;
+  // Текущий прогон без force мог решить `skip` — force выполняется отдельным прогоном сразу после него (один на всех ждущих)
+  if (!queuedForce) {
+    queuedForce = running.promise
+      .catch(() => {})
+      .then(() => {
+        queuedForce = null;
+        return bootstrapBundledModel({ force: true });
+      });
+  }
+  return queuedForce;
 }
 
 async function run(force) {
   const b = bundled();
-  let plan = planBootstrap({ bundled: b, settings: await loadSettings() });
+  const settings = await loadSettings();
+  let plan = planBootstrap({ bundled: b, settings });
   if (force && plan === 'skip') plan = 'install';
   if (plan !== 'install') return plan;
+  // новая попытка: прежний код ошибки стирается — карточка снова «устанавливается…» (К15, «Повторить»)
+  if (settings.bundledModelError) await saveSettingsPatch({ bundledModelError: '' }).catch(() => {});
   const msg = {
     type: MSG.MODEL_INSTALL,
     requestId: makeRequestId('mi'),
@@ -81,23 +102,30 @@ async function run(force) {
     }
   } catch {
     console.warn('[bundled-model] HOST_UNAVAILABLE');
+    await saveFailure('HOST_UNAVAILABLE');
   }
   return plan;
 }
 
-/** Ответ хоста: installed|present → патч настроек; failed/ERROR → предупреждение с кодом, настройки не меняются. */
+/** Неудачная попытка → код в bundledModelError (только код, без значений документа). */
+async function saveFailure(code) {
+  await saveSettingsPatch({ bundledModelError: errorCode(code) }).catch(() => console.warn('[bundled-model] SETTINGS_FAILED'));
+}
+
+/**
+ * Ответ хоста: installed|present → nerModel/bundledModelSha, ошибка стирается; failed/ERROR → предупреждение с кодом и
+ * bundledModelError (sha не отмечается: следующий запуск попробует снова).
+ */
 async function onHostReply(msg) {
   const b = bundled();
   if (!msg || !b) return;
   if (msg.type === MSG.ERROR) {
-    console.warn(`[bundled-model] ${msg.code || 'INTERNAL'}`);
+    console.warn(`[bundled-model] ${errorCode(msg.code)}`);
+    await saveFailure(msg.code);
     return;
   }
   if (msg.type !== MSG.MODEL_INSTALLED || msg.sha256 !== b.sha256) return;
-  if (msg.status === 'failed') {
-    console.warn(`[bundled-model] ${msg.code || 'INTERNAL'}`);
-    return;
-  }
+  if (msg.status === 'failed') console.warn(`[bundled-model] ${errorCode(msg.code)}`);
   const patch = settingsPatchFor(msg, b, await loadSettings());
   if (!patch) return;
   await saveSettingsPatch(patch);

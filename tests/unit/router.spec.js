@@ -93,6 +93,19 @@ describe('router: MODEL_BOOTSTRAP (WP10-C)', () => {
     expect(offscreen.ensureOffscreen).not.toHaveBeenCalled();
   });
 
+  it('MODEL_INSTALL и MODEL_INSTALLED от клиентского порта → ERROR, в offscreen не уходят (К17)', async () => {
+    const port = connect(chrome);
+    port.onMessage.fire({ type: MSG.MODEL_INSTALL, requestId: 'i1', url: 'chrome-extension://x/background.js', id: 'p', sha256: 'e'.repeat(64) });
+    port.onMessage.fire({ type: MSG.MODEL_INSTALLED, requestId: 'i2', status: 'installed', sha256: 'e'.repeat(64) });
+    await tick();
+    await tick();
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: MSG.ERROR, requestId: 'i1', code: 'INTERNAL' }));
+    expect(port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: MSG.ERROR, requestId: 'i2', code: 'INTERNAL' }));
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(offscreen.ensureOffscreen).not.toHaveBeenCalled();
+    expect(bundled.bootstrapBundledModel).not.toHaveBeenCalled();
+  });
+
   it('сообщения хоста с clientId bootstrap router не пересылает ни одному порту', async () => {
     const port = connect(chrome);
     chrome.runtime.onMessage.fire({ target: TARGET.BACKGROUND, clientId: 'bootstrap', msg: { type: MSG.MODEL_INSTALLED, requestId: 'x' } });

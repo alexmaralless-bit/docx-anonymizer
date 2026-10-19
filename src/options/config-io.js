@@ -24,8 +24,11 @@ export function parseCategoriesFile(text) {
 
 // nerModel — id пакета модели в хранилище этого браузера (WP8): на другой машине пакета нет, поэтому не переносится.
 // hintMappingShown — одноразовая подсказка о ключе восстановления (WP10-D): состояние этого браузера, не настройка.
-// bundledModelSha — какой встроенный пакет модели этот профиль уже обработал (WP10-C): тоже состояние браузера.
-export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel', 'hintMappingShown', 'bundledModelSha']);
+// bundledModelSha — какой встроенный пакет модели этот профиль уже обработал (WP10-C): тоже состояние браузера;
+// bundledModelError — код последней неудачной автоустановки этого пакета (WP10-C): тоже.
+export const NOT_EXPORTED = new Set(['schemaVersion', 'panelPosition', 'nerModel', 'hintMappingShown', 'bundledModelSha', 'bundledModelError']);
+/** «Сбросить настройки» не трогает установленную модель и состояние автоустановки встроенной (WP10-C). */
+export const KEPT_ON_RESET = Object.freeze(['nerModel', 'bundledModelSha', 'bundledModelError']);
 
 /**
  * Разбор файла настроек: {patch, skipped} или {error}. `version` файла — версия формата файла, `schemaVersion` —

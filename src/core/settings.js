@@ -34,6 +34,7 @@ function defaultCategories() {
  * @property {number} nerThreshold
  * @property {string} nerModel           id установленного пакета модели NER ('' — нет; WP8), не экспортируется
  * @property {string} bundledModelSha    sha256 встроенного пакета, который профиль уже обработал ('' — ни одного; WP10-C, Ц7), не экспортируется
+ * @property {string} bundledModelError  код последней неудачной автоустановки встроенного пакета ('' — нет; WP10-C, К15), не экспортируется
  * @property {boolean} keepMetadata
  * @property {boolean} stripEmbedded
  * @property {number} maxFileSizeMB
@@ -69,6 +70,8 @@ export function defaultSettings() {
     nerModel: '',
     // WP10-C: пишет только background по ответу MODEL_INSTALLED; удаление модели пользователем поле не трогает (модель не вернётся сама)
     bundledModelSha: '',
+    // WP10-C: тоже пишет только background — код ошибки MODEL_INSTALLED failed (карточка «не удалось / повторить»); очищается успехом
+    bundledModelError: '',
     keepMetadata: false,
     stripEmbedded: false,
     maxFileSizeMB: 50,
@@ -115,6 +118,8 @@ export const VALIDATORS = Object.freeze({
   // = PACK_ID_RE из core/ner/pack.js (не импортируется, чтобы не тянуть разбор пакета в content.js; равенство — в тесте)
   nerModel: (v) => v === '' || (typeof v === 'string' && /^[a-z0-9][a-z0-9-]{1,40}$/.test(v)),
   bundledModelSha: (v) => v === '' || (typeof v === 'string' && /^[0-9a-f]{64}$/.test(v)),
+  // код ошибки как в schemas/protocol.schema.json (MODEL_INSTALLED.code): только A-Z и _, без значений документа
+  bundledModelError: (v) => v === '' || (typeof v === 'string' && /^[A-Z_]{1,40}$/.test(v)),
   keepMetadata: (v) => typeof v === 'boolean',
   stripEmbedded: (v) => typeof v === 'boolean',
   maxFileSizeMB: (v) => Number.isInteger(v) && v >= 1 && v <= 100,

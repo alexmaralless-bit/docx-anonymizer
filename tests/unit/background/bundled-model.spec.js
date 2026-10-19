@@ -137,14 +137,45 @@ describe('background: встроенная модель NER', () => {
     expect(chrome.settings).toMatchObject({ nerModel: 'my', bundledModelSha: SHA });
   });
 
-  it('failed и ERROR → настройки не меняются, в лог — только код', async () => {
+  it('failed → bundledModelError с кодом, nerModel и sha не меняются; в лог — только код', async () => {
     setup({});
-    reply({ type: MSG.MODEL_INSTALLED, requestId: 'x', status: 'failed', id: 'test-pack', sha256: SHA, code: 'QUOTA' });
+    reply({ type: MSG.MODEL_INSTALLED, requestId: 'x', status: 'failed', id: 'test-pack', sha256: SHA, code: 'HASH_MISMATCH' });
+    await flush();
+    expect(chrome.settings).toMatchObject({ nerModel: '', bundledModelSha: '', bundledModelError: 'HASH_MISMATCH' });
+    expect(console.warn).toHaveBeenCalledWith('[bundled-model] HASH_MISMATCH');
+  });
+
+  it('ERROR хоста → bundledModelError (INTERNAL для кода не по формату)', async () => {
+    setup({});
     reply({ type: MSG.ERROR, requestId: 'x', code: 'INTERNAL', message: 'x' });
     await flush();
-    expect(chrome.storage.local.set).not.toHaveBeenCalled();
-    expect(console.warn).toHaveBeenCalledWith('[bundled-model] QUOTA');
+    expect(chrome.settings).toMatchObject({ bundledModelSha: '', bundledModelError: 'INTERNAL' });
     expect(console.warn).toHaveBeenCalledWith('[bundled-model] INTERNAL');
+  });
+
+  it('успех после неудачи стирает bundledModelError', async () => {
+    setup({ bundledModelError: 'QUOTA' });
+    reply({ type: MSG.MODEL_INSTALLED, requestId: 'x', status: 'installed', id: 'test-pack', sha256: SHA, ms: 1 });
+    await flush();
+    expect(chrome.settings).toMatchObject({ nerModel: 'test-pack', bundledModelSha: SHA, bundledModelError: '' });
+  });
+
+  it('новая попытка (в том числе «Повторить» = force) стирает прежний код до MODEL_INSTALL', async () => {
+    setup({ bundledModelError: 'HASH_MISMATCH' });
+    chrome.runtime.sendMessage.mockImplementation(async () => {
+      expect(chrome.settings.bundledModelError).toBe('');
+    });
+    expect(await bootstrapBundledModel({ force: true })).toBe('install');
+    expect(installMsg()).toBeTruthy();
+    expect(chrome.settings.bundledModelError).toBe('');
+  });
+
+  it('offscreen недоступен и после повтора → bundledModelError = HOST_UNAVAILABLE', async () => {
+    setup({});
+    offscreen.ensureOffscreen.mockRejectedValue(new Error('no offscreen'));
+    expect(await bootstrapBundledModel()).toBe('install');
+    expect(chrome.settings).toMatchObject({ bundledModelError: 'HOST_UNAVAILABLE', bundledModelSha: '' });
+    expect(console.warn).toHaveBeenCalledWith('[bundled-model] HOST_UNAVAILABLE');
   });
 
   it('ответ чужого sha (устаревший запрос) и сообщения других клиентов игнорируются', async () => {
@@ -168,6 +199,50 @@ describe('background: встроенная модель NER', () => {
     expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
     expect(await bootstrapBundledModel({ force: true })).toBe('install');
     expect(installMsg()).toBeTruthy();
+  });
+
+  it('force во время прогона без force не теряется: после него — второй прогон с force', async () => {
+    setup({ nerModel: '', bundledModelSha: SHA });
+    let release;
+    chrome.storage.local.get.mockImplementationOnce((k) => new Promise((ok) => (release = () => ok({ [k]: chrome.settings }))));
+    const plain = bootstrapBundledModel(); // skip: этот sha уже обработан
+    const forced = bootstrapBundledModel({ force: true });
+    const forced2 = bootstrapBundledModel({ force: true });
+    expect(forced2).toBe(forced); // ждущие force объединяются
+    release();
+    expect(await plain).toBe('skip');
+    expect(await forced).toBe('install');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    expect(installMsg()).toBeTruthy();
+  });
+
+  it('force во время force-прогона объединяется с ним', async () => {
+    setup({ nerModel: '', bundledModelSha: SHA });
+    const [a, b] = [bootstrapBundledModel({ force: true }), bootstrapBundledModel({ force: true })];
+    expect(b).toBe(a);
+    expect(await a).toBe('install');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('onInstalled: migrateStoredSettings до MODEL_INSTALL; при __BUNDLED_MODEL__ = null миграция тоже идёт', async () => {
+    const old = { schemaVersion: 1, nerThreshold: 0.6 };
+    for (const bundled of [BUNDLED, null]) {
+      setup({ ...old }, bundled);
+      const order = [];
+      const realSet = chrome.storage.local.set.getMockImplementation();
+      chrome.storage.local.set.mockImplementation(async (o) => {
+        order.push(`set:${o[SETTINGS_KEY].schemaVersion}:${o[SETTINGS_KEY].nerThreshold}`);
+        await realSet(o);
+      });
+      chrome.runtime.sendMessage.mockImplementation(async (m) => {
+        order.push(m.msg.type);
+      });
+      chrome.runtime.onInstalled.fire({ reason: 'install' });
+      await flush();
+      expect(order, String(!!bundled)).toEqual(bundled ? ['set:2:0.7', MSG.MODEL_INSTALL] : ['set:2:0.7']);
+      if (!bundled) expect(offscreen.ensureOffscreen).not.toHaveBeenCalled();
+      offscreen.ensureOffscreen.mockClear();
+    }
   });
 
   it('offscreen не принял сообщение → одна повторная попытка', async () => {

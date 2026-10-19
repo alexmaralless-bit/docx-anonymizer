@@ -2,8 +2,10 @@
 // Гейт — dist-e2e/models/index.json (полная e2e-сборка):
 //   flock <lock> sh -c 'node scripts/build.mjs --e2e --with-model=release/docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip && npx playwright test bundled-model.spec.js'
 // Сценарий: чистый профиль → ≤ 30 с nerModel и bundledModelSha выставлены → файлы в OPFS → карточка «проверенный пакет» →
-// анализ даёт source:'ner' → повторный bootstrap файлы не переписывает → удаление не возвращает модель само → «Восстановить».
-import { readFileSync } from 'node:fs';
+// анализ даёт source:'ner' → повторный bootstrap файлы не переписывает → удаление не возвращает модель само → «Восстановить»
+// → «Сбросить настройки» модель не трогает. Второй сценарий — копия сборки с испорченным zip: «не удалось ({код})», «Повторить».
+import { cpSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { test, expect, BUNDLED, DIST } from './fixtures.js';
@@ -55,6 +57,11 @@ test('полная сборка: модель ставится сама, без 
   // ≤ 30 с после загрузки расширения (К15): без импорта и скачивания
   await expect.poll(async () => (await stored(page)).nerModel, { timeout: 30000, intervals: [100, 250, 500] }).toBe(BUNDLED.id);
   const installedAfterMs = Date.now() - t0;
+  // К17: снимок записи сразу после автоустановки — чтение zip видно именно в ней, а не только в «Восстановить» ниже
+  // (окно до подключения записи — docs/contracts.md §6.8)
+  const urlsAtInstall = [...net.urls];
+  expect(urlsAtInstall).toContain(`chrome-extension://${extensionId}/models/${BUNDLED.file}`);
+  expect(externalRequests(urlsAtInstall), 'NFR-01: http(s)-запросы при автоустановке').toEqual([]);
   const s1 = await stored(page);
   expect(s1.bundledModelSha).toBe(BUNDLED.sha256);
 
@@ -126,6 +133,13 @@ test('полная сборка: модель ставится сама, без 
   for (const f of manifest.files) expect(again.files[f.path], f.path).toBe(f.size);
   expect(again.installedAt).toBeGreaterThan(slot.installedAt);
 
+  // «Сбросить настройки»: модель и состояние автоустановки — состояние браузера, не настройка (не сбрасываются)
+  await page.getByTestId('config-reset').click();
+  await page.getByTestId('dlg-ok').click();
+  await expect(page.getByTestId('ner-status')).toHaveAttribute('data-state', 'installed');
+  const afterReset = await stored(page);
+  expect(afterReset).toMatchObject({ nerModel: BUNDLED.id, bundledModelSha: BUNDLED.sha256, bundledModelError: '' });
+
   console.log(
     `[bundled-model-e2e] автоустановка: nerModel через ≤ ${installedAfterMs} мс после старта теста; восстановление ${restoreMs} мс; ` +
       `MODEL_INSTALLED.ms: ${installLogs.length ? installLogs.join(', ') : 'лог service worker недоступен'}; пакет ${BUNDLED.size} байт`,
@@ -136,4 +150,66 @@ test('полная сборка: модель ставится сама, без 
   expect(externalRequests(urls), 'NFR-01: http(s)-запросы').toEqual([]);
   expect(urls).toContain(`chrome-extension://${extensionId}/models/${BUNDLED.file}`);
   expect(offscreenRequests(urls)).toEqual(expect.arrayContaining([expect.stringMatching(/\/models\/[^/]+\.zip$/)]));
+});
+
+test.describe('испорченный zip встроенной модели', () => {
+  // Копия полной сборки с одним инвертированным байтом в середине zip: sha пакета и файлов не сходятся → MODEL_INSTALLED failed
+  const BROKEN = join(tmpdir(), `docx-anon-e2e-broken-model-${process.pid}`);
+  test.use({ extensionDir: BROKEN });
+  test.beforeAll(() => {
+    if (!BUNDLED) return;
+    rmSync(BROKEN, { recursive: true, force: true });
+    cpSync(DIST, BROKEN, { recursive: true });
+    const zip = join(BROKEN, 'models', BUNDLED.file);
+    const bytes = readFileSync(zip);
+    bytes[bytes.length >> 1] ^= 0xff;
+    writeFileSync(zip, bytes);
+  });
+  test.afterAll(() => rmSync(BROKEN, { recursive: true, force: true }));
+
+  test('карточка: «не удалось ({код})», импорт включён, «Повторить»; popup — ссылка; сброс настроек ошибку не стирает', async ({ context, extensionId }) => {
+    test.setTimeout(120000);
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/options/options.html`);
+    await expect.poll(async () => (await stored(page)).bundledModelError, { timeout: 30000, intervals: [100, 250, 500] }).toMatch(/^[A-Z_]+$/);
+    const s = await stored(page);
+    expect(s).toMatchObject({ nerModel: '', bundledModelSha: '' });
+    const code = s.bundledModelError;
+    await page.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, uiLanguage: 'ru' } });
+    });
+    await page.reload();
+    const status = page.getByTestId('ner-status');
+    await expect(status).toHaveAttribute('data-state', 'failed');
+    await expect(status).toContainText(`Не удалось установить встроенную модель (${code})`);
+    await expect(page.getByTestId('ner-import')).toBeEnabled();
+    await expect(page.getByTestId('ner-retry')).toBeVisible();
+    await expect(page.getByTestId('ner-restore')).toBeHidden();
+
+    // popup: не «устанавливается…», а ссылка на карточку
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${extensionId}/popup/popup.html`);
+    const hint = popup.getByTestId('ner-hint');
+    await expect(hint).toBeVisible();
+    await expect(hint).toHaveAttribute('data-state', 'failed');
+    await expect(hint.locator('a#open-ner')).toBeVisible();
+    await popup.close();
+
+    // «Повторить»: ошибка стирается, попытка идёт заново и снова кончается тем же кодом (zip всё ещё испорчен)
+    const seen = [];
+    await page.exposeFunction('__seenError', (v) => seen.push(v));
+    await page.evaluate(() => chrome.storage.onChanged.addListener((ch) => ch.settings && window.__seenError(ch.settings.newValue?.bundledModelError ?? null)));
+    await page.getByTestId('ner-retry').click();
+    await expect.poll(() => seen.includes(''), { timeout: 10000 }).toBe(true);
+    await expect(status).toHaveAttribute('data-state', 'failed', { timeout: 30000 });
+    await expect.poll(async () => (await stored(page)).bundledModelError, { timeout: 30000 }).toBe(code);
+    await expect(page.getByTestId('ner-retry')).toBeEnabled();
+
+    // «Сбросить настройки» не стирает состояние автоустановки: карточка не возвращается к вечному «устанавливается…»
+    await page.getByTestId('config-reset').click();
+    await page.getByTestId('dlg-ok').click();
+    await expect(status).toHaveAttribute('data-state', 'failed');
+    expect((await stored(page)).bundledModelError).toBe(code);
+  });
 });

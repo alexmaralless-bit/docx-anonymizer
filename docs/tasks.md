@@ -1,6 +1,6 @@
 # Рабочие пакеты
 
-Пакеты WP1–WP5 — MVP (версия 0.1). Пакеты WP6–WP9 — версия 0.2, цели и критерии в `docs/concept-0.2.md`.
+Пакеты WP1–WP5 — MVP (версия 0.1). Пакеты WP6–WP9 — версия 0.2 (`docs/concept-0.2.md`). Пакеты WP10-A…D — версия 0.3 (`docs/concept-0.3.md`).
 
 Фундамент готов: каркас MV3, ядро DOCX, контракты, протокол, конвейер popup → offscreen → worker (см. `docs/contracts.md`).
 Оставшаяся работа MVP (`docs/mvp-scope.md`) разбита на 5 независимых пакетов. Пакеты работают параллельно:
@@ -169,3 +169,37 @@
 Пакет `docx-anonymizer-ner-rubert-tiny2-ner-ruen-1.0.0.zip` (29 517 760 байт), sha256 `ca023f16…318f` — в `KNOWN_PACKS` и README.
 
 **Статус:** выполнено, коммиты `a50a725` (провайдер, корпус оценки, бенчмарк, порог 0.7, известный пакет), `be5519b` (конвейер обучения `tools/ner-train`), `1f5ee52` (пакет пересобран из финальной модели, sha256).
+
+---
+
+## WP10-A — PDF с текстовым слоем (версия 0.3)
+
+**Файлы:** `src/core/pdf/{layout,extract}.js`, `src/core/text/{model,serialize}.js`, `src/core/apply.js` (`planEdits` + сериализатор по `doc.kind`), `src/core/detect/names/kb.js` (хук `doc.tables`), `src/core/{errors,settings,index}.js`, `src/shared/protocol.js`, `schemas/protocol.schema.json`, `src/offscreen/{host,worker,pdf-loader}.js`, `src/content/{files,interceptor,content,flow}.js`, `src/ui/panel/panel.js`, `src/ui/i18n/{panel,common,options,help}.js`, `src/options/options.js`, `scripts/{build,gen-pdf-fixtures}.mjs`, `manifest.json` (`minimum_chrome_version` 132), `tests/fixtures/pdf/**`, `tests/unit/pdf/**`, `tests/unit/{text-model,apply-text}.spec.js`, `tests/integration/{pdf-pipeline,pdf-fixtures,pack,host,schemas}.spec.js`, `tests/integration/support/pdf.js`, `tests/e2e/{pdf,chat,intercept,nfr,restore}.spec.js`.
+
+**Сделать:** pdf.js 6.4 вендорится в `vendor/pdfjs/` и грузится лениво во вложенном Worker; текст страниц → разметка (строки, слова, колонки, абзацы, заголовки, списки, таблицы, колонтитулы, переносы) → текстовая `DocModel` (`kind:'text'`) → те же детекторы → `serializeText` в Markdown/txt; хост ветвится по сигнатуре `%PDF-`/имени; коды `PDF_INVALID|PDF_ENCRYPTED|PDF_EMPTY|PDF_NO_TEXT`, предупреждение `PDF_PAGES_NO_TEXT`; RESULT с `mime`; настройка `pdfMode` (`markdown|text|off`); отказы через существующий экран ошибки с «Загрузить как есть»; фикстуры PDF из синтетических договоров (Chromium + LibreOffice) со снимками разметки.
+
+**Приёмка:** К1–К9, К11–К13, К17 (PDF) из `docs/concept-0.3.md`.
+
+## WP10-B — восстановление файла от ИИ
+
+**Файлы:** `src/core/{deanon,restore-doc,index}.js`, `src/shared/protocol.js` (`GET_MAPPING`/`MAPPING`), `schemas/protocol.schema.json`, `src/offscreen/host.js`, `src/restore/{restore.js,restore.css}`, `src/ui/deanon/{index,dom}.js`, `src/ui/i18n/{restore,help}.js`, `tests/unit/{deanon-spans,restore-doc}.spec.js`, `tests/unit/ui/restore-model.spec.js`, `tests/integration/{host,schemas}.spec.js`, `tests/unit/protocol.spec.js`, `tests/e2e/restore.spec.js`.
+
+**Сделать:** `deanonymizeSpans` (координаты входа) и `deanonymize` поверх него (фикстуры 30 + 51 без изменений); `restoreDocx` — обратная замена во всех потоках DOCX с сохранением форматирования (`keepMetadata:true`), склонение в live/deleted, обратное отображение `rel-target`; страница восстановления: режим «Файл от ИИ» (`.docx/.docm/.md/.txt`), карта из файла или по `GET_MAPPING`, скачивание `имя.restored.*`; `?docId=` предвыбирает сессию.
+
+**Приёмка:** К10, К14, К13.
+
+## WP10-C — модель в полном архиве, автоустановка, онбординг
+
+**Файлы:** `scripts/{build,pack}.mjs`, `src/shared/bundled-model.js`, `src/background/{bundled-model,index,router}.js`, `src/offscreen/{package-fetch,host,worker}.js`, `eslint.config.js` (override для `package-fetch.js`), `src/core/settings.js` (`bundledModelSha`), `src/options/{options,config-io}.js`, `src/popup/**`, `src/content/flow.js`, `src/ui/panel/panel.js`, `src/ui/i18n/{options,popup,panel,help}.js`, `src/shared/protocol.js`, `schemas/protocol.schema.json`, `tests/unit/{bundled-model,router,settings}.spec.js`, `tests/unit/background/bundled-model.spec.js`, `tests/integration/{host,schemas,pack,manifest}.spec.js`, `tests/e2e/{fixtures.js,helpers/network.js,bundled-model,options,chat,model-pack,ner}.spec.js`.
+
+**Сделать:** `build.mjs --with-model=<zip>` (define `__BUNDLED_MODEL__`, `models/index.json`, только пакеты из `KNOWN_PACKS`); `pack.mjs` → лёгкий и полный архивы; при `onInstalled`/`onStartup` background по `planBootstrap` поднимает offscreen и шлёт `MODEL_INSTALL`, worker читает zip из собственного пакета (`chrome-extension://`) и ставит в OPFS, ответ `MODEL_INSTALLED` пишет `nerModel`/`bundledModelSha`; `MODEL_BOOTSTRAP` для кнопки «Восстановить встроенную модель»; онбординг в настройках/popup/панели для лёгкой сборки.
+
+**Приёмка:** К15, К16, К17 (модель), К13.
+
+## WP10-D — меню «Ещё» и подсказка о ключе восстановления
+
+**Файлы:** `src/ui/panel/{panel,done-hint,styles}.js`, `src/ui/i18n/panel.js`, `src/content/flow.js`, `src/core/settings.js` (`hintMappingShown`), `src/options/config-io.js`, `tests/unit/ui/done-hint.spec.js`, `tests/e2e/intercept.spec.js`, `tests/e2e/helpers/chat.js`.
+
+**Сделать:** кнопка «Скачать маппинг» переезжает в меню «Ещё ▾» как «Сохранить ключ восстановления» (testid сохранён); при закрытии done-экрана без сохранения — одноразовая подсказка с кнопками «Сохранить»/«Понятно», флаг `hintMappingShown` в настройках (не экспортируется).
+
+**Приёмка:** К16 (меню и подсказка), К13.

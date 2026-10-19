@@ -1,0 +1,58 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Корнилов Евгений Павлович",
+      "surname": "Корнилов"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Лазарева Ирина Викторовна",
+      "surname": "Лазарева"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Сергеем Вдовиным",
+      "surname": "Вдовиным"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Корнилов Е.П.",
+      "surname": "Корнилов"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "445037, Самарская обл., г. Тольятти, ул. Юбилейная, д. 31, оф. 205",
+      "parts": [
+        "445037",
+        "д. 31",
+        "оф. 205"
+      ]
+    },
+    {
+      "key": "e6",
+      "category": "ADDRESS",
+      "value": "445051, г. Тольятти, Приморский б-р, д. 12, кв. 40",
+      "parts": [
+        "445051",
+        "д. 12",
+        "кв. 40"
+      ]
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Ноутбук",
+      "category": "PERSON"
+    },
+    {
+      "value": "Итого",
+      "category": "PERSON"
+    }
+  ]
+}

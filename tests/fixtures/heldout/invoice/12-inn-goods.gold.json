@@ -1,0 +1,55 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Беляев Олег Иванович",
+      "surname": "Беляев"
+    },
+    {
+      "key": "e2",
+      "category": "COMPANY",
+      "value": "Альфа-Трейд"
+    },
+    {
+      "key": "e3",
+      "category": "COMPANY",
+      "value": "Берег"
+    },
+    {
+      "key": "e4",
+      "category": "INN",
+      "value": "7709114522"
+    },
+    {
+      "key": "e5",
+      "category": "INN",
+      "value": "7734029817"
+    },
+    {
+      "key": "e6",
+      "category": "INN",
+      "value": "7715620439"
+    },
+    {
+      "key": "e7",
+      "category": "INN",
+      "value": "500311782435"
+    },
+    {
+      "key": "e8",
+      "category": "INN",
+      "value": "7703981159"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "8471300000",
+      "category": "INN"
+    },
+    {
+      "value": "8528721000",
+      "category": "INN"
+    }
+  ]
+}

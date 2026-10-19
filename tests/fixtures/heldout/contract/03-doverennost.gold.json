@@ -1,0 +1,58 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Хайруллин Ринат Ильдарович",
+      "surname": "Хайруллин"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Сафину Гульнару Маратовну",
+      "surname": "Сафину"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Р.И. Хайруллин",
+      "surname": "Хайруллин"
+    },
+    {
+      "key": "e4",
+      "category": "ADDRESS",
+      "value": "Республика Татарстан, г. Казань, ул. Баумана, д. 9, кв. 3",
+      "parts": [
+        "д. 9",
+        "кв. 3",
+        "Баумана"
+      ]
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "г. Казань, ул. Чистопольская, д. 61, кв. 88",
+      "parts": [
+        "д. 61",
+        "кв. 88",
+        "Чистопольская"
+      ]
+    },
+    {
+      "key": "e6",
+      "category": "PASSPORT",
+      "value": "92 08 765432"
+    },
+    {
+      "key": "e7",
+      "category": "PASSPORT",
+      "value": "92 11 123987"
+    },
+    {
+      "key": "e8",
+      "category": "BIRTHDATE",
+      "value": "14.07.1981"
+    }
+  ],
+  "negatives": []
+}

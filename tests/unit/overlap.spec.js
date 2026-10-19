@@ -58,3 +58,39 @@ describe('resolveOverlaps (FR-20)', () => {
     expect(ids(resolveOverlaps([e('PERSON', 0, 10), e('custom:project', 3, 12)], cat))).toEqual(['custom:project:3-12']);
   });
 });
+
+// WP11-D (ревью, Ц1): PERSON правил и PERSON модели, пересекающиеся с выходом модели за правило, — объединение с уровнем правила
+describe('PERSON: правило ∪ модель (WP11-D)', () => {
+  /** Сущность с текстом из строки потока. */
+  const at = (text, sub, confidence, source, extra = {}) => {
+    const start = text.indexOf(sub);
+    return { ...e('PERSON', start, start + sub.length, confidence, source), text: sub, normalized: sub.toLowerCase(), ...extra };
+  };
+  it('правило строго внутри модели («Ван Тхань» ⊂ «Нгуен Ван Тхань») — спан модели, уровень и источник правила', () => {
+    const t = 'Встречу ведёт Нгуен Ван Тхань.';
+    const [x] = resolveOverlaps([at(t, 'Ван Тхань', 'kb', 'kb'), at(t, 'Нгуен Ван Тхань', 'ner', 'ner')], catalog);
+    expect([x.text, x.confidence, x.source, x.normalized]).toEqual(['Нгуен Ван Тхань', 'kb', 'kb', 'нгуен ван тхань']);
+  });
+  it('частичное пересечение («Сотрудник Кирилл» ∩ «Кирилл Ахмедов») — объединение, профессия в keepPrefix', () => {
+    const t = 'Сотрудник Кирилл Ахмедов подготовил отчёт.';
+    const [x, ...rest] = resolveOverlaps([at(t, 'Сотрудник Кирилл', 'labeled', 'rule'), at(t, 'Кирилл Ахмедов', 'ner', 'ner')], catalog);
+    expect(rest).toEqual([]);
+    expect([x.text, x.keepPrefix, x.confidence, x.normalized]).toEqual(['Сотрудник Кирилл Ахмедов', 'Сотрудник '.length, 'labeled', 'кирилл ахмедов']);
+  });
+  it('модель внутри правила — правило как было; модель на двух лицах правил — не объединяется', () => {
+    const t = 'Иванов И.И. и Петров П.П. подписали';
+    const a = at(t, 'Иванов И.И.', 'labeled', 'rule');
+    const b = at(t, 'Петров П.П.', 'labeled', 'rule');
+    const m = at(t, 'Иванов И.И. и Петров', 'ner', 'ner');
+    expect(resolveOverlaps([a, b, m], catalog).map((x) => x.text)).toEqual(['Иванов И.И.', 'Петров П.П.']);
+    expect(resolveOverlaps([a, at(t, 'Иванов', 'ner', 'ner')], catalog).map((x) => x.text)).toEqual(['Иванов И.И.']);
+  });
+  it('canonical правила сохраняется у объединения (одна метка с другими вхождениями лица)', () => {
+    const t = 'Встречу ведёт Нгуен Ван Тхань.';
+    const [x] = resolveOverlaps(
+      [at(t, 'Ван Тхань', 'kb', 'kb', { canonical: 'тхань ван', normalized: 'тхань ван' }), at(t, 'Нгуен Ван Тхань', 'ner', 'ner')],
+      catalog,
+    );
+    expect([x.text, x.normalized]).toEqual(['Нгуен Ван Тхань', 'тхань ван']);
+  });
+});

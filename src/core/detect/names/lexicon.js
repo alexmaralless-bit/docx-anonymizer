@@ -4,13 +4,23 @@
 
 export const lowerE = (s) => s.toLowerCase().replace(/ё/g, 'е');
 
+/**
+ * Список слов из строки «a|b|c» (строки — тоже разделитель): длинные словари в одной строке, а не по элементу на строку
+ * в сборке worker.js (esbuild без minify печатает каждый элемент массива отдельной строкой; бюджет worker.js, К12 0.4).
+ * @param {string} s
+ * @returns {string[]}
+ */
+export function wordList(s) {
+  return s.split(/[|\n]/).filter(Boolean);
+}
+
 /* ---------- ОПФ ---------- */
 
 /** Короткие ОПФ, которые стоят ПЕРЕД названием (RU и латиница). */
 // prettier-ignore
 export const PREFIX_FORMS = [
-  'ООО', 'ОАО', 'ЗАО', 'ПАО', 'НАО', 'АО', 'НКО', 'АНО', 'ГУП', 'МУП', 'ФГУП', 'ГБУ', 'МБУ', 'ФГБУ', 'ТОО', 'КФХ', 'ОДО', 'СПАО', 'САО',
-  'LLC', 'JSC', 'OOO', 'OAO', 'ZAO', 'PAO', 'PJSC', 'CJSC', 'OJSC',
+  ...wordList(`ООО|ОАО|ЗАО|ПАО|НАО|АО|НКО|АНО|ГУП|МУП|ФГУП|ГБУ|МБУ|ФГБУ|ТОО|КФХ|ОДО|СПАО|САО
+LLC|JSC|OOO|OAO|ZAO|PAO|PJSC|CJSC|OJSC`),
 ];
 
 /** Полные ОПФ (RU), в любых падежах. Источник регулярного выражения. */
@@ -43,8 +53,8 @@ export const GENERIC_ORG_RE_SRC = [
 /** ОПФ, которые стоят ПОСЛЕ названия (латиница). Длинные — раньше коротких. */
 // prettier-ignore
 export const SUFFIX_FORMS_RE_SRC = [
-  'L\\.L\\.C\\.', 'LLC', 'Limited', 'Ltd\\.?', 'Incorporated', 'Inc\\.?', 'GmbH', 'AG', 'S\\.A\\.', 'B\\.V\\.', 'N\\.V\\.',
-  'LLP', 'PLC', 'plc', 'Corporation', 'Corp\\.?', 'S\\.r\\.l\\.', 'S\\.p\\.A\\.', 'SE', 'JSC', 'PJSC', 'LP', 'Co\\.',
+  ...wordList(`L\\.L\\.C\\.|LLC|Limited|Ltd\\.?|Incorporated|Inc\\.?|GmbH|AG|S\\.A\\.|B\\.V\\.|N\\.V\\.
+LLP|PLC|plc|Corporation|Corp\\.?|S\\.r\\.l\\.|S\\.p\\.A\\.|SE|JSC|PJSC|LP|Co\\.`),
 ].join('|');
 
 /* ---------- бренд владельца: не маскируется никогда (решение владельца 6, docs/concept-0.4.md) ---------- */
@@ -74,61 +84,63 @@ export function isNeverMaskOrg(text) {
 // prettier-ignore
 export const GOV_ENTITIES = new Set(
   [
-    'банк россии', 'центральный банк российской федерации', 'цб рф', 'центробанк',
-    'фнс', 'фнс россии', 'федеральная налоговая служба', 'ифнс', 'мифнс', 'инспекция фнс',
-    'минфин', 'минфин россии', 'министерство финансов российской федерации', 'федеральное казначейство', 'казначейство россии',
-    'пенсионный фонд', 'пфр', 'сфр', 'социальный фонд россии', 'фсс', 'фсс рф', 'фомс',
-    'росреестр', 'роспатент', 'роскомнадзор', 'росстат', 'ростехнадзор', 'роспотребнадзор', 'росфинмониторинг',
-    'мвд', 'мвд россии', 'гувд', 'увд', 'овд', 'фмс', 'гибдд', 'фссп', 'фссп россии', 'фас', 'фас россии', 'фтс', 'фтс россии',
-    'верховный суд российской федерации', 'верховный суд рф', 'арбитражный суд города москвы', 'конституционный суд',
-    'правительство российской федерации', 'государственная дума', 'совет федерации', 'прокуратура', 'генеральная прокуратура',
-    'сбербанк', 'сбербанк россии', 'сбер', 'пао сбербанк', 'втб', 'банк втб', 'газпромбанк', 'россельхозбанк', 'внешэкономбанк', 'вэб.рф',
-    'почта россии', 'ржд', 'росатом', 'роскосмос', 'мфц',
+    ...wordList(`банк россии|центральный банк российской федерации|цб рф|центробанк
+фнс|фнс россии|федеральная налоговая служба|ифнс|мифнс|инспекция фнс
+минфин|минфин россии|министерство финансов российской федерации|федеральное казначейство|казначейство россии
+пенсионный фонд|пфр|сфр|социальный фонд россии|фсс|фсс рф|фомс
+росреестр|роспатент|роскомнадзор|росстат|ростехнадзор|роспотребнадзор|росфинмониторинг
+мвд|мвд россии|гувд|увд|овд|фмс|гибдд|фссп|фссп россии|фас|фас россии|фтс|фтс россии
+верховный суд российской федерации|верховный суд рф|арбитражный суд города москвы|конституционный суд
+правительство российской федерации|государственная дума|совет федерации|прокуратура|генеральная прокуратура
+сбербанк|сбербанк россии|сбер|пао сбербанк|втб|банк втб|газпромбанк|россельхозбанк|внешэкономбанк|вэб.рф
+почта россии|ржд|росатом|роскосмос|мфц`),
   ].map(lowerE),
 );
 
 /* ---------- стоп-слова: шаблонные слова договоров, месяцы, дни, топонимы ---------- */
 
+// Группы: месяцы и дни (все формы, что встречаются с заглавной); короткие служебные; обращения в письмах (WP11-D): «Уважаемый Павел
+// Николаевич!» — лицо без обращения, слово остаётся вне плейсхолдера.
 // prettier-ignore
 const STOP_EXACT_LIST = [
-  // месяцы и дни (все формы, что встречаются с заглавной)
-  'январь', 'января', 'февраль', 'февраля', 'март', 'марта', 'апрель', 'апреля', 'май', 'мая', 'июнь', 'июня', 'июль', 'июля',
-  'август', 'августа', 'сентябрь', 'сентября', 'октябрь', 'октября', 'ноябрь', 'ноября', 'декабрь', 'декабря',
-  'понедельник', 'вторник', 'среда', 'среду', 'четверг', 'пятница', 'пятницу', 'суббота', 'субботу', 'воскресенье',
-  'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
-  'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-  // короткие служебные
-  'рф', 'россия', 'россии', 'москва', 'москвы', 'москве', 'мп', 'м.п', 'тел', 'факс', 'инн', 'кпп', 'огрн', 'бик',
-  'the', 'this', 'that', 'these', 'those', 'and', 'or', 'of', 'for', 'by', 'with', 'from', 'to', 'in', 'on', 'at', 'as', 'is', 'are',
-  'mr', 'mrs', 'ms', 'dr', 'sir', 'madam', 'dear', 'yours', 'best', 'regards', 'sincerely', 'faithfully',
-  'name', 'title', 'date', 'signature', 'signed', 'email', 'phone', 'address', 'attn', 'attention', 'tel', 'fax', 'no', 'nos',
-  'section', 'article', 'clause', 'schedule', 'appendix', 'annex', 'exhibit', 'page', 'item', 'part', 'chapter',
-  'street', 'road', 'avenue', 'suite', 'floor', 'building', 'london', 'york', 'new',
+  ...wordList(`январь|января|февраль|февраля|март|марта|апрель|апреля|май|мая|июнь|июня|июль|июля
+август|августа|сентябрь|сентября|октябрь|октября|ноябрь|ноября|декабрь|декабря
+понедельник|вторник|среда|среду|четверг|пятница|пятницу|суббота|субботу|воскресенье
+january|february|march|april|may|june|july|august|september|october|november|december
+monday|tuesday|wednesday|thursday|friday|saturday|sunday`),
+  ...wordList(`рф|россия|россии|москва|москвы|москве|мп|м.п|тел|факс|инн|кпп|огрн|бик
+the|this|that|these|those|and|or|of|for|by|with|from|to|in|on|at|as|is|are
+mr|mrs|ms|dr|sir|madam|dear|yours|best|regards|sincerely|faithfully`),
+  ...wordList(`уважаемый|уважаемая|уважаемые|уважаемого|уважаемой|уважаемому|уважаемым|уважаемых
+глубокоуважаемый|глубокоуважаемая|многоуважаемый|многоуважаемая
+name|title|date|signature|signed|email|phone|address|attn|attention|tel|fax|no|nos
+section|article|clause|schedule|appendix|annex|exhibit|page|item|part|chapter
+street|road|avenue|suite|floor|building|london|york|new`),
 ];
 
 /** Префиксы (основы) шаблонных слов; слово-кандидат отбрасывается, если начинается с них. */
 // prettier-ignore
 const STOP_PREFIX_LIST = [
-  'обществ', 'ограниченн', 'ответственност', 'акционерн', 'публичн', 'закрыт', 'открыт', 'товариществ', 'предпринимател', 'индивидуальн',
-  'российск', 'федерац', 'федеральн', 'государствен', 'муниципальн', 'республик', 'област', 'краев', 'город', 'района', 'район',
-  'налогов', 'кодекс', 'гражданск', 'трудов', 'арбитражн', 'уголовн', 'административн', 'конституци', 'закон', 'постановлени', 'приказ',
-  'договор', 'контракт', 'соглашени', 'приложени', 'спецификаци', 'дополнительн', 'протокол', 'акт', 'счет', 'счёт', 'накладн', 'доверенност',
-  'покупател', 'поставщик', 'продав', 'исполнител', 'заказчик', 'подрядчик', 'субподрядчик', 'арендатор', 'арендодател', 'лизинг',
-  'лицензиар', 'лицензиат', 'агент', 'принципал', 'комитент', 'комиссионер', 'доверител', 'поверенн', 'заемщик', 'заимодав', 'кредитор',
-  'должник', 'залог', 'поручител', 'сторон', 'участник', 'учредител', 'работодател', 'работник', 'клиент', 'банк', 'получател', 'отправител',
-  'плательщик', 'грузо', 'перевозчик', 'экспедитор', 'страхов', 'выгодоприобретател', 'бенефициар', 'гарант', 'принимающ', 'передающ', 'раскрывающ',
-  'генеральн', 'директор', 'руководител', 'президент', 'председател', 'управляющ', 'главн', 'бухгалтер', 'юрист', 'менеджер', 'начальник',
-  'заместител', 'представител', 'уполномоченн', 'действующ', 'именуем', 'основани', 'устав', 'положени', 'решени', 'реквизит', 'подпис',
-  'печат', 'адрес', 'юридическ', 'фактическ', 'почтов', 'телефон', 'электронн', 'расчетн', 'расчётн', 'корреспондент', 'паспорт', 'выдан',
-  'предмет', 'стоимост', 'цена', 'оплат', 'порядок', 'срок', 'ответственн', 'форс', 'конфиденциальн', 'разрешени', 'спор', 'заключительн',
-  'прочие', 'прочих', 'общие', 'общих', 'термин', 'определени', 'уведомлени', 'гарантийн', 'качеств', 'количеств', 'приемк', 'приёмк',
-  'поставк', 'услуг', 'работ', 'товар', 'имуществ', 'помещени', 'объект', 'настоящ', 'иной', 'иные', 'итого', 'всего', 'ндс', 'сумм',
-  'рубл', 'копе', 'доллар', 'евро', 'проценто', 'неустойк', 'штраф', 'пени', 'претензи', 'суд', 'министерств', 'служб', 'инспекци',
-  'agreement', 'contract', 'party', 'parties', 'company', 'companies', 'limited', 'corporation', 'incorporated', 'supplier', 'buyer',
-  'seller', 'customer', 'client', 'contractor', 'licensor', 'licensee', 'lessor', 'lessee', 'employer', 'employee', 'director', 'manager',
-  'president', 'officer', 'chairman', 'secretary', 'representative', 'authorized', 'authorised', 'bank', 'beneficiar', 'account', 'payment',
-  'invoice', 'price', 'amount', 'total', 'services', 'goods', 'product', 'term', 'termination', 'confidential', 'governing', 'law',
-  'notice', 'notices', 'details', 'registered', 'office', 'hereinafter', 'whereas', 'witness', 'effective', 'general', 'chief',
+  ...wordList(`обществ|ограниченн|ответственност|акционерн|публичн|закрыт|открыт|товариществ|предпринимател|индивидуальн
+российск|федерац|федеральн|государствен|муниципальн|республик|област|краев|город|района|район
+налогов|кодекс|гражданск|трудов|арбитражн|уголовн|административн|конституци|закон|постановлени|приказ
+договор|контракт|соглашени|приложени|спецификаци|дополнительн|протокол|акт|счет|счёт|накладн|доверенност
+покупател|поставщик|продав|исполнител|заказчик|подрядчик|субподрядчик|арендатор|арендодател|лизинг
+лицензиар|лицензиат|агент|принципал|комитент|комиссионер|доверител|поверенн|заемщик|заимодав|кредитор
+должник|залог|поручител|сторон|участник|учредител|работодател|работник|клиент|банк|получател|отправител
+плательщик|грузо|перевозчик|экспедитор|страхов|выгодоприобретател|бенефициар|гарант|принимающ|передающ|раскрывающ
+генеральн|директор|руководител|президент|председател|управляющ|главн|бухгалтер|юрист|менеджер|начальник
+заместител|представител|уполномоченн|действующ|именуем|основани|устав|положени|решени|реквизит|подпис
+печат|адрес|юридическ|фактическ|почтов|телефон|электронн|расчетн|расчётн|корреспондент|паспорт|выдан
+предмет|стоимост|цена|оплат|порядок|срок|ответственн|форс|конфиденциальн|разрешени|спор|заключительн
+прочие|прочих|общие|общих|термин|определени|уведомлени|гарантийн|качеств|количеств|приемк|приёмк
+поставк|услуг|работ|товар|имуществ|помещени|объект|настоящ|иной|иные|итого|всего|ндс|сумм
+рубл|копе|доллар|евро|проценто|неустойк|штраф|пени|претензи|суд|министерств|служб|инспекци
+agreement|contract|party|parties|company|companies|limited|corporation|incorporated|supplier|buyer
+seller|customer|client|contractor|licensor|licensee|lessor|lessee|employer|employee|director|manager
+president|officer|chairman|secretary|representative|authorized|authorised|bank|beneficiar|account|payment
+invoice|price|amount|total|services|goods|product|term|termination|confidential|governing|law
+notice|notices|details|registered|office|hereinafter|whereas|witness|effective|general|chief`),
 ];
 
 export const STOP_EXACT = new Set(STOP_EXACT_LIST.map(lowerE));
@@ -145,18 +157,27 @@ export function isStopWord(word) {
   return false;
 }
 
+/**
+ * Профессии и роли перед именем («Сотрудник Кирилл Ахмедов», «курьер Абдуллаев», «аналитик Шевчук»): слово не фамилия
+ * (WP11-D, отложенный набор ревью). Основа + падежное окончание.
+ */
+const ROLE_NOUN_RE =
+  /^(?:сотрудниц|сотрудник|специалист|инженер|ученик|стажер|курьер|водител|кладовщик|консультант|аналитик|дизайнер|разработчик|программист|секретар|администратор|оператор|менеджер|бухгалтер|юрист|продавец|продавц|мастер|врач|учител|преподавател|студент|участник|коллег|ведущ|старш|младш|главн|экспедитор|охранник|диспетчер|логист|кассир|грузчик|монтажник|техник|агент|представител|директор|руководител|начальник|заместител|председател|водител)(?:а|у|ом|е|ы|и|ам|ами|ах|ем|ю|я|ь|ей|ая|ий|ый|ого|его|ому|ему|ым|им|ой)?$/u;
+/** @param {string} word */
+export const isRoleNoun = (word) => ROLE_NOUN_RE.test(lowerE(word));
+
 /* ---------- роли сторон: «именуемое в дальнейшем «Поставщик»» — не компания ---------- */
 
 // prettier-ignore
 export const ROLE_WORDS = new Set(
   [
-    'поставщик', 'покупатель', 'продавец', 'исполнитель', 'заказчик', 'подрядчик', 'субподрядчик', 'арендатор', 'арендодатель',
-    'лицензиар', 'лицензиат', 'агент', 'принципал', 'комитент', 'комиссионер', 'доверитель', 'поверенный', 'заемщик', 'займодавец',
-    'заимодавец', 'кредитор', 'должник', 'залогодатель', 'залогодержатель', 'поручитель', 'сторона', 'стороны', 'общество', 'компания',
-    'банк', 'клиент', 'работодатель', 'работник', 'гарант', 'бенефициар', 'принципиал', 'лизингодатель', 'лизингополучатель', 'перевозчик',
-    'экспедитор', 'грузоотправитель', 'грузополучатель', 'страховщик', 'страхователь', 'получатель', 'плательщик', 'оператор', 'участник',
-    'supplier', 'buyer', 'seller', 'customer', 'client', 'contractor', 'licensor', 'licensee', 'lessor', 'lessee', 'company', 'party',
-    'parties', 'bank', 'agent', 'principal', 'employer', 'employee', 'disclosing party', 'receiving party', 'agreement', 'services',
+    ...wordList(`поставщик|покупатель|продавец|исполнитель|заказчик|подрядчик|субподрядчик|арендатор|арендодатель
+лицензиар|лицензиат|агент|принципал|комитент|комиссионер|доверитель|поверенный|заемщик|займодавец
+заимодавец|кредитор|должник|залогодатель|залогодержатель|поручитель|сторона|стороны|общество|компания
+банк|клиент|работодатель|работник|гарант|бенефициар|принципиал|лизингодатель|лизингополучатель|перевозчик
+экспедитор|грузоотправитель|грузополучатель|страховщик|страхователь|получатель|плательщик|оператор|участник
+supplier|buyer|seller|customer|client|contractor|licensor|licensee|lessor|lessee|company|party
+parties|bank|agent|principal|employer|employee|disclosing party|receiving party|agreement|services`),
   ].map(lowerE),
 );
 
@@ -172,20 +193,20 @@ export const POSITION_RE_SRC =
 
 // prettier-ignore
 export const MALE_NAMES_RU = [
-  'Александр', 'Алексей', 'Анатолий', 'Андрей', 'Антон', 'Аркадий', 'Арсений', 'Артём', 'Артем', 'Артур', 'Борис', 'Вадим', 'Валентин',
-  'Валерий', 'Василий', 'Виктор', 'Виталий', 'Владимир', 'Владислав', 'Вячеслав', 'Геннадий', 'Георгий', 'Глеб', 'Григорий', 'Даниил',
-  'Данила', 'Денис', 'Дмитрий', 'Евгений', 'Егор', 'Иван', 'Игорь', 'Илья', 'Кирилл', 'Константин', 'Леонид', 'Лев', 'Максим', 'Марк',
-  'Матвей', 'Михаил', 'Никита', 'Николай', 'Олег', 'Павел', 'Пётр', 'Петр', 'Роман', 'Ростислав', 'Руслан', 'Святослав', 'Семён', 'Семен',
-  'Сергей', 'Станислав', 'Степан', 'Тимофей', 'Тимур', 'Фёдор', 'Федор', 'Филипп', 'Эдуард', 'Юрий', 'Яков', 'Ярослав', 'Эльдар', 'Рустам',
-  'Айдар', 'Ринат', 'Марат', 'Ильдар', 'Тагир', 'Захар', 'Савелий', 'Всеволод', 'Герман', 'Лука', 'Платон', 'Мирон', 'Демид', 'Богдан',
+  ...wordList(`Александр|Алексей|Анатолий|Андрей|Антон|Аркадий|Арсений|Артём|Артем|Артур|Борис|Вадим|Валентин
+Валерий|Василий|Виктор|Виталий|Владимир|Владислав|Вячеслав|Геннадий|Георгий|Глеб|Григорий|Даниил
+Данила|Денис|Дмитрий|Евгений|Егор|Иван|Игорь|Илья|Кирилл|Константин|Леонид|Лев|Максим|Марк
+Матвей|Михаил|Никита|Николай|Олег|Павел|Пётр|Петр|Роман|Ростислав|Руслан|Святослав|Семён|Семен
+Сергей|Станислав|Степан|Тимофей|Тимур|Фёдор|Федор|Филипп|Эдуард|Юрий|Яков|Ярослав|Эльдар|Рустам
+Айдар|Ринат|Марат|Ильдар|Тагир|Захар|Савелий|Всеволод|Герман|Лука|Платон|Мирон|Демид|Богдан`),
 ];
 // prettier-ignore
 export const FEMALE_NAMES_RU = [
-  'Александра', 'Алина', 'Алиса', 'Алла', 'Анастасия', 'Ангелина', 'Анна', 'Антонина', 'Валентина', 'Валерия', 'Варвара', 'Вероника',
-  'Виктория', 'Галина', 'Дарья', 'Диана', 'Ева', 'Евгения', 'Екатерина', 'Елена', 'Елизавета', 'Жанна', 'Зинаида', 'Злата', 'Инна',
-  'Ирина', 'Карина', 'Кира', 'Кристина', 'Ксения', 'Лариса', 'Людмила', 'Маргарита', 'Марина', 'Мария', 'Милана', 'Наталья', 'Наталия',
-  'Нина', 'Оксана', 'Олеся', 'Ольга', 'Полина', 'Светлана', 'Снежана', 'Софья', 'София', 'Тамара', 'Татьяна', 'Ульяна', 'Эльвира',
-  'Юлия', 'Яна', 'Таисия', 'Василиса', 'Арина', 'Алёна', 'Алена', 'Регина', 'Камила', 'Эвелина', 'Нелли', 'Лидия', 'Раиса', 'Клавдия',
+  ...wordList(`Александра|Алина|Алиса|Алла|Анастасия|Ангелина|Анна|Антонина|Валентина|Валерия|Варвара|Вероника
+Виктория|Галина|Дарья|Диана|Ева|Евгения|Екатерина|Елена|Елизавета|Жанна|Зинаида|Злата|Инна
+Ирина|Карина|Кира|Кристина|Ксения|Лариса|Людмила|Маргарита|Марина|Мария|Милана|Наталья|Наталия
+Нина|Оксана|Олеся|Ольга|Полина|Светлана|Снежана|Софья|София|Тамара|Татьяна|Ульяна|Эльвира
+Юлия|Яна|Таисия|Василиса|Арина|Алёна|Алена|Регина|Камила|Эвелина|Нелли|Лидия|Раиса|Клавдия`),
 ];
 /** Имена, совпадающие с нарицательными: в правиле «Имя Фамилия» без лейбла не используются. */
 export const AMBIGUOUS_NAMES_RU = new Set(['вера', 'надежда', 'любовь', 'роза', 'лилия', 'майя', 'слава', 'мила'].map(lowerE));
@@ -193,66 +214,65 @@ export const AMBIGUOUS_NAMES_RU = new Set(['вера', 'надежда', 'люб
 // prettier-ignore
 export const FIRST_NAMES_EN = new Set(
   [
-    'james', 'john', 'robert', 'michael', 'william', 'david', 'richard', 'joseph', 'thomas', 'charles', 'christopher', 'daniel', 'matthew',
-    'anthony', 'donald', 'steven', 'paul', 'andrew', 'joshua', 'kenneth', 'kevin', 'brian', 'george', 'edward', 'ronald', 'timothy', 'jason',
-    'jeffrey', 'ryan', 'jacob', 'gary', 'nicholas', 'eric', 'jonathan', 'stephen', 'larry', 'justin', 'scott', 'brandon', 'benjamin',
-    'samuel', 'gregory', 'frank', 'alexander', 'raymond', 'patrick', 'jack', 'dennis', 'jerry', 'tyler', 'aaron', 'henry', 'peter', 'oliver',
-    'harry', 'mary', 'patricia', 'jennifer', 'linda', 'elizabeth', 'barbara', 'susan', 'jessica', 'sarah', 'karen', 'nancy', 'lisa', 'betty',
-    'margaret', 'sandra', 'ashley', 'kimberly', 'emily', 'donna', 'michelle', 'dorothy', 'carol', 'amanda', 'melissa', 'deborah', 'stephanie',
-    'rebecca', 'sharon', 'laura', 'cynthia', 'kathleen', 'amy', 'angela', 'anna', 'emma', 'olivia', 'sophia', 'helen', 'julia', 'kate',
-    'ivan', 'petr', 'pyotr', 'sergey', 'sergei', 'alexey', 'aleksei', 'aleksey', 'dmitry', 'dmitriy', 'dmitrii', 'mikhail', 'nikolay', 'nikolai',
-    'andrey', 'andrei', 'vladimir', 'oleg', 'igor', 'pavel', 'yuri', 'yury', 'iurii', 'maxim', 'maksim', 'anton', 'artem', 'roman', 'denis',
-    'evgeny', 'evgenii', 'olga', 'elena', 'natalia', 'natalya', 'tatiana', 'tatyana', 'irina', 'svetlana', 'ekaterina', 'maria', 'anastasia',
-    'yulia', 'iuliia', 'marina', 'ksenia', 'daria', 'darya', 'viktor', 'victor', 'boris', 'konstantin', 'grigory', 'kirill', 'ilya', 'egor',
+    ...wordList(`james|john|robert|michael|william|david|richard|joseph|thomas|charles|christopher|daniel|matthew
+anthony|donald|steven|paul|andrew|joshua|kenneth|kevin|brian|george|edward|ronald|timothy|jason
+jeffrey|ryan|jacob|gary|nicholas|eric|jonathan|stephen|larry|justin|scott|brandon|benjamin
+samuel|gregory|frank|alexander|raymond|patrick|jack|dennis|jerry|tyler|aaron|henry|peter|oliver
+harry|mary|patricia|jennifer|linda|elizabeth|barbara|susan|jessica|sarah|karen|nancy|lisa|betty
+margaret|sandra|ashley|kimberly|emily|donna|michelle|dorothy|carol|amanda|melissa|deborah|stephanie
+rebecca|sharon|laura|cynthia|kathleen|amy|angela|anna|emma|olivia|sophia|helen|julia|kate
+ivan|petr|pyotr|sergey|sergei|alexey|aleksei|aleksey|dmitry|dmitriy|dmitrii|mikhail|nikolay|nikolai
+andrey|andrei|vladimir|oleg|igor|pavel|yuri|yury|iurii|maxim|maksim|anton|artem|roman|denis
+evgeny|evgenii|olga|elena|natalia|natalya|tatiana|tatyana|irina|svetlana|ekaterina|maria|anastasia
+yulia|iuliia|marina|ksenia|daria|darya|viktor|victor|boris|konstantin|grigory|kirill|ilya|egor`),
   ].map(lowerE),
 );
 
 /* ---------- нарицательные (R-6): одиночная фамилия / одиночное название не ищутся ---------- */
 
+// Группы: русские нарицательные, совпадающие с фамилиями/названиями; английские нарицательные, совпадающие с фамилиями.
 // prettier-ignore
 export const COMMON_NOUNS = new Set(
   [
-    // русские нарицательные, совпадающие с фамилиями/названиями
-    'ромашка', 'вектор', 'лебедь', 'мороз', 'орел', 'зима', 'борода', 'голова', 'кит', 'сокол', 'ворон', 'гусь', 'медведь', 'волк', 'заяц',
-    'король', 'князь', 'поп', 'кузнец', 'мельник', 'рыбак', 'коваль', 'бондарь', 'гончар', 'пастух', 'лис', 'бык', 'козел', 'жук', 'муха',
-    'шило', 'ковш', 'котел', 'звезда', 'солнце', 'луна', 'весна', 'лето', 'осень', 'гора', 'река', 'поле', 'лес', 'дуб', 'береза', 'липа',
-    'рябина', 'калина', 'малина', 'вишня', 'груша', 'слива', 'роза', 'лилия', 'вера', 'надежда', 'любовь', 'мир', 'восток', 'запад', 'север',
-    'юг', 'альфа', 'бета', 'гамма', 'дельта', 'омега', 'атлант', 'титан', 'гранит', 'кристалл', 'алмаз', 'рубин', 'изумруд', 'янтарь',
-    'радуга', 'заря', 'рассвет', 'восход', 'прогресс', 'успех', 'стандарт', 'эталон', 'партнер', 'союз', 'альянс', 'лидер', 'сфера', 'спектр',
-    'импульс', 'вершина', 'горизонт', 'меридиан', 'полюс', 'старт', 'финиш', 'ресурс', 'капитал', 'инвест', 'строй', 'сервис', 'техника',
-    'система', 'группа', 'холдинг', 'центр', 'дом', 'торговый', 'компания', 'фирма', 'сила', 'новый', 'новая', 'белый', 'черный', 'красный',
-    // английские нарицательные, совпадающие с фамилиями
-    'price', 'rice', 'young', 'brown', 'green', 'white', 'black', 'long', 'little', 'bell', 'hill', 'king', 'wood', 'stone', 'field', 'cook',
-    'baker', 'turner', 'page', 'law', 'bill', 'will', 'may', 'mark', 'grant', 'rich', 'hope', 'joy', 'chase', 'banks', 'park', 'lane',
-    'ward', 'west', 'north', 'south', 'east', 'love', 'day', 'march', 'best', 'church', 'hall', 'bishop', 'major', 'church', 'cross', 'fox',
-    'wolf', 'bird', 'swan', 'star', 'sun', 'moon', 'gold', 'silver', 'steel', 'iron', 'frost', 'snow', 'rain', 'summer', 'winter', 'vector',
-    'alpha', 'delta', 'omega', 'atlas', 'titan', 'unity', 'union', 'alliance', 'partner', 'partners', 'group', 'holding', 'center', 'centre',
+    ...wordList(`ромашка|вектор|лебедь|мороз|орел|зима|борода|голова|кит|сокол|ворон|гусь|медведь|волк|заяц
+король|князь|поп|кузнец|мельник|рыбак|коваль|бондарь|гончар|пастух|лис|бык|козел|жук|муха
+шило|ковш|котел|звезда|солнце|луна|весна|лето|осень|гора|река|поле|лес|дуб|береза|липа
+рябина|калина|малина|вишня|груша|слива|роза|лилия|вера|надежда|любовь|мир|восток|запад|север
+юг|альфа|бета|гамма|дельта|омега|атлант|титан|гранит|кристалл|алмаз|рубин|изумруд|янтарь
+радуга|заря|рассвет|восход|прогресс|успех|стандарт|эталон|партнер|союз|альянс|лидер|сфера|спектр
+импульс|вершина|горизонт|меридиан|полюс|старт|финиш|ресурс|капитал|инвест|строй|сервис|техника
+система|группа|холдинг|центр|дом|торговый|компания|фирма|сила|новый|новая|белый|черный|красный`),
+    ...wordList(`price|rice|young|brown|green|white|black|long|little|bell|hill|king|wood|stone|field|cook
+baker|turner|page|law|bill|will|may|mark|grant|rich|hope|joy|chase|banks|park|lane
+ward|west|north|south|east|love|day|march|best|church|hall|bishop|major|church|cross|fox
+wolf|bird|swan|star|sun|moon|gold|silver|steel|iron|frost|snow|rain|summer|winter|vector
+alpha|delta|omega|atlas|titan|unity|union|alliance|partner|partners|group|holding|center|centre`),
   ].map(lowerE),
 );
 
 /* ---------- устойчивые сочетания «как ФИО», которые не являются лицами (WP7, словарный детектор) ---------- */
 
 /** Пары в нижнем регистре, «ё» → «е»: сравниваются и с написанием, и с леммами («Ивана Купалы» → «иван купала»). */
+// Группы: латинские названия фирм и брендов из двух «имён» (юридические, аудиторские, инвестиционные, модные дома; ревью WP-N1); те же
+// названия кириллицей.
 // prettier-ignore
 export const NON_PERSON_PAIRS = new Set(
   [
-    'иван купала', 'иван-чай', 'дед мороз', 'лада веста', 'лада гранта', 'лада калина', 'лада приора', 'лада нива', 'виктория сикрет',
-    'анна каренина', 'маша медведь', 'кузьма минин', 'иван грозный', 'петр великий', 'екатерина великая', 'илья муромец', 'добрыня никитич',
-    'алеша попович', 'никола угодник', 'василий блаженный', 'сергий радонежский', 'серафим саровский', 'александр невский', 'дмитрий донской',
-    'мать тереза', 'баба яга', 'кощей бессмертный', 'снегурочка мороз', 'тойота камри', 'морган стэнли', 'голдман сакс', 'джонсон контролс',
-    'morgan stanley', 'goldman sachs', 'johnson controls', 'dean witter', 'victoria secret', 'louis vuitton', 'calvin klein', 'tommy hilfiger',
-    'ralph lauren', 'marc jacobs', 'hugo boss', 'ronald mcdonald', 'santa claus', 'uncle sam', 'jack daniels', 'johnnie walker', 'jim beam',
-    // латинские названия фирм и брендов из двух «имён» (юридические, аудиторские, инвестиционные, модные дома; ревью WP-N1)
-    'clifford chance', 'herbert smith', 'davis polk', 'merrill lynch', 'arthur andersen', 'allen overy', 'philip morris', 'harley davidson',
-    'fred perry', 'ann taylor', 'tom ford', 'vera wang', 'jimmy choo', 'john deere', 'raymond james', 'edward jones', 'johnson johnson',
-    'procter gamble', 'marks spencer', 'ernst young', 'baker mckenzie', 'hogan lovells', 'latham watkins', 'freshfields bruckhaus',
-    'dolce gabbana', 'giorgio armani', 'michael kors', 'harvey nichols', 'charles schwab', 'wells fargo', 'franklin templeton',
-    'lehman brothers', 'dow jones', 'standard poors', 'hewlett packard', 'rolls royce', 'aston martin', 'mercedes benz', 'dun bradstreet',
-    'carolina herrera', 'tory burch', 'kate spade', 'ted baker', 'estee lauder', 'christian dior', 'sullivan cromwell', 'simpson thacher',
-    // те же названия кириллицей
-    'майкл корс', 'том форд', 'филип моррис', 'харли дэвидсон', 'клиффорд чанс', 'херберт смит', 'меррилл линч', 'артур андерсен',
-    'кельвин кляйн', 'хьюго босс', 'луи виттон', 'ральф лорен', 'томми хилфигер', 'джорджио армани', 'дольче габбана', 'мерседес бенц',
-    'роллс ройс', 'астон мартин', 'джон дир', 'вера вонг', 'джимми чу', 'фред перри', 'эрнст янг', 'бейкер макензи', 'ив роше',
+    ...wordList(`иван купала|иван-чай|дед мороз|лада веста|лада гранта|лада калина|лада приора|лада нива|виктория сикрет
+анна каренина|маша медведь|кузьма минин|иван грозный|петр великий|екатерина великая|илья муромец|добрыня никитич
+алеша попович|никола угодник|василий блаженный|сергий радонежский|серафим саровский|александр невский|дмитрий донской
+мать тереза|баба яга|кощей бессмертный|снегурочка мороз|тойота камри|морган стэнли|голдман сакс|джонсон контролс
+morgan stanley|goldman sachs|johnson controls|dean witter|victoria secret|louis vuitton|calvin klein|tommy hilfiger
+ralph lauren|marc jacobs|hugo boss|ronald mcdonald|santa claus|uncle sam|jack daniels|johnnie walker|jim beam`),
+    ...wordList(`clifford chance|herbert smith|davis polk|merrill lynch|arthur andersen|allen overy|philip morris|harley davidson
+fred perry|ann taylor|tom ford|vera wang|jimmy choo|john deere|raymond james|edward jones|johnson johnson
+procter gamble|marks spencer|ernst young|baker mckenzie|hogan lovells|latham watkins|freshfields bruckhaus
+dolce gabbana|giorgio armani|michael kors|harvey nichols|charles schwab|wells fargo|franklin templeton
+lehman brothers|dow jones|standard poors|hewlett packard|rolls royce|aston martin|mercedes benz|dun bradstreet
+carolina herrera|tory burch|kate spade|ted baker|estee lauder|christian dior|sullivan cromwell|simpson thacher`),
+    ...wordList(`майкл корс|том форд|филип моррис|харли дэвидсон|клиффорд чанс|херберт смит|меррилл линч|артур андерсен
+кельвин кляйн|хьюго босс|луи виттон|ральф лорен|томми хилфигер|джорджио армани|дольче габбана|мерседес бенц
+роллс ройс|астон мартин|джон дир|вера вонг|джимми чу|фред перри|эрнст янг|бейкер макензи|ив роше`),
   ].map(lowerE),
 );
 
@@ -262,7 +282,7 @@ export const NON_PERSON_PAIRS = new Set(
  */
 // prettier-ignore
 export const ORG_TAIL_WORDS_EN = new Set([
-  'international', 'inc', 'llp', 'llc', 'ltd', 'limited', 'plc', 'group', 'bank', 'capital', 'partners', 'holdings', 'holding', 'freehills',
-  'company', 'co', 'corp', 'corporation', 'trust', 'securities', 'advisors', 'advisers', 'consulting', 'associates', 'brothers', 'bros',
-  'motors', 'industries', 'systems', 'technologies', 'foundation', 'institute', 'sons', 'gmbh', 'ag', 'sa', 'nv', 'bv',
+  ...wordList(`international|inc|llp|llc|ltd|limited|plc|group|bank|capital|partners|holdings|holding|freehills
+company|co|corp|corporation|trust|securities|advisors|advisers|consulting|associates|brothers|bros
+motors|industries|systems|technologies|foundation|institute|sons|gmbh|ag|sa|nv|bv`),
 ]);

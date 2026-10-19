@@ -3,19 +3,26 @@
 // после лейбла («в лице [должность]», «ФИО:», «represented by», «Mr.», подпись «____ / … /»).
 
 import { tokenize, gapOk, labelBeforeRe, hasLabelBefore, pickNonOverlapping } from './text.js';
-import { isStopWord, lowerE, POSITION_RE_SRC, AMBIGUOUS_NAMES_RU, FIRST_NAMES_EN, NON_PERSON_PAIRS, ORG_TAIL_WORDS_EN } from './lexicon.js';
+import {
+  isStopWord,
+  isRoleNoun,
+  lowerE,
+  POSITION_RE_SRC,
+  AMBIGUOUS_NAMES_RU,
+  FIRST_NAMES_EN,
+  NON_PERSON_PAIRS,
+  ORG_TAIL_WORDS_EN,
+  wordList,
+} from './lexicon.js';
 import { patronymicInfo, firstNameInfo, lemmaCandidates } from './morph.js';
 
 // prettier-ignore
 export const PERSON_LABELS_RU = [
-  'в лице', 'фио', 'ф.и.о.', 'ф. и. о.', 'на имя', 'подписант', 'контактное лицо', 'ответственное лицо', 'представитель',
-  'исполнитель:', 'директор', 'генеральный директор', 'руководитель', 'гражданин', 'гражданка', 'гр.', 'подпись', 'уполномоченное лицо',
-  'доверенное лицо', 'получатель:', 'заявитель', 'ученик', 'сотрудник', 'работник', 'арендатор:', 'заказчик:',
+  ...wordList(`в лице|фио|ф.и.о.|ф. и. о.|на имя|подписант|контактное лицо|ответственное лицо|представитель|исполнитель:|директор|генеральный директор|руководитель|гражданин|гражданка|гр.|подпись|уполномоченное лицо|доверенное лицо|получатель:|заявитель|ученик|сотрудник|работник|арендатор:|заказчик:`),
 ];
 // prettier-ignore
 export const PERSON_LABELS_EN = [
-  'represented by', 'name:', 'full name', 'attn:', 'attn.', 'attention:', 'signed by', 'signature:', 'signatory', 'contact person',
-  'director:', 'ceo:', 'by:', 'per:', 'mr.', 'mrs.', 'ms.', 'dr.', 'mr', 'mrs', 'ms', 'dr', 'prof.',
+  ...wordList(`represented by|name:|full name|attn:|attn.|attention:|signed by|signature:|signatory|contact person|director:|ceo:|by:|per:|mr.|mrs.|ms.|dr.|mr|mrs|ms|dr|prof.`),
 ];
 const HONORIFIC_RE = /(?<![\p{L}])(?:mr|mrs|ms|miss|dr|prof|sir)\.?[ \u00A0]+$/iu;
 const SIGNATURE_RE = /_{2,}[ \u00A0]*\/[ \u00A0]*$/u;
@@ -86,7 +93,8 @@ function nonPersonPair(span) {
   }
   return false;
 }
-const okWord = (tok) => tok.t === 'W' && !isStopWord(tok.text) && tok.text.length >= 2;
+// профессия перед именем («Сотрудник Кирилл Ахмедов») — не фамилия (WP11-D)
+const okWord = (tok) => tok.t === 'W' && !isStopWord(tok.text) && !isRoleNoun(tok.text) && tok.text.length >= 2;
 
 /**
  * @param {string} text

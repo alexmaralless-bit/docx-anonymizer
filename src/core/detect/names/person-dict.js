@@ -7,7 +7,7 @@
 // Вхождения получают уровень kb (kb.js), поэтому проигрывают правилам и лейблам других категорий (FR-20).
 
 import { tokenize, gapOk, pickNonOverlapping, overlaps } from './text.js';
-import { isStopWord, lowerE, COMMON_NOUNS, ROLE_WORDS, GOV_ENTITIES, STOP_EXACT, NON_PERSON_PAIRS, ORG_TAIL_WORDS_EN } from './lexicon.js';
+import { isStopWord, isRoleNoun, lowerE, COMMON_NOUNS, ROLE_WORDS, GOV_ENTITIES, STOP_EXACT, NON_PERSON_PAIRS, ORG_TAIL_WORDS_EN } from './lexicon.js';
 import { patronymicInfo } from './morph.js';
 import { TOPONYM_BEFORE_RE, latinOrgContext } from './person.js';
 import { bigFirstNameInfo, surnameLemmas, surnameSuffixInfo, isEnFirst, isEnSurname } from './dict/index.js';
@@ -25,7 +25,7 @@ import { bigFirstNameInfo, surnameLemmas, surnameSuffixInfo, isEnFirst, isEnSurn
  * @property {FormInfo[]} sSuf      фамилия по суффиксу (если не словарная)
  */
 
-const okWord = (tok) => tok.t === 'W' && tok.text.length >= 2 && !isStopWord(tok.text);
+const okWord = (tok) => tok.t === 'W' && tok.text.length >= 2 && !isStopWord(tok.text) && !isRoleNoun(tok.text);
 
 /** @type {Map<string, Sig>} */
 const SIG_MEMO = new Map();
@@ -161,8 +161,10 @@ export function findPersonsByDict(text, opts = {}) {
         if (COMMON_NOUNS.has(ll) || ORG_TAIL_WORDS_EN.has(ll)) return; // «Morris International»
         if (isEnFirst(ll) && !isEnSurname(ll)) return; // два имени подряд
         const dictLast = isEnSurname(ll);
-        if ((last.caps || a.caps) && !dictLast) return;
-        if (isHeading() && !dictLast) return;
+        // строка целиком — имя («OLIVER BRANNIGAN» в шапке резюме, «Fiona McAllister» под письмом): и капсом, и в заголовке
+        const nameLine = text.trim() === text.slice(a.start, last.end) && arr.length === 2;
+        if ((last.caps || a.caps) && !dictLast && !nameLine) return;
+        if (isHeading() && !dictLast && !nameLine) return;
         const start = a.start;
         const end = last.end;
         if (!guards(start, end) || nonPerson(`${la} ${ll}`)) return;
@@ -261,5 +263,34 @@ export function findPersonsByDict(text, opts = {}) {
       break;
     }
   }
+  // WP11-D: одно имя или фамилия после профессии («курьер Абдуллаев отказался», «Водитель Рашид позвонит», «09:03 Оператор
+  // Алина:», «Бухгалтер Петрова подписала»): имя или фамилия по словарю (фамилия — и по суффиксу), не отчество; профессия
+  // вне спана; следующее слово — не с заглавной (иначе это пара, см. выше)
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (!okWord(t) || t.script !== 'cyr' || t.caps) continue;
+    const m = ROLE_BEFORE_RE.exec(text.slice(Math.max(0, t.start - 30), t.start));
+    if (!m || !isRoleNoun(m[1])) continue;
+    const next = toks[i + 1];
+    if (next && next.t === 'W' && gapOk(text, t, next)) continue;
+    const sg = signals(t.text);
+    const first = [...sg.fStrong, ...sg.fAmb][0];
+    const sur = (sg.sDict.length ? sg.sDict : sg.sSuf)[0];
+    if (sg.p || (!first && !sur)) continue;
+    if (!guards(t.start, t.end)) continue;
+    const parse = first
+      ? { kind: /** @type {const} */ ('other'), script: /** @type {const} */ ('cyr'), first: t.text, words: [t.text] }
+      : {
+          kind: /** @type {const} */ ('other'),
+          script: /** @type {const} */ ('cyr'),
+          surname: t.text,
+          words: [t.text],
+          lemma: { surname: sur.lemma, first: '', gender: sur.gender },
+        };
+    spans.push({ start: t.start, end: t.end, labeled: false, dict: true, score: 0, parse });
+  }
   return pickNonOverlapping(spans, (s) => s.score).map(({ score: _score, ...s }) => s);
 }
+
+/** Профессия прямо перед словом: «курьер », «Оператор », «аналитику ». */
+const ROLE_BEFORE_RE = /(?<![\p{L}])(\p{L}[\p{Ll}-]+)[ \u00A0]+$/u;

@@ -102,10 +102,15 @@ describe.skipIf(!DIR)('ONNX-провайдер NER на реальной мод�
       'Ответственным за приёмку назначен Пётр Сидоров.',
       'Груз сопровождает экспедитор Кравчук; Иванов обязуется передать документы не позднее 10 числа.',
       'Электронная почта: info@romashka.ru, тел. +7 (495) 123-45-67.',
+      // К11 (WP11-D): «экспедитор Кравчук» и одиночная «Иванов» теперь находят правила (профессия перед фамилией, вариант лица
+      // с полным ФИО) — лицо, которое находит только модель, — здесь: имена вне словарей
+      'Пропуск на склад оформлен на Олжаса Нурланова и Юки Танаку.',
     ];
     if (!getDetectors().length) registerBuiltinDetectors();
     const bytes = makeDocx(paras.map((t) => para(run(t))).join(''));
-    const settings = { ...defaultSettings(), nerThreshold: threshold };
+    // коммерческий режим: с политикой 0.4 названия организаций по умолчанию не ищутся, а тест проверяет все сущности
+    // правил 0.3, включая ООО «Ромашка» и ООО «Вектор-М» (К11, WP11-D)
+    const settings = { ...defaultSettings(), commercial: true, nerThreshold: threshold };
     const base = await analyze(parseDocx(bytes), settings, {});
     const withNer = await analyze(parseDocx(bytes), settings, { nerProvider: provider });
     expect(withNer.warnings.map((w) => w.code)).not.toContain('NER_FAILED');

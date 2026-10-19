@@ -30,6 +30,7 @@
 
 import { findPersons } from './person.js';
 import { findPersonsByDict } from './person-dict.js';
+import { findVocativeNames } from './vocative.js';
 import { findCompanies, companyCore } from './company.js';
 import { tokenize, tokenSeq, escapeRe, pickNonOverlapping, overlaps } from './text.js';
 import { lowerE, COMMON_NOUNS, isStopWord, isNeverMaskOrg } from './lexicon.js';
@@ -43,7 +44,7 @@ import {
   firstNameInfo,
   patronymicInfo,
 } from './morph.js';
-import { bigFirstNameInfo, firstNameForms } from './dict/index.js';
+import { bigFirstNameInfo, firstNameForms, isEnFirst, surnameLemmas, surnameSuffixInfo } from './dict/index.js';
 import { skeleton, skeletonWeight, isCyrillic, crossScriptMatch } from './translit.js';
 
 const MAIN = 'word/document.xml';
@@ -388,6 +389,8 @@ function personMatches(r, a, text, allowSingle = r.party) {
   if (a.length === 2) {
     if (r.first && ((S(0) && F(1)) || (F(0) && S(1)))) return true;
     if (r.latin && r.first && ((I(0, r.first[0]) && S(1)) || (F(0) && I(1, r.surname[0])))) return true;
+    // «Ахмедова З.», «З. Ахмедова» — фамилия и инициал имени записи с именем (WP11-D)
+    if (!r.latin && r.first && ((S(0) && I(1, r.first[0])) || (I(0, r.first[0]) && S(1)))) return true;
     return false;
   }
   if (a.length === 1 && S(0)) {
@@ -450,15 +453,57 @@ function makeCompanyRec(core, kind) {
   };
 }
 
+/**
+ * Разбор PER модели в запись базы лиц (WP11-D): «Кирилл Ахмедов», «Ахмедова Зарина», «John Whitfield», «Шевчук Мирослава
+ * Олеговна». Нужны два-три слова с заглавной одного алфавита и имя из словаря (у трёх слов — отчество); иначе null.
+ * @param {string} text
+ * @returns {import('./person.js').PersonParse | null}
+ */
+function parseModelPerson(text) {
+  const toks = tokenize(text);
+  if (toks.length < 2 || toks.length > 3 || toks.some((t) => t.t !== 'W' || t.script !== toks[0].script)) return null;
+  if (toks.reduce((n, t) => n + t.text.length, 0) + toks.length - 1 < text.trim().length - 2) return null; // в спане не только имя
+  const words = toks.map((t) => t.text);
+  const latin = toks[0].script === 'lat';
+  const isFirst = (w) => (latin ? isEnFirst(lowerE(w)) : firstNameInfo(w).length > 0 || bigFirstNameInfo(w).some((x) => !x.ambiguous));
+  if (toks.length === 3) {
+    if (latin) return isFirst(words[0]) ? { kind: 'pair', script: 'lat', first: words[0], surname: words[2], words } : null;
+    if (patronymicInfo(words[2])) return { kind: 'full', script: 'cyr', surname: words[0], first: words[1], patronymic: words[2], words };
+    if (patronymicInfo(words[1])) return { kind: 'full', script: 'cyr', first: words[0], patronymic: words[1], surname: words[2], words };
+    return null;
+  }
+  const [a, b] = words;
+  if (isFirst(a) && !isFirst(b)) return { kind: 'pair', script: toks[0].script, first: a, surname: b, words };
+  if (isFirst(b) && !isFirst(a)) return { kind: 'pair', script: toks[0].script, first: b, surname: a, words };
+  // имя не из словаря («Priya Raghunathan», «Олжас Нурланов»): латиница — «Имя Фамилия», кириллица — фамилия по суффиксу
+  if (latin) return { kind: 'pair', script: 'lat', first: a, surname: b, words };
+  const surnameInfo = (w) => (surnameLemmas(w).length ? surnameLemmas(w) : surnameSuffixInfo(w) || [])[0];
+  const pair = (first, surname) => {
+    const si = /** @type {any} */ (surnameInfo(surname));
+    // лемма фамилии — по словарю или суффиксу: имя вне словаря lemmatizeNamePair не разберёт
+    return {
+      kind: /** @type {const} */ ('pair'),
+      script: /** @type {const} */ ('cyr'),
+      first,
+      surname,
+      words,
+      lemma: { surname: si.lemma, first: lowerE(first), gender: si.gender },
+    };
+  };
+  if (surnameInfo(b) && !surnameInfo(a)) return pair(a, b);
+  if (surnameInfo(a) && !surnameInfo(b)) return pair(b, a);
+  return null;
+}
+
 /* ---------------- детектор ---------------- */
 
 /**
  * @param {import('../../docx/model.js').DocModel} doc
- * @param {import('../../contracts/entity.js').Entity[]} _entities
+ * @param {import('../../contracts/entity.js').Entity[]} entities  уже найденные (потоковые детекторы и NER) — модельные PER дают записи лиц
  * @param {{settings?: any, isEnabled?: (id: string) => boolean}} ctx
  * @returns {import('../../contracts/entity.js').Candidate[]}
  */
-export function detectNamesAndKb(doc, _entities, ctx = {}) {
+export function detectNamesAndKb(doc, entities, ctx = {}) {
   const isEnabled = ctx.isEnabled || (() => true);
   const wantP = isEnabled('PERSON');
   const wantC = isEnabled('COMPANY');
@@ -586,6 +631,20 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
     }
   }
 
+  // WP11-D: люди, найденные моделью (вхождения NER уже в анализе), — записи базы лиц: их варианты (одиночная фамилия,
+  // «Фамилия И.») ищутся по документу так же, как варианты лиц правил; сами вхождения модели не дублируются
+  if (dictOn) {
+    for (const e of entities || []) {
+      if (e.category !== 'PERSON' || e.source !== 'ner') continue;
+      const p = parseModelPerson(e.text);
+      if (!p) continue;
+      const rec = people.link(p);
+      rec.hits = (rec.hits || 0) + 1;
+      const s = doc.streamById.get(e.streamId);
+      if (s) occupy(s.id, { start: e.start, end: e.end });
+    }
+  }
+
   // 4а. Вхождения правил
   for (const s of streams) {
     const f = found.get(s.id);
@@ -631,8 +690,28 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
     occupy(o.stream.id, o.span);
   }
 
+  // 4в. Обращение одним именем в начале реплики или письма (WP11-D, vocative.js): «Елена, спасибо…» — PERSON уровня kb;
+  //     canonical — единственная запись о лице с этим именем («Елена Тихонова»), иначе своя метка
+  if (dictOn) {
+    for (const s of streams) {
+      if (s.type !== 'live' || !s.text) continue;
+      for (const v of findVocativeNames(s.text)) {
+        if ((occupied.get(s.id) || []).some((b) => overlaps(b, v))) continue;
+        const low = lowerE(v.name);
+        const hits = new Set(people.recs.filter((r) => r.first && r.latin === (v.script === 'lat') && r.firstForms.has(low)).map((r) => r.canonical));
+        const canonical = hits.size === 1 ? [...hits][0] : undefined;
+        out.push({ streamId: s.id, category: 'PERSON', start: v.start, end: v.end, confidence: 'kb', source: 'kb', ...(canonical ? { canonical } : {}) });
+        occupy(s.id, v);
+      }
+    }
+  }
+
   // 4б. Варианты сторон (и, со словарём, лиц с ≥ 2 попаданиями) по всему документу (уровень kb)
-  const partyPeople = people.recs.filter((r) => r.kind !== 'other' && r.kind !== 'fm' && (r.party || (dictOn && (r.hits || 0) >= 2)));
+  // WP11-D: лицо с именем и фамилией (полное ФИО, пара, найденное моделью) ищется по документу и одиночной фамилией
+  // («Whitfield», «согласован с Ахмедовым» после «Кирилл Ахмедов»): фамилия без лица рядом ушла бы в чат открытой
+  const named = (r) => (r.kind === 'full' || r.kind === 'pair') && !!r.first && surnameAloneOk(r);
+  const partyPeople = people.recs.filter((r) => r.kind !== 'other' && r.kind !== 'fm' && (r.party || (dictOn && ((r.hits || 0) >= 2 || named(r)))));
+  const singleOk = (r) => r.party || (dictOn && named(r));
   const partyCompanies = [...companies.values()].filter((r) => r.party && r.kind === 'org');
   const bareRes = partyCompanies.map((r) => ({
     rec: r,
@@ -664,7 +743,7 @@ export function detectNamesAndKb(doc, _entities, ctx = {}) {
           for (const n of [3, 2, 1]) {
             const a = tokenSeq(t, toks, i, n);
             if (!a) continue;
-            const hits = partyPeople.filter((r) => r.latin === (a[0].script === 'lat') && personMatches(r, a, t));
+            const hits = partyPeople.filter((r) => r.latin === (a[0].script === 'lat') && personMatches(r, a, t, singleOk(r)));
             if (hits.length === 1) cands.push({ start: a[0].start, end: a[n - 1].end, category: 'PERSON', canonical: hits[0].canonical });
           }
           for (const r of partyPeople) {

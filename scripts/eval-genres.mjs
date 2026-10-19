@@ -7,7 +7,8 @@
 // Дополнительно: утечки pii/ids (gold-значение осталось в результате applyDecisions), отрицательные примеры, ставшие сущностью,
 // число COMPANY в обычном режиме, полнота организаций с ОПФ.
 //
-//   npm run eval-genres [-- --model=<каталог модели>] [--json] [--private] [--verbose] [--format=docx|pdf]
+//   npm run eval-genres [-- --model=<каталог модели>] [--json] [--private] [--verbose] [--format=docx|pdf] [--dir=<каталог корпуса>]
+//   npm run eval-genres -- --dir=tests/fixtures/heldout   — набор ревью WP11-D (DOCX), тот же отчёт
 //   NER_MODEL_DIR=models-src/rubert-tiny2-ner-ruen npm run eval-genres
 //   PRIVATE_FIXTURES=1 npm run eval-genres   — плюс tests/fixtures/private/*.{pdf,docx} (только счётчики, без значений)
 //
@@ -85,6 +86,9 @@ export function partialLeaks(entities, text) {
   for (const e of entities) {
     if (e.category === 'PERSON') {
       if (e.surname && words.has(lowerE(e.surname))) out.push({ ...e, part: 'surname' });
+    } else if (e.category === 'ADDRESS' && e.parts?.some((x) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(lowerE(x))}(?![\\p{L}\\p{N}])`, 'u').test(low))) {
+      // части адреса из gold (отложенный набор WP11-D: «Революционная», «52-14»)
+      out.push({ ...e, part: 'part' });
     } else if (e.category === 'ADDRESS') {
       const zip = /(?<!\d)\d{6}(?!\d)/.exec(e.value)?.[0];
       if (zip && new RegExp(`(?<!\\d)${zip}(?!\\d)`).test(text)) out.push({ ...e, part: 'zip' });
@@ -404,11 +408,13 @@ async function main() {
   const verbose = process.argv.includes('--verbose');
   const withPrivate = process.argv.includes('--private') || process.env.PRIVATE_FIXTURES === '1';
   const format = arg('format');
+  // другой каталог в формате корпуса жанров: tests/fixtures/heldout (набор ревью WP11-D) и т.п.
+  const dir = arg('dir') ? resolve(arg('dir')) : undefined;
   registerBuiltinDetectors();
   const nerProvider = modelDir ? await loadNerProvider(resolve(modelDir)) : null;
   if (modelDir && !nerProvider) console.error(`eval-genres: модель не найдена (${modelDir}) — прогон без NER`);
   const t0 = performance.now();
-  const { docs, summary } = await evaluateCorpus({ nerProvider, formats: format ? [format] : undefined });
+  const { docs, summary } = await evaluateCorpus({ dir, nerProvider, formats: format ? [format] : undefined });
   const priv = withPrivate ? await evaluatePrivate({ nerProvider }) : null;
   const ms = Math.round(performance.now() - t0);
   nerProvider?.dispose?.();
@@ -417,7 +423,7 @@ async function main() {
     return;
   }
   const files = new Set(docs.map((d) => `${d.genre}/${d.name}.${d.format}`)).size;
-  console.log(`Корпус жанров: ${files} файлов, модель NER: ${nerProvider?.label || 'нет'}, ${ms} мс`);
+  console.log(`Корпус ${dir ? basename(dir) : 'жанров'}: ${files} файлов, модель NER: ${nerProvider?.label || 'нет'}, ${ms} мс`);
   console.log(formatReport(summary));
   if (verbose) {
     for (const d of docs) {

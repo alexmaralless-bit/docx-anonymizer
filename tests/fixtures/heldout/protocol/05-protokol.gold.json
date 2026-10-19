@@ -1,0 +1,76 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Ивановым А.А.",
+      "surname": "Ивановым",
+      "modelOnly": true
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Иванов Алексей Андреевич",
+      "surname": "Иванов"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Шевчук Мирослава",
+      "surname": "Шевчук",
+      "modelOnly": true
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Ахмедова Зарина",
+      "surname": "Ахмедова",
+      "modelOnly": true
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "John Whitfield",
+      "surname": "Whitfield",
+      "modelOnly": true
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Тимур Бекмамбетов",
+      "surname": "Бекмамбетов",
+      "modelOnly": true
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Ахмедова З.",
+      "surname": "Ахмедова"
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Шевчук М.",
+      "surname": "Шевчук"
+    },
+    {
+      "key": "e9",
+      "category": "PERSON",
+      "value": "Whitfield",
+      "surname": "Whitfield"
+    },
+    {
+      "key": "e10",
+      "category": "PERSON",
+      "value": "ГОРБУНОВА В.С.",
+      "surname": "ГОРБУНОВА",
+      "modelOnly": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Байкал",
+      "category": "ADDRESS"
+    }
+  ]
+}

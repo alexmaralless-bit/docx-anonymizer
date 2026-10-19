@@ -1,7 +1,7 @@
 // Детекторы цифровых/буквенно-цифровых идентификаторов: INN, KPP, OGRN, BIK, ACCOUNT, CARD, IBAN, SWIFT, SNILS, SSN, TAXID.
 // Уровни: validated — контрольная сумма/структура пройдена; labeled — рядом лейбл (§4.3). Границы — NB/NA (labels.js).
 import { inn, kpp, ogrn, bik, account, accountKeyOk, luhn, mod97, swift, snils, ssn, taxid, IBAN_LENGTHS } from '../../validators.js';
-import { NB, NA, labelState, scan } from './labels.js';
+import { NB, NA, labelState, scan, goodsCodeContext } from './labels.js';
 
 const cand = (start, end, confidence, validator) => (validator ? { start, end, confidence, validator } : { start, end, confidence });
 
@@ -14,16 +14,18 @@ export function detectInn(text, ctx) {
     const valid = inn(c.text);
     const { mine, foreign } = labelState(text, c.start, ctx, 'INN');
     if (mine) out.push(cand(c.start, c.end, valid ? 'validated' : 'labeled', valid ? 'inn' : undefined));
-    else if (valid && !foreign) out.push(cand(c.start, c.end, 'validated', 'inn'));
+    // код ТН ВЭД / ОКПД2 / артикул в окне слева или в заголовке столбца — не ИНН (WP11-D)
+    else if (valid && !foreign && !goodsCodeContext(text, c.start, c.end, ctx)) out.push(cand(c.start, c.end, 'validated', 'inn'));
   }
   return out;
 }
 
 /* ---------- КПП ---------- */
 const KPP_RE = new RegExp(`${NB}\\d{4}[0-9A-Z]{2}\\d{3}${NA}`, 'gu');
-// «ИНН/КПП 7736050003/773601001» — второй номер без собственного лейбла
+// «ИНН/КПП 7736050003/773601001» — второй номер без собственного лейбла; между меткой и номерами — до двух слов
+// («ИНН/КПП покупателя: X/Y», «ИНН/КПП продавца»), вокруг «/» — пробелы («ИНН / КПП: X / Y») (WP11-D, корпус жанров)
 const INN_KPP_RE =
-  /(?<![\p{L}\p{N}])(?:ИНН|INN)[ \t\u00a0]*\/[ \t\u00a0]*(?:КПП|KPP)[ \t\u00a0:№#]*(?:\d{12}|\d{10})[ \t\u00a0]*\/[ \t\u00a0]*(\d{4}[0-9A-Z]{2}\d{3})(?![\p{L}\p{N}])/giu;
+  /(?<![\p{L}\p{N}])(?:ИНН|INN)[ \t\u00a0]*\/[ \t\u00a0]*(?:КПП|KPP)(?:[ \t\u00a0]+[\p{L}.()-]+){0,2}[ \t\u00a0:№#]*(?:\d{12}|\d{10})[ \t\u00a0]*\/[ \t\u00a0]*(\d{4}[0-9A-Z]{2}\d{3})(?![\p{L}\p{N}])/giu;
 
 export function detectKpp(text, ctx) {
   const out = [];
@@ -52,7 +54,8 @@ export function detectOgrn(text, ctx) {
     const valid = ogrn(c.text);
     const { mine, foreign } = labelState(text, c.start, ctx, 'OGRN');
     if (mine) out.push(cand(c.start, c.end, valid ? 'validated' : 'labeled', valid ? 'ogrn' : undefined));
-    else if (valid && !foreign) out.push(cand(c.start, c.end, 'validated', 'ogrn'));
+    // штрихкод EAN-13 и код товара проходят контрольную сумму ОГРН — без лейбла не берутся (WP11-D)
+    else if (valid && !foreign && !goodsCodeContext(text, c.start, c.end, ctx)) out.push(cand(c.start, c.end, 'validated', 'ogrn'));
   }
   return out;
 }

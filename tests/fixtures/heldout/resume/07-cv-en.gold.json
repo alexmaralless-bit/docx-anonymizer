@@ -1,0 +1,64 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "OLIVER BRANNIGAN",
+      "surname": "BRANNIGAN",
+      "modelOnly": true
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Amara Okafor",
+      "surname": "Okafor",
+      "modelOnly": true
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Siobhan Gallagher",
+      "surname": "Gallagher",
+      "modelOnly": true
+    },
+    {
+      "key": "e4",
+      "category": "ADDRESS",
+      "value": "Flat 4, 27 Elgin Crescent, London W11 2JD",
+      "parts": [
+        "W11 2JD",
+        "Elgin Crescent",
+        "27 Elgin"
+      ]
+    },
+    {
+      "key": "e5",
+      "category": "PHONE",
+      "value": "+44 20 7946 0532"
+    },
+    {
+      "key": "e6",
+      "category": "EMAIL",
+      "value": "o.brannigan@example.co.uk"
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Northwind Analytics"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Python",
+      "category": "PERSON"
+    },
+    {
+      "value": "Airflow",
+      "category": "PERSON"
+    },
+    {
+      "value": "German",
+      "category": "PERSON"
+    }
+  ]
+}

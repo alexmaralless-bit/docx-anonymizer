@@ -17,8 +17,16 @@ export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * @property {boolean} caps  слово целиком заглавными
  */
 
-const TOKEN_RE =
-  /(?<![\p{L}\p{N}])(?:([А-ЯЁA-Z])\.|([А-ЯЁ][а-яё]+(?:-(?:[А-ЯЁ]?[а-яё]+|[А-ЯЁ]+))*|[А-ЯЁ]{2,}(?:-[А-ЯЁ]{2,})*|[A-Z][a-z]+(?:-(?:[A-Z]?[a-z]+|[A-Z]+))*|[A-Z]'[A-Z][a-z]+|[A-Z]{2,}(?:-[A-Z]{2,})*)(?![\p{L}\p{N}]))/gu;
+// латиница — с диакритикой («Wiśniewski», «Müller», «Dvořák») и с заглавной внутри после Mc/Mac/De/Van («McAllister»,
+// «MacDonald», «DeLuca»; WP11-D, отложенный набор ревью)
+const LU = '(?:(?=\\p{sc=Latin})\\p{Lu})';
+const LL = '(?:(?=\\p{sc=Latin})\\p{Ll})';
+const TOKEN_RE = new RegExp(
+  `(?<![\\p{L}\\p{N}])(?:([А-ЯЁA-Z])\\.|([А-ЯЁ][а-яё]+(?:-(?:[А-ЯЁ]?[а-яё]+|[А-ЯЁ]+))*|[А-ЯЁ]{2,}(?:-[А-ЯЁ]{2,})*|` +
+    `(?:Mc|Mac|Fitz|De|Di|Da|Le|La|Van)${LU}${LL}+|${LU}${LL}+(?:-(?:${LU}?${LL}+|${LU}+))*|${LU}'${LU}${LL}+|${LU}{2,}(?:-${LU}{2,})*)(?![\\p{L}\\p{N}]))`,
+  'gu',
+);
+const LATIN_RE = /\p{sc=Latin}/u;
 
 /**
  * @param {string} text
@@ -32,7 +40,7 @@ export function tokenize(text) {
       out.push({ t: 'I', text: m[1], start, end: start + 2, script: /[A-Z]/.test(m[1]) ? 'lat' : 'cyr', caps: true });
     } else {
       const w = m[2];
-      const script = /[A-Za-z]/.test(w) ? 'lat' : 'cyr';
+      const script = LATIN_RE.test(w) ? 'lat' : 'cyr';
       out.push({ t: 'W', text: w, start, end: start + w.length, script, caps: w.length > 1 && w === w.toUpperCase() });
     }
   }

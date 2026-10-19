@@ -34,59 +34,24 @@ const K6_PERSON_RECALL = 0.85;
 const K7_COMPANY_PRECISION = 0.8;
 const K7_PROPOSAL_FALSE_COMPANY = 2;
 const K7_OPF_RECALL = 0.95;
+// с моделью: отрицательных примеров, ставших сущностью (цель WP11-D; с моделью 1.0.0 до фильтров PER/LOC — 55)
+const MODEL_NEGATIVES_MAX = 5;
 // без модели (правила + база знаний): гейты таблицы приёмки WP11-B
 const OPF_RECALL = 0.95;
 const PROPOSAL_FALSE_COMPANY = 2;
 
 /**
  * Известные недочёты, найденные корпусом (WP11-B, ревью): корпус не подстраивается под них. Основные гейты исключают
- * ровно эти ключи gold, а `it.fails` ниже проверяет, что недочёт пока на месте. Пакет WP11-D исправит причину, удалит
- * запись отсюда и снимет `it.fails` (зелёный `it.fails` превратится в красный, как только недочёт исправлен).
+ * ровно эти ключи gold, а `it.fails` ниже проверяет — отдельно для DOCX и PDF, — что недочёт пока на месте. Пакет,
+ * исправивший причину, удаляет запись (зелёный `it.fails` превращается в красный, как только недочёт исправлен).
  * kind: leak — значение (целиком или частью) остаётся в результате; fn — не найдено точно (найдено с лишним словом,
  * утечки нет); fp — ложная находка. format: '*' — DOCX и PDF.
+ * WP11-D (20.10.2026) исправил все 9 записей WP11-B: КПП после «ИНН/КПП покупателя:», обращения одним именем в чатах,
+ * почта в центрированной строке PDF, таблица подписей из двух строк (2 записи), «Уважаемый/Уважаемая» в PERSON (2),
+ * код ТН ВЭД как ИНН.
+ * @type {{doc: string, format: '*'|'docx'|'pdf', key?: string, kind: 'leak'|'fn'|'fp', category?: string, value?: string, reason: string}[]}
  */
-const KNOWN_GAPS = [
-  {
-    doc: 'invoice/upd-ip',
-    format: '*',
-    key: 'e4',
-    kind: 'leak',
-    reason: 'WP11-D: КПП в «ИНН/КПП покупателя: X/Y» не находится (слово между меткой и номерами)',
-  },
-  { doc: 'chat/chat-sales', format: '*', key: 'e5', kind: 'leak', reason: 'WP11-D: обращение одним именем («Елена, спасибо…») не находится' },
-  { doc: 'chat/chat-team', format: '*', key: 'e4', kind: 'leak', reason: 'WP11-D: обращение одним именем («Наталья, добрый день!») не находится' },
-  {
-    doc: 'letter/letter-schedule',
-    format: 'pdf',
-    key: 'e4',
-    kind: 'leak',
-    reason: 'WP11-D: PDF — центрированная строка с переносом рвёт адрес почты на два абзаца',
-  },
-  {
-    doc: 'reconciliation/reconciliation-ooo',
-    format: 'pdf',
-    key: 'e4',
-    kind: 'leak',
-    reason: 'WP11-D: PDF — таблица подписей из двух строк не распознаётся, ячейки перемешаны: фамилия отделена от инициалов',
-  },
-  {
-    doc: 'reconciliation/reconciliation-ooo',
-    format: 'pdf',
-    key: 'e6',
-    kind: 'leak',
-    reason: 'WP11-D: PDF — таблица подписей из двух строк не распознаётся («(Фролова Главный бухгалтер … А.М.)»)',
-  },
-  { doc: 'letter/letter-schedule', format: '*', key: 'e7', kind: 'fn', reason: 'WP11-D: «Уважаемый Павел Николаевич» — PERSON вместе с «Уважаемый»' },
-  { doc: 'letter/letter-reply', format: '*', key: 'e6', kind: 'fn', reason: 'WP11-D: «Уважаемая Марина Павловна» — PERSON вместе с «Уважаемая»' },
-  {
-    doc: 'invoice/upd-ip',
-    format: '*',
-    kind: 'fp',
-    category: 'INN',
-    value: '8471300000',
-    reason: 'WP11-D: код ТН ВЭД проходит контрольную сумму ИНН — ложный INN',
-  },
-];
+const KNOWN_GAPS = [];
 const gapFor = (d, kind) => KNOWN_GAPS.filter((g) => g.kind === kind && g.doc === `${d.genre}/${d.name}` && (g.format === '*' || g.format === d.format));
 /** Утечки документа без известных недочётов. */
 const leaksOf = (d) => [...d.leaks, ...d.partial].filter((e) => !gapFor(d, 'leak').some((g) => g.key === e.key));
@@ -321,18 +286,76 @@ describe('К10 на корпусе: фильтры модельных ORG (ст�
   }, 60000);
 });
 
-describe('известные недочёты (KNOWN_GAPS): пока на месте — снимет WP11-D', () => {
+describe('WP11-D на корпусе: фильтры модельных PER и LOC (стаб-провайдер размечает PER и LOC каждый отрицательный пример)', () => {
+  /** Стаб NER: метка `label` на каждое вхождение (целым словом) значений из списка. */
+  const stubLabel = (pairs) => ({
+    name: 'stub-pl',
+    init: async () => {},
+    detect: async (text) => {
+      const out = [];
+      const low = text.toLowerCase();
+      for (const [v, label] of pairs) {
+        const needle = v.toLowerCase();
+        for (let i = low.indexOf(needle); i >= 0; i = low.indexOf(needle, i + 1)) {
+          const before = text[i - 1];
+          const after = text[i + v.length];
+          if ((before && /[\p{L}\p{N}]/u.test(before)) || (after && /[\p{L}\p{N}]/u.test(after))) continue;
+          out.push({ start: i, end: i + v.length, label, score: 0.99 });
+        }
+      }
+      return out;
+    },
+  });
+
+  it('отрицательные примеры как PER и как LOC отброшены в обоих режимах; люди и адреса gold от модели сохранены', async () => {
+    const survived = [];
+    const lost = [];
+    for (const it of corpus) {
+      const doc = await loadDoc(it.path);
+      const negatives = it.gold.negatives.filter((n) => !n.mode).map((n) => n.value);
+      const people = it.gold.entities.filter((e) => e.category === 'PERSON' && !(e.meta && it.format === 'pdf')).map((e) => [e.value, 'PER']);
+      const places = it.gold.entities.filter((e) => e.category === 'ADDRESS').map((e) => [e.value, 'LOC']);
+      for (const label of ['PER', 'LOC']) {
+        const nerProvider = stubLabel([...negatives.map((v) => [v, label]), ...people, ...places]);
+        for (const mode of ['normal', 'commercial']) {
+          const r = await evaluateDoc(doc, it.gold, mode, { nerProvider });
+          for (const n of r.negHits) survived.push(`${it.genre}/${it.name}.${it.format} ${mode} ${label}: «${n.value}»`);
+          for (const e of r.fnList.filter((x) => x.category === 'PERSON' || x.category === 'ADDRESS')) lost.push(`${it.name}.${it.format}: ${e.key}`);
+          for (const e of [...r.leaks, ...r.partial]) lost.push(`${it.name}.${it.format}: утечка ${e.key}`);
+        }
+      }
+    }
+    console.log(`[genres] стаб PER/LOC: отрицательных примеров прошло фильтр ${survived.length}; потеряно людей и адресов gold ${lost.length}`);
+    expect(survived).toEqual([]);
+    expect(lost).toEqual([]);
+  }, 120000);
+});
+
+describe('известные недочёты (KNOWN_GAPS): пока на месте', () => {
+  // проверка записей — вне it.fails: опечатка в имени документа, формате или ключе не должна выглядеть «недочётом на месте»
+  it('каждая запись указывает на документ корпуса в своём формате и на ключ gold', () => {
+    for (const g of KNOWN_GAPS) {
+      const files = corpus.filter((d) => `${d.genre}/${d.name}` === g.doc && (g.format === '*' || g.format === d.format));
+      expect(files.length, `${g.doc} (${g.format})`).toBeGreaterThan(0);
+      if (g.format === '*') expect(new Set(files.map((d) => d.format)).size, `${g.doc}: «*» — DOCX и PDF`).toBe(2);
+      if (g.key)
+        expect(
+          files[0].gold.entities.some((e) => e.key === g.key),
+          `${g.doc}: ${g.key}`,
+        ).toBe(true);
+      else expect(typeof g.value, `${g.doc}: value`).toBe('string');
+    }
+  });
   for (const g of KNOWN_GAPS) {
-    // it.fails: тест зелёный, пока недочёт есть; исправленный недочёт делает его красным — удалить запись из KNOWN_GAPS
-    it.fails(`${g.doc} (${g.format}): ${g.reason}`, () => {
-      const docs = result.docs.filter((d) => d.mode === 'normal' && `${d.genre}/${d.name}` === g.doc && (g.format === '*' || g.format === d.format));
-      expect(docs.length).toBeGreaterThan(0);
-      for (const d of docs) {
+    for (const format of g.format === '*' ? ['docx', 'pdf'] : [g.format]) {
+      // it.fails: тест зелёный, пока недочёт есть; исправленный недочёт делает его красным — удалить запись из KNOWN_GAPS
+      it.fails(`${g.doc}.${format}: ${g.reason}`, () => {
+        const d = result.docs.find((x) => x.mode === 'normal' && `${x.genre}/${x.name}` === g.doc && x.format === format);
         if (g.kind === 'leak') expect([...d.leaks, ...d.partial].map((e) => e.key)).not.toContain(g.key);
         else if (g.kind === 'fn') expect(d.fnList.map((e) => e.key)).not.toContain(g.key);
         else expect(d.fpList.some((f) => f.category === g.category && f.value === g.value)).toBe(false);
-      }
-    });
+      });
+    }
   }
 });
 
@@ -351,16 +374,24 @@ describe.skipIf(!MODEL_DIR)('с моделью NER (NER_MODEL_DIR): числа �
     console.log(`[genres] модель ${label}${formatReport(withModel.summary)}`);
   }, 300000);
 
-  it('обычный режим с моделью: ноль утечек pii/ids (жёстко при GENRES_MODEL_GATES=1) и ни одной организации', () => {
+  it('обычный режим с моделью: ноль утечек pii/ids (целиком и частью) и ни одной организации', () => {
     const normal = withModel.docs.filter((d) => d.mode === 'normal');
     const bad = normal.filter((d) => leaksOf(d).length);
     const addr = normal.reduce((n, d) => n + leaksOf(d).filter((e) => e.category === 'ADDRESS').length, 0);
-    // с моделью 1.0.0 LOC дробит адрес правил и индекс/дом остаются в тексте — разрешение пересечений (координатор)
     console.log(
       `[genres] ${label} обычный режим: утечек ${bad.reduce((n, d) => n + leaksOf(d).length, 0)} в ${bad.length} файлах, из них частичных адресов ${addr}`,
     );
-    if (ENFORCE_MODEL_GATES) expect(bad.map((d) => `${d.name}.${d.format}: ${leaksOf(d).map((e) => `${e.key}~${e.category}`)}`)).toEqual([]);
+    // утечка — не порог качества модели: проверяется всегда (ревью WP11-B), под GENRES_MODEL_GATES — только К6/К7
+    expect(bad.map((d) => `${d.name}.${d.format}: ${leaksOf(d).map((e) => `${e.key}~${e.category}`)}`)).toEqual([]);
     expect(normal.filter((d) => d.companyCount).map((d) => `${d.name}.${d.format}`)).toEqual([]);
+  });
+
+  it(`отрицательных примеров, ставших сущностью, ≤ ${MODEL_NEGATIVES_MAX} в каждом режиме (WP11-D)`, () => {
+    for (const mode of ['normal', 'commercial']) {
+      const hits = withModel.docs.filter((d) => d.mode === mode).flatMap((d) => d.negHits.map((n) => `${d.name}.${d.format}: «${n.value}»`));
+      console.log(`[genres] ${label} ${mode}: отрицательных примеров стало сущностью ${hits.length}`);
+      expect(hits.length, hits.join('; ')).toBeLessThanOrEqual(MODEL_NEGATIVES_MAX);
+    }
   });
 
   it(`К6: PERSON P ≥ ${K6_PERSON_PRECISION}, R ≥ ${K6_PERSON_RECALL}; К7: COMPANY P ≥ ${K7_COMPANY_PRECISION}, ложных на КП ≤ ${K7_PROPOSAL_FALSE_COMPANY}, ОПФ R ≥ ${K7_OPF_RECALL}`, () => {

@@ -1,0 +1,76 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Ксения Борисова",
+      "surname": "Борисова"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Артём Ковалёв",
+      "surname": "Ковалёв"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Глеб Сорокин",
+      "surname": "Сорокин"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Вера Лукина",
+      "surname": "Лукина"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Артём",
+      "vocative": true
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Ксения",
+      "vocative": true
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Вера",
+      "vocative": true
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Роман",
+      "vocative": true
+    },
+    {
+      "key": "e9",
+      "category": "PERSON",
+      "value": "Тимофей",
+      "vocative": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Надежда",
+      "category": "PERSON"
+    },
+    {
+      "value": "Да",
+      "category": "PERSON"
+    },
+    {
+      "value": "Ок",
+      "category": "PERSON"
+    },
+    {
+      "value": "Спасибо",
+      "category": "PERSON"
+    }
+  ]
+}

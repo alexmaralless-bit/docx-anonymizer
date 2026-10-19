@@ -142,3 +142,56 @@ export function* scan(text, re) {
     yield { start: m.index, end: m.index + m[0].length, text: m[0], m };
   }
 }
+
+/**
+ * Коды товаров (WP11-D, корпус жанров: код ТН ВЭД «8471300000» проходит контрольную сумму ИНН, EAN-13 — ОГРН). Группа
+ * ключевых слов задаёт длины кода, которые подавляются: ТН ВЭД и HS — 10 цифр, штрихкод/EAN/GTIN — 8, 13, 14 (12-значный
+ * UPC совпал бы с ИНН физлица — при сомнении ИНН маскируется), артикул/SKU/«код товара» — любая длина. ОКПД2 и ОКВЭД
+ * пишутся с точками и с ИНН не путаются — не подавляют ничего.
+ */
+const SP = '[ \\t\\u00a0]';
+// before — ключевое слово сразу перед числом: между ними только «:», «№», «#», тире и, может быть, предыдущие коды списка
+// («Код ТН ВЭД 8471300000 8528521000»); слово или «.»/«;» между ними обрывают контекст («Арт. 15. Получатель …»)
+const GOODS_KEYWORDS = [
+  { lengths: new Set([10]), src: `тн${SP}*вэд(?:${SP}*еаэс)?|hs(?:${SP}*-?${SP}*code)?|commodity${SP}+code` },
+  { lengths: new Set([8, 13, 14]), src: 'штрих-?код\\p{L}*|баркод\\p{L}*|ean(?:-?(?:8|13))?|gtin|barcode' },
+  {
+    lengths: null,
+    src: `артикул\\p{L}*|арт\\.|sku|код\\p{L}*${SP}+(?:товар|продукци|издели|номенклатур)\\p{L}*|номенклатурн\\p{L}*${SP}+номер\\p{L}*|part${SP}+(?:no\\.?|number)|item${SP}+code`,
+  },
+].map((g) => ({
+  lengths: g.lengths,
+  before: new RegExp(`(?<![\\p{L}\\p{N}])(?:${g.src})${SP}*(?:[:№#—–-]${SP}*)*(?:[A-Za-z]*\\d[\\w-]*${SP}*,?${SP}+)*$`, 'iu'),
+  word: new RegExp(`(?<![\\p{L}\\p{N}])(?:${g.src})(?![\\p{L}])`, 'giu'),
+}));
+/** Служебные слова заголовка столбца вокруг ключевого слова: «Код ТН ВЭД», «Номер артикула», «HS code». */
+const HEADER_FILLER_RE = /(?<![\p{L}])(?:код|кода|номер|номера|code|no|number|№)(?![\p{L}])/giu;
+
+/**
+ * Число длины `len` стоит в контексте кода товара: ключевое слово сразу перед ним (окно 40 символов той же строки) или
+ * заголовок столбца (`ctx.stream.columnHeader`, раннер) — только код товара, без других слов («Код ТН ВЭД», «Артикул»;
+ * не «ИНН / ОКВЭД», не «Артикул/Получатель»). Детектор ИНН/ОГРН без своего лейбла такое число не берёт; при сомнении
+ * (другое слово между ключевым и числом, смешанный заголовок, длина не кода) — берёт: лучше замаскировать код, чем
+ * открыть ИНН (решение владельца 1).
+ * @param {string} text
+ * @param {number} start
+ * @param {number} end
+ * @param {{stream?: {columnHeader?: string}}} [ctx]
+ */
+export function goodsCodeContext(text, start, end, ctx = {}) {
+  const len = text.slice(start, end).replace(/\D/g, '').length;
+  const fits = (g) => !g.lengths || g.lengths.has(len);
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const left = text.slice(Math.max(lineStart, start - LABEL_WINDOW), start);
+  if (GOODS_KEYWORDS.some((g) => fits(g) && g.before.test(left))) return true;
+  const header = ctx?.stream?.columnHeader;
+  if (!header) return false;
+  const hits = GOODS_KEYWORDS.filter((g) => {
+    g.word.lastIndex = 0;
+    return g.word.test(header);
+  });
+  if (!hits.length || !hits.every(fits)) return false;
+  let rest = header;
+  for (const g of GOODS_KEYWORDS) rest = rest.replace(g.word, ' ');
+  return !/\p{L}/u.test(rest.replace(HEADER_FILLER_RE, ' '));
+}

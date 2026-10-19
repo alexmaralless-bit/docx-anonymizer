@@ -1,0 +1,49 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Кравец Ольги Дмитриевны",
+      "surname": "Кравец"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Дмитрий Олегович Савчук",
+      "surname": "Савчук"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Абдуллаев",
+      "surname": "Абдуллаев"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "О. Д. Кравец",
+      "surname": "Кравец"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "620014, г. Екатеринбург, пр-т Ленина, д. 24/8, кв. 112",
+      "parts": [
+        "620014",
+        "д. 24/8",
+        "кв. 112"
+      ]
+    },
+    {
+      "key": "e6",
+      "category": "COMPANY",
+      "value": "Техносфера-Сервис"
+    },
+    {
+      "key": "e7",
+      "category": "PHONE",
+      "value": "+7 (999) 004-12-55"
+    }
+  ],
+  "negatives": []
+}

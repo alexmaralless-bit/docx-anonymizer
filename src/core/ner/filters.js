@@ -72,6 +72,9 @@ export function isCapsLine(text) {
   return all >= 3 && up / all >= 0.9;
 }
 
+/** Два слова с заглавной подряд: «Вера Лукина», «Лукина Вера». */
+const PAIR_RE = /(?<![\p{L}\p{N}])(\p{Lu}\p{Ll}+)[ \u00a0](?=(\p{Lu}\p{Ll}+)(?![\p{L}\p{N}]))/gu;
+
 /** Основы слова для сравнения падежных форм: само слово и, для кириллицы ≥ 5 букв, без 1–`cut` последних букв (не короче 4). */
 function stems(word, cut) {
   const w = lowerE(word);
@@ -117,7 +120,7 @@ function docxCellTexts(doc) {
  * - `cellTexts` — тексты абзацев в таблицах DOCX (правило 1; у текстовой модели PDF вид ячейки приходит в `blockKind`).
  * @param {import('../docx/model.js').DocModel} doc
  * @param {object} settings  эффективные настройки (`nerStoplist` — пользовательское дополнение стоп-списка)
- * @returns {{stoplist: Set<string>, properStems: Set<string>, cellTexts: Set<string>}}
+ * @returns {{stoplist: Set<string>, properStems: Set<string>, cellTexts: Set<string>, pairedWords: Set<string>}}
  */
 export function createOrgFilterContext(doc, settings) {
   const kindByPid = new Map((doc?.paragraphs || []).map((p) => [p.pid, p.kind]));
@@ -135,7 +138,17 @@ export function createOrgFilterContext(doc, settings) {
       for (const part of [w, ...w.split(/[-‐‑]/)]) for (const st of stems(part, 3)) properStems.add(st);
     }
   }
-  return { stoplist: buildStoplist(settings?.nerStoplist), properStems, cellTexts: docxCellTexts(doc || {}) };
+  // слова, стоящие в документе рядом с другим словом с заглавной («Вера Лукина», «Лукина Вера»): имя человека документа
+  // (фильтр PER/LOC не снимает омоним «Вера в …», если в документе есть Вера, WP11-D)
+  const pairedWords = new Set();
+  for (const s of doc?.streams || []) {
+    if (s.type !== 'live' || !s.text) continue;
+    for (const m of s.text.matchAll(PAIR_RE)) {
+      pairedWords.add(lowerE(m[1]));
+      pairedWords.add(lowerE(m[2]));
+    }
+  }
+  return { stoplist: buildStoplist(settings?.nerStoplist), properStems, cellTexts: docxCellTexts(doc || {}), pairedWords };
 }
 
 /** ОПФ в спане или вплотную к нему («ООО «Ромашка»», «Northwind Systems Ltd.»). */
@@ -173,7 +186,7 @@ const CYR_RE = /[а-яё]/iu;
  * @param {Set<string>} stoplist
  * @param {string} original  исходное написание (по нему — кириллица или нет: `stopKey` переводит «с», «о»… в латиницу)
  */
-function inStoplist(key, stoplist, original) {
+export function inStoplist(key, stoplist, original) {
   if (stoplist.has(key)) return true;
   if (!CYR_RE.test(original)) return false;
   for (let k = 1; k <= 2 && key.length - k >= 4; k++) {
@@ -188,7 +201,7 @@ const CONNECTORS = new Set(['и', 'или', 'and', 'or', '&']);
 const tokens = (span) => span.split(/[\s\u00a0,;/&+]+/).filter((x) => x && /[\p{L}\p{N}]/u.test(x));
 
 /** Правило 2: спан целиком из стоп-списка — сам по себе или каждым словом («Word и Excel», «Telegram/WhatsApp»). */
-function isStoplisted(span, stoplist) {
+export function isStoplisted(span, stoplist) {
   const key = stopKey(span);
   if (!key) return false;
   if (inStoplist(key, stoplist, span)) return true;
@@ -197,7 +210,7 @@ function isStoplisted(span, stoplist) {
 }
 
 /** Слово целиком вокруг спана: модель режет «Яндекс.Диск» и «1С:Бухгалтерия» по точке и двоеточию. */
-function wholeWordAround(text, start, end) {
+export function wholeWordAround(text, start, end) {
   const W = /[\p{L}\p{N}]/u;
   let a = start;
   let b = end;
@@ -222,45 +235,9 @@ function hasStopPart(span, stoplist, properStems) {
 /** Служебные слова, которые бывают внутри названий («Альфа и Омега», «Bank of Scotland»). */
 const NAME_PARTICLES = new Set(['и', 'of', 'and', 'the', 'de', 'du', 'la', 'le', 'von', 'van', 'der', 'den', 'für', 'y']);
 /** Служебные слова, которыми название не кончается: «Новый документ или», «Интеграция с». */
-const FUNCTION_WORDS = new Set([
-  'и',
-  'или',
-  'а',
-  'но',
-  'с',
-  'со',
-  'в',
-  'во',
-  'на',
-  'для',
-  'по',
-  'к',
-  'ко',
-  'о',
-  'об',
-  'от',
-  'из',
-  'за',
-  'до',
-  'при',
-  'без',
-  'через',
-  'не',
-  'and',
-  'or',
-  'of',
-  'for',
-  'with',
-  'to',
-  'in',
-  'on',
-  'at',
-  'by',
-  'from',
-  'the',
-  'a',
-  'an',
-]);
+const FUNCTION_WORDS = new Set(
+  'и|или|а|но|с|со|в|во|на|для|по|к|ко|о|об|от|из|за|до|при|без|через|не|and|or|of|for|with|to|in|on|at|by|from|the|a|an'.split('|'),
+);
 const isLower = (w) => /\p{L}/u.test(w[0]) && w[0] === w[0].toLowerCase() && w[0] !== w[0].toUpperCase();
 /**
  * Правило 4: фраза, а не название без ОПФ и кавычек. Слово со строчной буквы (не частица названия) отбрасывает спан
@@ -345,23 +322,49 @@ function isHeadingOnly(text, span, blockKind, properStems) {
 export function filterOrgSpans(spans, ctx) {
   const text = String(ctx?.text ?? '');
   const stoplist = ctx?.stoplist || BUILTIN_STOPLIST;
-  return spans.filter((sp) => {
-    if (sp.label !== 'ORG') return true;
-    const start = Math.max(0, sp.start);
-    const end = Math.min(text.length, sp.end);
-    if (end <= start) return false;
-    const span = text.slice(start, end);
-    // ОПФ — всегда название; стоп-список — раньше кавычек («в формате «Excel»» — продукт)
-    if (hasOpf(text, start, end)) return true;
-    const around = wholeWordAround(text, start, end);
-    if (isStoplisted(span, stoplist) || (around && isStoplisted(around, stoplist))) return false;
-    if (isQuoted(text, start, end) || isGenericOrgName(span)) return true;
-    if (hasStopPart(span, stoplist, ctx?.properStems)) return false;
-    if (isShortLine(text, start, end, ctx?.blockKind, ctx?.cellTexts, ctx?.properStems)) return false;
-    if (isHeadingOnly(text, span, ctx?.blockKind, ctx?.properStems)) return false;
-    const whole = !LETTER_RE.test(text.slice(0, start) + text.slice(end));
-    if (isPhrase(text, span, ctx?.blockKind, ctx?.cellTexts, whole)) return false;
-    if (isCodeFragment(text, start, end) || isAddressOrPosition(span, text.slice(end, end + 3))) return false;
-    return true;
-  });
+  return spans
+    .filter((sp) => {
+      if (sp.label !== 'ORG') return true;
+      const start = Math.max(0, sp.start);
+      const end = Math.min(text.length, sp.end);
+      if (end <= start) return false;
+      const span = text.slice(start, end);
+      // ОПФ — всегда название; стоп-список — раньше кавычек («в формате «Excel»» — продукт)
+      if (hasOpf(text, start, end)) return true;
+      const around = wholeWordAround(text, start, end);
+      if (isStoplisted(span, stoplist) || (around && isStoplisted(around, stoplist))) return false;
+      if (isQuoted(text, start, end) || isGenericOrgName(span)) return true;
+      if (hasStopPart(span, stoplist, ctx?.properStems)) return false;
+      if (isShortLine(text, start, end, ctx?.blockKind, ctx?.cellTexts, ctx?.properStems)) return false;
+      if (isHeadingOnly(text, span, ctx?.blockKind, ctx?.properStems)) return false;
+      const whole = !LETTER_RE.test(text.slice(0, start) + text.slice(end));
+      if (isPhrase(text, span, ctx?.blockKind, ctx?.cellTexts, whole)) return false;
+      if (isCodeFragment(text, start, end) || isAddressOrPosition(span, text.slice(end, end + 3))) return false;
+      return true;
+    })
+    .map((sp) => extendGenericTail(text, sp));
+}
+
+/** Родовое слово в конце названия (в любом падеже): «Уральский завод», «Северная транспортная компания». */
+const GENERIC_TAIL_RE = /(?<![\p{L}])(?:завод|комбинат|компани|групп|фабрик|агентств|бюро|холдинг|институт|университет|банк|фонд)\p{Ll}{0,3}$/iu;
+/** Глагол — конец названия: «завод выпускает», «компания поставила». */
+const VERB_END_RE = /(?:ть|ться|ти|ет|ут|ют|ит|ат|ят|ал|ала|ало|али|ил|ила|ило|или|ел|ела|ели|ется|ются|ится|ался|алась|ались|ился|илась|ились)$/u;
+const GENITIVE_END_RE = /(?:ых|их|ого|его|ой|ей|ов|ев|ий|ия|ии|ья|ьи|ая|яя|ы|и|а|я)$/u;
+const MAX_TAIL_WORDS = 5;
+/**
+ * ORG модели, оборванный на родовом слове, продолжается строчными словами названия (WP11-D, К7: «Уральский завод» →
+ * «Уральский завод точных приборов»): до знака препинания, глагола, предлога или союза, не дальше 5 слов.
+ * @param {string} text
+ * @param {import('../contracts/ner.js').NerSpan} sp
+ */
+function extendGenericTail(text, sp) {
+  if (sp.label !== 'ORG' || !GENERIC_TAIL_RE.test(text.slice(sp.start, sp.end))) return sp;
+  let end = sp.end;
+  for (let k = 0; k < MAX_TAIL_WORDS; k++) {
+    const m = /^[ \u00a0](\p{Ll}[\p{Ll}-]*)(?![\p{L}\p{N}])/u.exec(text.slice(end, end + 40));
+    // продолжение названия — родительный падеж («точных приборов», «связи», «машиностроения»), не наречие «точно в срок»
+    if (!m || FUNCTION_WORDS.has(lowerE(m[1])) || VERB_END_RE.test(m[1]) || !GENITIVE_END_RE.test(m[1])) break;
+    end += m[0].length;
+  }
+  return end === sp.end ? sp : { ...sp, end };
 }

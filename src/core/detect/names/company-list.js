@@ -16,7 +16,7 @@
 
 import { scannable } from './kb.js';
 import { tokenize, tokenSeq, escapeRe, pickNonOverlapping } from './text.js';
-import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, isNeverMaskOrg, lowerE } from './lexicon.js';
+import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, isNeverMaskOrg, lowerE, wordList } from './lexicon.js';
 import { companyCore } from './company.js';
 import { skeleton, skeletonWeight, isCyrillic, crossScriptMatch } from './translit.js';
 
@@ -35,10 +35,7 @@ const VOWELS_TAIL_RE = /[аеёиоуыэюяйь]+$/;
 // «[а-яё]{0,3}» дал бы «Ромашкаус» → «Ромашк» + «аус» (К3: не совпадает), поэтому — только окончания.
 // prettier-ignore
 const ENDINGS = [
-  'ами', 'ями', 'ыми', 'ими', 'ого', 'его', 'ому', 'ему', 'ием', 'иях', 'иям',
-  'ый', 'ой', 'ей', 'ою', 'ею', 'ом', 'ем', 'ём', 'ам', 'ям', 'ах', 'ях', 'ов', 'ев', 'ия', 'ии', 'ию', 'ие', 'ий', 'ым', 'им', 'ых', 'их',
-  'ую', 'юю', 'ая', 'яя', 'ое', 'ее', 'ые', 'ье', 'ья', 'ью', 'ьи',
-  'а', 'я', 'о', 'е', 'ё', 'и', 'ы', 'у', 'ю', 'ь', 'й',
+  ...wordList(`ами|ями|ыми|ими|ого|его|ому|ему|ием|иях|иям|ый|ой|ей|ою|ею|ом|ем|ём|ам|ям|ах|ях|ов|ев|ия|ии|ию|ие|ий|ым|им|ых|их|ую|юю|ая|яя|ое|ее|ые|ье|ья|ью|ьи|а|я|о|е|ё|и|ы|у|ю|ь|й`),
 ];
 const ENDINGS_SRC = `(?:${ENDINGS.join('|')})?`;
 const MIN_STEM = 4;

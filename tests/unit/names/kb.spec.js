@@ -59,7 +59,9 @@ describe('зоны сторон (FR-22)', () => {
     expect(z.block.size).toBe(3);
   });
 
-  it('сторона вне зон: варианты в теле не ищутся (только правила)', async () => {
+  // К11 (WP11-D, решение владельца 1): было «варианты в теле не ищутся (только правила)» и ожидалось одно вхождение.
+  // Одиночная фамилия лица с полным ФИО в документе — его вариант, иначе «Иванову» уходила в чат открытой.
+  it('лицо вне зон: одиночная фамилия в теле — вариант того же лица (одна метка)', async () => {
     registerNames();
     const paras = [
       'ДОГОВОР',
@@ -69,7 +71,8 @@ describe('зоны сторон (FR-22)', () => {
       ...Array.from({ length: 10 }, () => 'Пункт без имён.'),
     ];
     const r = await analyzeParagraphs(paras, allOnSettings());
-    expect(r.entities.filter((e) => e.category === 'PERSON').map((e) => e.text)).toEqual(['Иванов Пётр Сергеевич']);
+    expect(r.entities.filter((e) => e.category === 'PERSON').map((e) => e.text)).toEqual(['Иванов Пётр Сергеевич', 'Иванову']);
+    expect(r.groups.filter((g) => g.category === 'PERSON')).toHaveLength(1);
   });
 });
 

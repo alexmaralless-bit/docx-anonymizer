@@ -4,7 +4,9 @@ import { buildCatalog, isCategoryEnabled, normalizeValue } from '../categories.j
 import { getDetectors, getDocumentDetectors } from '../contracts/detector.js';
 import { NER_LABEL_TO_CATEGORY } from '../contracts/ner.js';
 import { createOrgFilterContext, filterOrgSpans } from '../ner/filters.js';
+import { filterPersonLocSpans, orgStreetsAsLoc } from '../ner/filters-pl.js';
 import { resolveOverlaps } from './overlap.js';
+import { columnHeaders } from './tables.js';
 import { PlaceholderAllocator, resolvePlaceholderLanguage } from '../placeholders.js';
 
 const BOUNDARY_RE = /[\n\uFFFC]/;
@@ -87,9 +89,11 @@ export async function analyze(doc, settings, opts = {}) {
   progress('detect', 0);
   const detectors = getDetectors();
   const total = doc.streams.length || 1;
+  // заголовок столбца таблицы для ячеек: «Код ТН ВЭД» над числом — код товара, а не ИНН (WP11-D, detect/tables.js)
+  const headers = columnHeaders(doc);
   doc.streams.forEach((stream, i) => {
     if (stream.type === 'attr' && AUTHOR_KINDS.has(stream.attrKind || '')) return;
-    const info = { id: stream.id, part: stream.part, pid: stream.pid, type: stream.type, attrKind: stream.attrKind };
+    const info = { id: stream.id, part: stream.part, pid: stream.pid, type: stream.type, attrKind: stream.attrKind, columnHeader: headers.get(stream.pid) };
     for (const [categoryId, list] of detectors) {
       if (!isEnabled(categoryId)) continue;
       const category = /** @type {any} */ (catalog.byId.get(categoryId));
@@ -138,20 +142,25 @@ export async function analyze(doc, settings, opts = {}) {
       // Политика 0.4 (концепция п. 4, К10): у ORG свой порог и фильтр ложных организаций; вид блока (заголовок,
       // пункт списка, ячейка) приходит из paragraph.kind (DOCX: w:pStyle/w:numPr, PDF: разметка)
       const wantOrg = isEnabled('COMPANY');
-      const orgCtx = wantOrg ? createOrgFilterContext(doc, settings) : null;
+      // контекст документа — общий для фильтров ORG и PER/LOC (стоп-список, ячейки DOCX), строится один раз
+      const nerCtx = createOrgFilterContext(doc, settings);
       const kindByPid = new Map(doc.paragraphs.map((p) => [p.pid, p.kind]));
       const thresholdFor = (label) => (label === 'ORG' ? (settings.nerThresholdOrg ?? 0.85) : (settings.nerThreshold ?? 0.7));
       for (let i = 0; i < live.length; i++) {
         const s = live[i];
-        let spans = (await opts.nerProvider.detect(s.text, { language })).filter((sp) => sp.score >= thresholdFor(sp.label));
+        // ORG модели перед номером дома («на Профсоюзную 104») — улица: кандидат LOC → ADDRESS, порог — как у LOC (WP11-D)
+        let spans = orgStreetsAsLoc(await opts.nerProvider.detect(s.text, { language }), s.text).filter((sp) => sp.score >= thresholdFor(sp.label));
+        const blockKind = kindByPid.get(s.pid);
         if (wantOrg && spans.some((sp) => sp.label === 'ORG')) {
           const others = spans.filter((sp) => sp.label !== 'ORG');
           const orgs = filterOrgSpans(
             spans.filter((sp) => sp.label === 'ORG'),
-            { ...orgCtx, text: s.text, blockKind: kindByPid.get(s.pid) },
+            { ...nerCtx, text: s.text, blockKind },
           );
           spans = [...others, ...orgs];
         }
+        // WP11-D: ложные PER/LOC модели (формулы вежливости, служебные слова, продукты; LOC вне адреса — не ПДн)
+        if (spans.some((sp) => sp.label === 'PER' || sp.label === 'LOC')) spans = filterPersonLocSpans(spans, { ...nerCtx, text: s.text, blockKind });
         for (const sp of spans) {
           const cat = NER_LABEL_TO_CATEGORY[sp.label];
           if (cat) accept({ start: sp.start, end: sp.end, confidence: 'ner', source: 'ner', score: sp.score }, cat, s, 'ner');

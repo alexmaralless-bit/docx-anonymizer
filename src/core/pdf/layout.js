@@ -652,13 +652,24 @@ export function detectTables(lines, pitch = 0) {
       run.push(N);
       j++;
     }
-    // одиночные строки после последней многосегментной — не таблица
+    // одиночные строки после последней многосегментной — не таблица, кроме переноса ячейки последней строки
+    // («Главный бухгалтер ____ (Фролова» + «А.М.)»: предыдущая строка колонки дошла до её правого края)
     const lastMulti = run.map((r) => r.segs.length >= 2).lastIndexOf(true);
-    const tableLines = run.slice(0, lastMulti + 1);
-    const multi = tableLines.filter((r) => r.segs.length >= 2).length;
-    const cols = clusterStarts(tableLines);
-    if (multi >= 3 && cols.length >= 2) {
-      units.push({ table: buildTable(tableLines, cols, pitch, pageRight, pageLeft) });
+    let tableLines = run.slice(0, lastMulti + 1);
+    const multiLines = tableLines.filter((r) => r.segs.length >= 2);
+    const multi = multiLines.length;
+    // две строки — таблица, только если ячейки выровнены: одинаковое число сегментов (≥ 2) с общими x-началами
+    // (подписи акта сверки «От ООО … | От ООО …» + «Главный бухгалтер … | Главный бухгалтер …», WP11-D)
+    const aligned2 = multi === 2 && alignedRows(multiLines[0], multiLines[1]);
+    let cols = clusterStarts(tableLines);
+    if ((multi >= 3 || aligned2) && cols.length >= 2) {
+      tableLines = tableLines.concat(cellTail(run.slice(lastMulti + 1), tableLines, cols, pitch, pageLeft));
+      cols = clusterStarts(tableLines);
+    }
+    if ((multi >= 3 || aligned2) && cols.length >= 2) {
+      // в таблице из двух выровненных строк вторая строка — новая строка таблицы, а не перенос ячеек первой
+      const rowStarts = aligned2 ? new Set([multiLines[1]]) : undefined;
+      units.push({ table: buildTable(tableLines, cols, pitch, pageRight, pageLeft, rowStarts) });
       i += tableLines.length;
     } else {
       units.push({ line: L });
@@ -666,6 +677,40 @@ export function detectTables(lines, pitch = 0) {
     }
   }
   return units;
+}
+
+/** Две строки таблицы с выровненными ячейками: одно и то же число сегментов (≥ 2), начала попарно совпадают (±0.5·size). */
+function alignedRows(a, b) {
+  if (a.segs.length < 2 || a.segs.length !== b.segs.length) return false;
+  return a.segs.every((s, k) => Math.abs(s.x0 - b.segs[k].x0) <= 0.5 * Math.max(s.size, b.segs[k].size));
+}
+
+/**
+ * Перенос ячейки последней строки таблицы: одиночные строки сразу после неё, которые начинаются у начала колонки
+ * и продолжают её последнюю ячейку (`continues`: строка выше дошла до правого края колонки, шаг обычный).
+ * @param {Line[]} rest строки участка после последней многосегментной
+ * @param {Line[]} lines строки таблицы
+ * @param {number[]} cols x-начала колонок
+ * @param {number} pitch
+ * @param {number} pageLeft
+ * @returns {Line[]}
+ */
+function cellTail(rest, lines, cols, pitch, pageLeft) {
+  const out = [];
+  const size0 = lines[0].size;
+  const pad = Math.min(1.5 * size0, Math.max(0.25 * size0, cols[0] - (pageLeft ?? cols[0])));
+  let prev = lines[lines.length - 1];
+  for (const L of rest) {
+    const s = L.segs[0];
+    // перенос строки ячейки начинается ровно у её левого края (подпись под таблицей у края текста — на ~0.5·size левее)
+    const c = cols.findIndex((x) => Math.abs(x - s.x0) <= 0.2 * s.size);
+    if (c < 0 || c + 1 >= cols.length) break; // последняя колонка: правый край неизвестен — не рискуем
+    const above = prev.segs.find((x) => Math.abs(x.x0 - cols[c]) <= 0.5 * x.size);
+    if (!above || !continues(above, s, cols[c + 1] - 2 * pad, pitch)) break;
+    out.push(L);
+    prev = L;
+  }
+  return out;
 }
 
 /**
@@ -707,7 +752,11 @@ function clusterStarts(lines) {
   return cols.map((c) => c.x0).sort((a, b) => a - b);
 }
 
-function buildTable(lines, cols, pitch, pageRight, pageLeft) {
+/**
+ * @param {Line[]} lines @param {number[]} cols @param {number} pitch @param {number} pageRight @param {number} pageLeft
+ * @param {Set<Line>} [rowStarts] строки, каждый сегмент которых начинает новую ячейку (без склейки с ячейкой выше)
+ */
+function buildTable(lines, cols, pitch, pageRight, pageLeft, rowStarts) {
   const colOf = (s) => {
     let k = 0;
     for (let c = 0; c < cols.length; c++) if (s.x0 >= cols[c] - 0.5 * s.size) k = c;
@@ -733,7 +782,7 @@ function buildTable(lines, cols, pitch, pageRight, pageLeft) {
       const c = colOf(s);
       const list = byCol[c];
       const prev = list[list.length - 1];
-      if (prev && prev.last.page === s.page && continues(prev.last, s, colRight(c), pitch)) {
+      if (prev && !rowStarts?.has(L) && prev.last.page === s.page && continues(prev.last, s, colRight(c), pitch)) {
         prev.text = joinLineText(prev.text, s.text);
         prev.last = s;
       } else list.push({ col: c, y: s.y, text: s.text, last: s, page: s.page });
@@ -809,6 +858,8 @@ export function dehyphenate(a, b) {
   if (!a) return b;
   if (!b) return a;
   if (/[\u00AD\u2010]$/u.test(a)) return a.slice(0, -1) + b;
+  // точка внутри почты или домена на конце строки: «info@vector-plus.» + «example» — без пробела (WP11-D)
+  if (/\.$/.test(a) && technicalBreak(a, b)) return a + b;
   if (/[\p{L}\p{N}]-$/u.test(a)) {
     const leftTok = a.slice(a.lastIndexOf(' ') + 1, -1);
     const rightTok = b.split(' ')[0];
@@ -829,6 +880,23 @@ export function dehyphenate(a, b) {
 }
 
 const joinLineText = dehyphenate;
+
+/** Последнее слово строки — адрес почты, URL или домен («info@vector-», «https://vector-», «vector-plus.»). */
+const TECH_TOKEN_RE = /@|:\/\/|^www\./iu;
+/** Домен без почты и схемы, разорванный дефисом: «vector-plus.ex-» (точка внутри и дефис в конце). */
+const DOMAIN_HYPHEN_RE = /^[a-z0-9_-]+(?:\.[a-z0-9_-]+)+-$/iu;
+/**
+ * Строка кончается на «-» или «.» внутри почты, URL или домена, а следующая продолжает его без пробела (латинская
+ * строчная или цифра): «info@vector-» + «plus.example», «info@vector-plus.» + «example» (WP11-D, корпус жанров:
+ * центрированная шапка письма рвала почту на два абзаца, и «info@vector-» уходил в чат открытым).
+ * @param {string} a @param {string} b
+ */
+export function technicalBreak(a, b) {
+  // после точки — буквы домена («example»), не нумерация следующего пункта («1.3.»)
+  if (!(/-$/.test(a) ? /^[a-z0-9]/ : /^[a-z]/).test(b) || !/[-.]$/.test(a)) return false;
+  const tok = a.slice(a.lastIndexOf(' ') + 1);
+  return tok.length > 1 && (TECH_TOKEN_RE.test(tok) || DOMAIN_HYPHEN_RE.test(tok));
+}
 
 /**
  * Склейка строк в абзацы. Новый абзац: другая страница (кроме продолжения — предыдущая строка дошла до края и не
@@ -871,7 +939,9 @@ export function mergeParagraphs(lines, o = {}) {
         else if (!sameSize) newPara = true;
         else if (blockOf(L) !== blockOf(prevL))
           newPara = true; // граница узкого блока (надписи)
-        else if ((seg.bold >= 0.9 && prevSeg.bold <= 0.2) || (seg.bold <= 0.2 && prevSeg.bold >= 0.9))
+        else if (technicalBreak(cur.text, text)) {
+          // перенос внутри адреса почты или домена («info@vector-» + «plus.example») — продолжение, даже в строке по центру
+        } else if ((seg.bold >= 0.9 && prevSeg.bold <= 0.2) || (seg.bold <= 0.2 && prevSeg.bold >= 0.9))
           newPara = true; // жирный заголовок
         else if (centered(prevSeg, leftOf(prevL), right) && Math.abs(seg.x0 - prevSeg.x0) > L.size)
           newPara = true; // строка по центру

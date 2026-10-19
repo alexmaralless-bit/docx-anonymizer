@@ -1,0 +1,40 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Денису Фомину",
+      "surname": "Фомину"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Тверской",
+      "category": "ADDRESS"
+    },
+    {
+      "value": "Казани",
+      "category": "ADDRESS"
+    },
+    {
+      "value": "Екатеринбурга",
+      "category": "ADDRESS"
+    },
+    {
+      "value": "Новосибирска",
+      "category": "ADDRESS"
+    },
+    {
+      "value": "Москве",
+      "category": "ADDRESS"
+    },
+    {
+      "value": "Садовой",
+      "category": "ADDRESS"
+    },
+    {
+      "value": "Логин",
+      "category": "PERSON"
+    }
+  ]
+}

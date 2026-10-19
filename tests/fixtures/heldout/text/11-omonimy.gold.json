@@ -1,0 +1,49 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Надежда Сергеевна Кулагина",
+      "surname": "Кулагина"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Марина",
+      "vocative": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Надежда на",
+      "category": "PERSON"
+    },
+    {
+      "value": "Вера в",
+      "category": "PERSON"
+    },
+    {
+      "value": "Роман о",
+      "category": "PERSON"
+    },
+    {
+      "value": "Любовь к",
+      "category": "PERSON"
+    },
+    {
+      "value": "Роза ветров",
+      "category": "PERSON"
+    },
+    {
+      "value": "Слава богу",
+      "category": "PERSON"
+    },
+    {
+      "value": "Вера, надежда",
+      "category": "PERSON"
+    }
+  ],
+  "neutral": [
+    "Лев Толстой"
+  ]
+}

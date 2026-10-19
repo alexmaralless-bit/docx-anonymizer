@@ -1,0 +1,41 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Hargreaves",
+      "surname": "Hargreaves"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Priya Raghunathan",
+      "surname": "Raghunathan",
+      "modelOnly": true
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Tomasz Wiśniewski",
+      "surname": "Wiśniewski",
+      "modelOnly": true
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Fiona McAllister",
+      "surname": "McAllister"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "14 Kingsway Road, Leeds LS6 2BQ",
+      "parts": [
+        "LS6 2BQ",
+        "14 Kingsway",
+        "Kingsway Road"
+      ]
+    }
+  ],
+  "negatives": []
+}

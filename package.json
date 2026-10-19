@@ -24,6 +24,7 @@
     "gen-pdf-fixtures": "node scripts/gen-pdf-fixtures.mjs",
     "gen-ner-eval": "node scripts/gen-ner-eval.mjs",
     "gen-genre-fixtures": "node scripts/gen-genre-fixtures.mjs",
+    "gen-heldout-fixtures": "node scripts/gen-heldout-fixtures.mjs",
     "eval-genres": "node scripts/eval-genres.mjs",
     "bench-ner": "node scripts/bench-ner.mjs",
     "dicts": "node scripts/make-dicts.mjs",

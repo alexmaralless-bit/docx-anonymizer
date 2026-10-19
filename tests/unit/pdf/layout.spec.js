@@ -14,6 +14,7 @@ import {
   orientPage,
   orientationOf,
   isUpright,
+  technicalBreak,
 } from '../../../src/core/pdf/layout.js';
 
 const H = 842;
@@ -427,5 +428,84 @@ describe('ревью WP10-A: переносы, моноширинный шриф
     ]);
     const L2 = buildLayout([page(1, p1), page(2, [item('а) уведомления направляются в письменной форме.', 50, 80)])]);
     expect(texts(L2, 'p')).toHaveLength(2);
+  });
+});
+
+describe('WP11-D: почта с переносом в строке по центру, таблица из двух строк', () => {
+  it('technicalBreak: «-» или «.» внутри почты/домена + латинское продолжение — склейка; нумерация и слова — нет', () => {
+    expect(technicalBreak('тел. +7 (812) 092-95-31 · info@vector-', 'plus.example')).toBe(true);
+    expect(technicalBreak('почта info@vector-plus.', 'example')).toBe(true);
+    expect(technicalBreak('сайт https://vector-', 'plus.example/help')).toBe(true);
+    expect(technicalBreak('адрес p.ivanov@romashka.ru.', '1.3. Электронная почта')).toBe(false);
+    expect(technicalBreak('г. Санкт-', 'Петербург')).toBe(false);
+    expect(technicalBreak('поставка товара-', 'партнёра')).toBe(false);
+    expect(dehyphenate('info@vector-plus.', 'example')).toBe('info@vector-plus.example');
+    expect(dehyphenate('info@vector-', 'plus.example')).toBe('info@vector-plus.example');
+  });
+
+  it('центрированная шапка: «… info@vector-» + «plus.example» — один абзац, почта целиком', () => {
+    const body = item('Текст письма во всю ширину страницы, чтобы задать левый и правый край текста страницы.', 50, 100, { w: 495 });
+    const head = 'Невский пр-т, д. 90 · тел. +7 (812) 092-95-31 · info@vector-';
+    const tail = 'plus.example';
+    const items = [
+      body,
+      item(head, (595 - head.length * CW) / 2, 140),
+      item(tail, (595 - tail.length * CW) / 2, 154.4),
+      item('Исх. № 294 от 12.10.2026', 50, 190),
+    ];
+    const L = buildLayout([page(1, items)]);
+    expect(texts(L, 'p')).toContain('Невский пр-т, д. 90 · тел. +7 (812) 092-95-31 · info@vector-plus.example');
+    expect(texts(L).some((t) => t === 'plus.example')).toBe(false);
+  });
+
+  /** Подписи акта сверки: две строки по две ячейки, ячейка второй строки переносится на третью. */
+  const signatures = (tailX = 60) => [
+    item('Текст акта во всю ширину страницы задаёт левый край текста страницы и правый край.', 50, 100, { w: 495 }),
+    item('От ООО «Северный Ветер»', 60, 140),
+    item('От ООО «Синяя Птица»', 300, 140),
+    item('Главный бухгалтер ________ (Фролова', 60, 163),
+    item('Главный бухгалтер ________ (Белов И.С.)', 300, 163),
+    item('А.М.)', tailX, 178),
+  ];
+
+  it('две строки с выровненными ячейками — таблица 2×2, перенос ячейки последней строки — в её ячейке', () => {
+    const L = buildLayout([page(1, signatures())]);
+    const cells = L.blocks.filter((b) => b.kind === 'cell').map((c) => [c.table.row, c.table.col, c.text]);
+    expect(cells).toEqual([
+      [0, 0, 'От ООО «Северный Ветер»'],
+      [0, 1, 'От ООО «Синяя Птица»'],
+      [1, 0, 'Главный бухгалтер ________ (Фролова А.М.)'],
+      [1, 1, 'Главный бухгалтер ________ (Белов И.С.)'],
+    ]);
+  });
+
+  it('строка у левого края текста под таблицей (не у края ячейки) — отдельный абзац, а не перенос ячейки', () => {
+    const L = buildLayout([page(1, signatures(50))]);
+    expect(L.blocks.filter((b) => b.kind === 'cell')).toHaveLength(4);
+    expect(texts(L, 'p')).toContain('А.М.)');
+  });
+
+  it('вторая из двух выровненных строк — новая строка таблицы, даже если первое слово не поместилось бы выше', () => {
+    const items = [
+      item('Текст во всю ширину страницы задаёт левый край текста страницы и правый край текста.', 50, 100, { w: 495 }),
+      item('ИНН 7805003215', 60, 140),
+      item('Тел.: +7 (812) 555-77-88', 330, 140),
+      item('ООО «Северный Ветер»', 60, 154),
+      item('v.morozov@severny-veter.example', 330, 154),
+    ];
+    const cells = buildLayout([page(1, items)]).blocks.filter((b) => b.kind === 'cell');
+    expect(cells.map((c) => c.text)).toEqual(['ИНН 7805003215', 'Тел.: +7 (812) 555-77-88', 'ООО «Северный Ветер»', 'v.morozov@severny-veter.example']);
+  });
+
+  it('две строки с разным числом ячеек или разными началами — не таблица', () => {
+    const items = [
+      item('Текст во всю ширину страницы задаёт левый край текста страницы и правый край текста.', 50, 100, { w: 495 }),
+      item('г. Москва', 50, 140),
+      item('15 сентября 2026 г.', 430, 140),
+      item('Поставщик: ООО «Ромашка»', 50, 154),
+      item('Покупатель', 250, 154),
+      item('ООО «Вектор»', 430, 154),
+    ];
+    expect(buildLayout([page(1, items)]).blocks.some((b) => b.kind === 'cell')).toBe(false);
   });
 });

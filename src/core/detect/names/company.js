@@ -17,6 +17,7 @@ import {
   isStopWord,
   isNeverMaskOrg,
   lowerE,
+  wordList,
 } from './lexicon.js';
 
 /**
@@ -67,10 +68,7 @@ const LATIN_RE = new RegExp(
 
 // prettier-ignore
 export const COMPANY_QUOTE_LABELS = [
-  'поставщик:', 'покупатель:', 'исполнитель:', 'заказчик:', 'продавец:', 'подрядчик:', 'арендатор:', 'арендодатель:', 'лицензиар:',
-  'лицензиат:', 'наименование:', 'полное наименование:', 'сокращенное наименование:', 'сокращённое наименование:', 'организация:',
-  'банк получателя:', 'банк получателя', 'банк:', 'supplier:', 'buyer:', 'seller:', 'customer:', 'contractor:', 'company:',
-  'company name:', 'beneficiary bank:', 'beneficiary bank',
+  ...wordList(`поставщик:|покупатель:|исполнитель:|заказчик:|продавец:|подрядчик:|арендатор:|арендодатель:|лицензиар:|лицензиат:|наименование:|полное наименование:|сокращенное наименование:|сокращённое наименование:|организация:|банк получателя:|банк получателя|банк:|supplier:|buyer:|seller:|customer:|contractor:|company:|company name:|beneficiary bank:|beneficiary bank`),
 ];
 const QUOTE_LABEL_RE = labelBeforeRe(COMPANY_QUOTE_LABELS);
 

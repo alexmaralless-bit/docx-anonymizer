@@ -227,7 +227,19 @@ export function surnameSuffixInfo(word) {
   return r.length ? r : null;
 }
 
+/** Латиница без диакритики для словарей EN (WP11-D): «Wiśniewski» → «wisniewski», «Müller» → «muller». */
+const foldLatin = (word) => {
+  const w = word.toLowerCase();
+  return /^[a-z'’-]*$/.test(w)
+    ? w
+    : w
+        .normalize('NFD')
+        .replace(/\p{Mn}/gu, '')
+        .replace(/ł/g, 'l')
+        .replace(/ø/g, 'o')
+        .replace(/ß/g, 'ss');
+};
 /** @param {string} word */
-export const isEnFirst = (word) => getDicts().enFirst.has(word.toLowerCase());
+export const isEnFirst = (word) => getDicts().enFirst.has(foldLatin(word));
 /** @param {string} word */
-export const isEnSurname = (word) => getDicts().enSurnames.has(word.toLowerCase());
+export const isEnSurname = (word) => getDicts().enSurnames.has(foldLatin(word));

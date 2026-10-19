@@ -1,0 +1,76 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Зайцеву П.С.",
+      "surname": "Зайцеву"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Мельниковой Е.В.",
+      "surname": "Мельниковой"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Кирилл Ахмедов",
+      "surname": "Ахмедов",
+      "modelOnly": true
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Тагира Рашидова",
+      "surname": "Рашидова"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Анастасию Лебедеву",
+      "surname": "Лебедеву"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Олжас Нурланов",
+      "surname": "Нурланов",
+      "modelOnly": true
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Джеймс О’Коннор",
+      "surname": "О’Коннор",
+      "modelOnly": true
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Юки Танака",
+      "surname": "Танака",
+      "modelOnly": true
+    },
+    {
+      "key": "e9",
+      "category": "PERSON",
+      "value": "Ахмедовым",
+      "surname": "Ахмедовым"
+    },
+    {
+      "key": "e10",
+      "category": "PERSON",
+      "value": "Е.В. Мельникова",
+      "surname": "Мельникова"
+    },
+    {
+      "key": "e11",
+      "category": "PERSON",
+      "value": "ЛЕБЕДЕВ АРСЕНИЙ ПАВЛОВИЧ",
+      "surname": "ЛЕБЕДЕВ",
+      "modelOnly": true
+    }
+  ],
+  "negatives": []
+}

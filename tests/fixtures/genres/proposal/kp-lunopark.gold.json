@@ -1,0 +1,217 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Лунопарк",
+      "opf": false
+    },
+    {
+      "key": "e2",
+      "category": "INN",
+      "value": "7814981468"
+    },
+    {
+      "key": "e3",
+      "category": "OGRN",
+      "value": "1267869495321"
+    },
+    {
+      "key": "e4",
+      "category": "KPP",
+      "value": "781401001"
+    },
+    {
+      "key": "e5",
+      "category": "BIK",
+      "value": "047896867"
+    },
+    {
+      "key": "e6",
+      "category": "ACCOUNT",
+      "value": "40702810488505736807"
+    },
+    {
+      "key": "e7",
+      "category": "ACCOUNT",
+      "value": "30101810893281124867"
+    },
+    {
+      "key": "e8",
+      "category": "URL",
+      "value": "https://lunopark.example"
+    },
+    {
+      "key": "e9",
+      "category": "COMPANY",
+      "value": "Альтаир-М",
+      "opf": true
+    },
+    {
+      "key": "e10",
+      "category": "PERSON",
+      "value": "Фролова Анна Михайловна",
+      "surname": "Фролова"
+    },
+    {
+      "key": "e11",
+      "category": "PHONE",
+      "value": "+7 (999) 009-10-44"
+    },
+    {
+      "key": "e12",
+      "category": "EMAIL",
+      "value": "a.frolova@lunopark.example"
+    },
+    {
+      "key": "e13",
+      "category": "COMPANY",
+      "value": "Лунопарк Диджитал",
+      "opf": true
+    },
+    {
+      "key": "e14",
+      "category": "ADDRESS",
+      "value": "190854, г. Санкт-Петербург, ул. Садовая, д. 33, офис 42"
+    },
+    {
+      "key": "e15",
+      "category": "COMPANY",
+      "value": "Волжский Расчётный Банк",
+      "opf": true
+    },
+    {
+      "key": "e16",
+      "category": "PERSON",
+      "value": "Ершов К.В.",
+      "surname": "Ершов"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Студия Лунопарк",
+      "category": "COMPANY",
+      "mode": "normal"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ВЭД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ТН ВЭД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "MVP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Word",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Telegram",
+      "category": "COMPANY"
+    },
+    {
+      "value": "PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "1С",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "УСН",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КЭП",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "01 О нас",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ПОЧЕМУ ТАК",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Готовые шаблоны в Word",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Новый документ или шаблон за минуту",
+      "category": "COMPANY"
+    },
+    {
+      "value": "02 Задача",
+      "category": "COMPANY"
+    },
+    {
+      "value": "03 Что входит",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ВХОДИТ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "MVP за 4 недели",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Интеграция с 1С и ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НЕ ВХОДИТ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Доработка учётной системы",
+      "category": "COMPANY"
+    },
+    {
+      "value": "04 Этапы и сроки",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Отчёт в PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "05 Цены",
+      "category": "COMPANY"
+    },
+    {
+      "value": "06 Контакты",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕКВИЗИТЫ",
+      "category": "COMPANY"
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Зелёный Остров",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Воронина С.Д.",
+      "surname": "Воронина"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Тихонова Елена Игоревна",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e4",
+      "category": "PHONE",
+      "value": "+7 (843) 063-41-70, доб. 245"
+    },
+    {
+      "key": "e5",
+      "category": "EMAIL",
+      "value": "e.tikhonova@zeleny-ostrov.example"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Белов И.С.",
+      "surname": "Белов"
+    },
+    {
+      "key": "e7",
+      "category": "EMAIL",
+      "value": "support@zeleny-ostrov.example"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КЭП",
+      "category": "COMPANY"
+    },
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ТЗ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "1С",
+      "category": "COMPANY"
+    },
+    {
+      "value": "PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Диадок",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕГЛАМЕНТ РАБОТЫ С ЭЛЕКТРОННЫМИ ДОКУМЕНТАМИ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "1. ОБЩИЕ ПОЛОЖЕНИЯ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "2. ТЕРМИНЫ И СОКРАЩЕНИЯ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО — электронный документооборот",
+      "category": "COMPANY"
+    },
+    {
+      "value": "3. ПОРЯДОК ДЕЙСТВИЙ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Открыть 1С",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Создать документ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сохранить в PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Отправить через Диадок",
+      "category": "COMPANY"
+    },
+    {
+      "value": "4. ОТВЕТСТВЕННЫЕ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "5. ЗАКЛЮЧИТЕЛЬНЫЕ ПОЛОЖЕНИЯ",
+      "category": "COMPANY"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Вектор Плюс",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "ADDRESS",
+      "value": "190401, г. Санкт-Петербург, Невский пр-т, д. 90, офис 392"
+    },
+    {
+      "key": "e3",
+      "category": "PHONE",
+      "value": "+7 (812) 092-95-31"
+    },
+    {
+      "key": "e4",
+      "category": "EMAIL",
+      "value": "info@vector-plus.example"
+    },
+    {
+      "key": "e5",
+      "category": "COMPANY",
+      "value": "Гранит-Строй",
+      "opf": true
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Зайцеву П.Н.",
+      "surname": "Зайцеву"
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Павел Николаевич"
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Тихонова Е.И.",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e9",
+      "category": "PHONE",
+      "value": "+7 (812) 011-01-20"
+    },
+    {
+      "key": "e10",
+      "category": "EMAIL",
+      "value": "e.tikhonova@vector-plus.example"
+    },
+    {
+      "key": "e11",
+      "category": "PERSON",
+      "value": "Комаров Р.А.",
+      "surname": "Комаров"
+    },
+    {
+      "key": "e12",
+      "category": "PERSON",
+      "value": "Тихонова Елена Игоревна",
+      "surname": "Тихонова",
+      "meta": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КЭП",
+      "category": "COMPANY"
+    }
+  ]
+}

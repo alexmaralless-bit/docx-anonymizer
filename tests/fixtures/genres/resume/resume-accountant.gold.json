@@ -1,0 +1,99 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Комаров Роман Алексеевич",
+      "surname": "Комаров"
+    },
+    {
+      "key": "e2",
+      "category": "BIRTHDATE",
+      "value": "23.08.1986"
+    },
+    {
+      "key": "e3",
+      "category": "PHONE",
+      "value": "+7 (999) 006-04-44"
+    },
+    {
+      "key": "e4",
+      "category": "EMAIL",
+      "value": "r.komarov@mail.example"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "190849, г. Санкт-Петербург, Лиговский пр-т, д. 61, кв. 440"
+    },
+    {
+      "key": "e6",
+      "category": "COMPANY",
+      "value": "Вектор Плюс",
+      "opf": true
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Белый Парус",
+      "opf": true
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Новиков Артём Ильич",
+      "surname": "Новиков"
+    },
+    {
+      "key": "e9",
+      "category": "PHONE",
+      "value": "+7 (812) 048-46-08"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "1С:Бухгалтерия",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Контур.Диадок",
+      "category": "COMPANY"
+    },
+    {
+      "value": "СБИС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОПЫТ РАБОТЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Запуск отдела с нуля",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НАВЫКИ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Английский — B2",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОБРАЗОВАНИЕ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕКОМЕНДАЦИИ",
+      "category": "COMPANY"
+    }
+  ]
+}

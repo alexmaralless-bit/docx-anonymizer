@@ -1,0 +1,85 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "1685268640"
+    },
+    {
+      "key": "e2",
+      "category": "KPP",
+      "value": "168501001"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Елена Тихонова",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Максим Савельев",
+      "surname": "Савельев"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Елена"
+    },
+    {
+      "key": "e6",
+      "category": "PHONE",
+      "value": "+7 (999) 003-56-11"
+    },
+    {
+      "key": "e7",
+      "category": "EMAIL",
+      "value": "m.saveliev@lunny-bereg.example"
+    },
+    {
+      "key": "e8",
+      "category": "COMPANY",
+      "value": "Лунный Берег",
+      "opf": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "КП",
+      "category": "COMPANY"
+    },
+    {
+      "value": "PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Диадок",
+      "category": "COMPANY"
+    },
+    {
+      "value": "WhatsApp",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Zoom",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Word",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Переписка с клиентом",
+      "category": "COMPANY"
+    }
+  ]
+}

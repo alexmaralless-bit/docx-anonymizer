@@ -1,0 +1,80 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Альтаир-М",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "EMAIL",
+      "value": "quality@altair-m.example"
+    },
+    {
+      "key": "e3",
+      "category": "PHONE",
+      "value": "+7 (843) 021-52-15"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Лебедевой М.П.",
+      "surname": "Лебедевой"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "420933, г. Казань, ул. Баумана, д. 44, кв. 242"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Марина Павловна"
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Северная транспортная компания",
+      "opf": false
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Белов И.С.",
+      "surname": "Белов"
+    },
+    {
+      "key": "e9",
+      "category": "PERSON",
+      "value": "Орлова Н.Ю.",
+      "surname": "Орлова"
+    },
+    {
+      "key": "e10",
+      "category": "PHONE",
+      "value": "+7 (843) 013-52-65"
+    },
+    {
+      "key": "e11",
+      "category": "PERSON",
+      "value": "Орлова Наталья Юрьевна",
+      "surname": "Орлова",
+      "meta": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Госуслуги",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Telegram",
+      "category": "COMPANY"
+    }
+  ]
+}

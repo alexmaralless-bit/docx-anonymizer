@@ -1,0 +1,99 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Полякова Вера Константиновна",
+      "surname": "Полякова"
+    },
+    {
+      "key": "e2",
+      "category": "BIRTHDATE",
+      "value": "02.11.1994"
+    },
+    {
+      "key": "e3",
+      "category": "PHONE",
+      "value": "+7 (999) 004-55-07"
+    },
+    {
+      "key": "e4",
+      "category": "EMAIL",
+      "value": "v.polyakova@mail.example"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "123584, г. Москва, Ленинский пр-т, д. 73, кв. 83"
+    },
+    {
+      "key": "e6",
+      "category": "COMPANY",
+      "value": "Меридиан Логистик",
+      "opf": true
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Орион Трейд",
+      "opf": true
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Фролова Анна Михайловна",
+      "surname": "Фролова"
+    },
+    {
+      "key": "e9",
+      "category": "PHONE",
+      "value": "+7 (495) 071-34-02"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Python",
+      "category": "COMPANY"
+    },
+    {
+      "value": "PostgreSQL",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Docker",
+      "category": "COMPANY"
+    },
+    {
+      "value": "GitLab",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Linux",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОПЫТ РАБОТЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Запуск отдела с нуля",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НАВЫКИ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Английский — B2",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОБРАЗОВАНИЕ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕКОМЕНДАЦИИ",
+      "category": "COMPANY"
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "5476521279"
+    },
+    {
+      "key": "e2",
+      "category": "OGRN",
+      "value": "1225414190880"
+    },
+    {
+      "key": "e3",
+      "category": "KPP",
+      "value": "547601001"
+    },
+    {
+      "key": "e4",
+      "category": "BIK",
+      "value": "045452723"
+    },
+    {
+      "key": "e5",
+      "category": "ACCOUNT",
+      "value": "40702810668125787790"
+    },
+    {
+      "key": "e6",
+      "category": "ACCOUNT",
+      "value": "30101810177225140723"
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Серебряный Ключ",
+      "opf": true
+    },
+    {
+      "key": "e8",
+      "category": "ADDRESS",
+      "value": "630002, г. Новосибирск, ул. Советская, д. 77, офис 72"
+    },
+    {
+      "key": "e9",
+      "category": "PHONE",
+      "value": "+7 (383) 050-47-44"
+    },
+    {
+      "key": "e10",
+      "category": "COMPANY",
+      "value": "Янтарный Край",
+      "opf": true
+    },
+    {
+      "key": "e11",
+      "category": "COMPANY",
+      "value": "Волжский Расчётный Банк",
+      "opf": true
+    },
+    {
+      "key": "e12",
+      "category": "COMPANY",
+      "value": "Агентство недвижимости Тихий Двор",
+      "opf": false
+    },
+    {
+      "key": "e13",
+      "category": "PERSON",
+      "value": "Комаров Р.А.",
+      "surname": "Комаров"
+    },
+    {
+      "key": "e14",
+      "category": "PERSON",
+      "value": "Полякова В.К.",
+      "surname": "Полякова"
+    },
+    {
+      "key": "e15",
+      "category": "PERSON",
+      "value": "Полякова Вера Константиновна",
+      "surname": "Полякова",
+      "meta": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ГАРАНТИЙНОЕ ПИСЬМО",
+      "category": "COMPANY"
+    }
+  ]
+}

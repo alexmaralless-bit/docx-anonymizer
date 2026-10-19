@@ -1,0 +1,71 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Северный Ветер",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Орлова Наталья Юрьевна",
+      "surname": "Орлова"
+    },
+    {
+      "key": "e3",
+      "category": "PHONE",
+      "value": "+7 (999) 005-13-10"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "KPI",
+      "category": "COMPANY"
+    },
+    {
+      "value": "NPS",
+      "category": "COMPANY"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SEO",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ИТОГИ КВАРТАЛА",
+      "category": "COMPANY"
+    },
+    {
+      "value": "III квартал 2026",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЧТО СДЕЛАНО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Новые отчёты",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ПЛАНЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сквозная аналитика",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Обучение отдела продаж",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОТВЕТСТВЕННЫЙ",
+      "category": "COMPANY"
+    }
+  ]
+}

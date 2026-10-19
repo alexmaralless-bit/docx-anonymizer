@@ -1,0 +1,65 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Янтарный Край",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Полякова Вера Константиновна",
+      "surname": "Полякова"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Полякова В.К.",
+      "surname": "Полякова"
+    },
+    {
+      "key": "e4",
+      "category": "INN",
+      "value": "7884834192"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Кузнецова Ольга Владимировна",
+      "surname": "Кузнецова"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Кузнецова О.В.",
+      "surname": "Кузнецова"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "АКТ СВЕРКИ ВЗАИМНЫХ РАСЧЁТОВ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сальдо начальное",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Обороты за период",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сальдо конечное",
+      "category": "COMPANY"
+    }
+  ]
+}

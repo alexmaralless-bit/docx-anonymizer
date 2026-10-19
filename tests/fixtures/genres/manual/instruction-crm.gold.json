@@ -1,0 +1,110 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Вектор Плюс",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "COMPANY",
+      "value": "Уральский завод точных приборов",
+      "opf": false
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Ершов Кирилл Валерьевич",
+      "surname": "Ершов"
+    },
+    {
+      "key": "e4",
+      "category": "PHONE",
+      "value": "+7 (495) 024-02-73"
+    },
+    {
+      "key": "e5",
+      "category": "EMAIL",
+      "value": "k.ershov@vector-plus.example"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Bitrix24",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Telegram",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Google",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "QR",
+      "category": "COMPANY"
+    },
+    {
+      "value": "API",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ИНСТРУКЦИЯ ПО ПОДКЛЮЧЕНИЮ К CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Шаг 1. Вход",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Рисунок 1 — Окно входа",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Шаг 2. Профиль",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Логин",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Отдел",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Телефон",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Шаг 3. Уведомления",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Telegram-бот",
+      "category": "COMPANY"
+    },
+    {
+      "value": "QR-код в профиле",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ВАЖНО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Контакты",
+      "category": "COMPANY"
+    }
+  ]
+}

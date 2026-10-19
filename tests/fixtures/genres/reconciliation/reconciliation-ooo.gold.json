@@ -1,0 +1,71 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Северный Ветер",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "COMPANY",
+      "value": "Синяя Птица",
+      "opf": true
+    },
+    {
+      "key": "e3",
+      "category": "INN",
+      "value": "5479650890"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Фролова Анна Михайловна",
+      "surname": "Фролова"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Белов Игорь Сергеевич",
+      "surname": "Белов"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Фролова А.М.",
+      "surname": "Фролова"
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Белов И.С.",
+      "surname": "Белов"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "АКТ СВЕРКИ ВЗАИМНЫХ РАСЧЁТОВ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сальдо начальное",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Обороты за период",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сальдо конечное",
+      "category": "COMPANY"
+    }
+  ]
+}

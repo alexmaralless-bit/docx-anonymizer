@@ -1,0 +1,87 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "7800878742"
+    },
+    {
+      "key": "e2",
+      "category": "OGRN",
+      "value": "1237847037548"
+    },
+    {
+      "key": "e3",
+      "category": "COMPANY",
+      "value": "Северный Ветер",
+      "opf": true
+    },
+    {
+      "key": "e4",
+      "category": "ADDRESS",
+      "value": "190725, г. Санкт-Петербург, Невский пр-т, д. 104, офис 91"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Новиков Артём Ильич",
+      "surname": "Новиков"
+    },
+    {
+      "key": "e6",
+      "category": "EMAIL",
+      "value": "privacy@severny-veter.example"
+    },
+    {
+      "key": "e7",
+      "category": "PHONE",
+      "value": "+7 (812) 016-50-32"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "ПДн",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РФ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "СМС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ПОЛИТИКА ОБРАБОТКИ ПЕРСОНАЛЬНЫХ ДАННЫХ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "1. Общие положения",
+      "category": "COMPANY"
+    },
+    {
+      "value": "2. Какие данные мы обрабатываем",
+      "category": "COMPANY"
+    },
+    {
+      "value": "3. Цели обработки",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Исполнение договора",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Отправка СМС о статусе заказа",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Улучшение сервиса",
+      "category": "COMPANY"
+    },
+    {
+      "value": "4. Ответственный",
+      "category": "COMPANY"
+    }
+  ]
+}

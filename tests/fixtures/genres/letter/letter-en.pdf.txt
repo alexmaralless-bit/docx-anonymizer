@@ -1,0 +1,27 @@
+## Northwind Systems Ltd.
+
+12 Baker Street, London W1U 6TY · +44 20 7946 0958
+
+15 October 2026
+
+Ms. Sophie Harrington
+
+Procurement Manager
+
+Bluegate Trading LLC
+
+45 King Street, Manchester M2 4LQ
+
+## Re: Pilot integration proposal
+
+Dear Ms. Harrington,
+
+Thank you for the meeting last week. As agreed, we propose a four-week MVP: the API connector to your CRM, a daily Excel export and PDF reports for the finance team. The SLA for the pilot is 99.5 % availability.
+
+Please contact our account manager James Whitmore at +44 20 7946 0321 or j.whitmore@northwind.example to schedule the kickoff.
+
+Sincerely,
+
+Emily Clarke
+
+Head of Partnerships, Northwind Systems Ltd.

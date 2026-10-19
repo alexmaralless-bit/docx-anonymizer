@@ -1,0 +1,91 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Northwind Systems",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "COMPANY",
+      "value": "Bluegate Trading",
+      "opf": true
+    },
+    {
+      "key": "e3",
+      "category": "ADDRESS",
+      "value": "12 Baker Street, London W1U 6TY"
+    },
+    {
+      "key": "e4",
+      "category": "PHONE",
+      "value": "+44 20 7946 0958"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Sophie Harrington",
+      "surname": "Harrington"
+    },
+    {
+      "key": "e6",
+      "category": "ADDRESS",
+      "value": "45 King Street, Manchester M2 4LQ"
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Harrington",
+      "surname": "Harrington"
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "James Whitmore",
+      "surname": "Whitmore"
+    },
+    {
+      "key": "e9",
+      "category": "PHONE",
+      "value": "+44 20 7946 0321"
+    },
+    {
+      "key": "e10",
+      "category": "EMAIL",
+      "value": "j.whitmore@northwind.example"
+    },
+    {
+      "key": "e11",
+      "category": "PERSON",
+      "value": "Emily Clarke",
+      "surname": "Clarke"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "MVP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "API",
+      "category": "COMPANY"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "PDF",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SLA",
+      "category": "COMPANY"
+    }
+  ]
+}

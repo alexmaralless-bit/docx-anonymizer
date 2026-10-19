@@ -1,0 +1,113 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "5224268980"
+    },
+    {
+      "key": "e2",
+      "category": "KPP",
+      "value": "522401001"
+    },
+    {
+      "key": "e3",
+      "category": "BIK",
+      "value": "045256412"
+    },
+    {
+      "key": "e4",
+      "category": "ACCOUNT",
+      "value": "40702810762989023847"
+    },
+    {
+      "key": "e5",
+      "category": "ACCOUNT",
+      "value": "30101810643591824412"
+    },
+    {
+      "key": "e6",
+      "category": "INN",
+      "value": "6677506321"
+    },
+    {
+      "key": "e7",
+      "category": "KPP",
+      "value": "667701001"
+    },
+    {
+      "key": "e8",
+      "category": "COMPANY",
+      "value": "Волжский Расчётный Банк",
+      "opf": true
+    },
+    {
+      "key": "e9",
+      "category": "COMPANY",
+      "value": "Тихая Гавань",
+      "opf": true
+    },
+    {
+      "key": "e10",
+      "category": "ADDRESS",
+      "value": "603905, г. Нижний Новгород, ул. Белинского, д. 35, офис 343"
+    },
+    {
+      "key": "e11",
+      "category": "PHONE",
+      "value": "+7 (831) 059-75-23"
+    },
+    {
+      "key": "e12",
+      "category": "COMPANY",
+      "value": "Альтаир-М",
+      "opf": true
+    },
+    {
+      "key": "e13",
+      "category": "ADDRESS",
+      "value": "620633, г. Екатеринбург, ул. Малышева, д. 108, офис 388"
+    },
+    {
+      "key": "e14",
+      "category": "PERSON",
+      "value": "Новиков А.И.",
+      "surname": "Новиков"
+    },
+    {
+      "key": "e15",
+      "category": "PERSON",
+      "value": "Воронина С.Д.",
+      "surname": "Воронина"
+    },
+    {
+      "key": "e16",
+      "category": "PERSON",
+      "value": "Воронина Светлана Дмитриевна",
+      "surname": "Воронина",
+      "meta": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Bitrix24",
+      "category": "COMPANY"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Счёт на оплату № 530 от 15 октября 2026 г.",
+      "category": "COMPANY"
+    },
+    {
+      "value": "к оплате",
+      "category": "COMPANY"
+    }
+  ]
+}

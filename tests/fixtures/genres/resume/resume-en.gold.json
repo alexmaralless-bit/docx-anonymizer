@@ -1,0 +1,95 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Bluegate Trading",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "COMPANY",
+      "value": "Silverline Analytics",
+      "opf": true
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Oliver Bennett",
+      "surname": "Bennett"
+    },
+    {
+      "key": "e4",
+      "category": "BIRTHDATE",
+      "value": "3 June 1992"
+    },
+    {
+      "key": "e5",
+      "category": "PHONE",
+      "value": "+44 7700 900123"
+    },
+    {
+      "key": "e6",
+      "category": "EMAIL",
+      "value": "o.bennett@mail.example"
+    },
+    {
+      "key": "e7",
+      "category": "ADDRESS",
+      "value": "45 King Street, Manchester M2 4LQ"
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Sophie Harrington",
+      "surname": "Harrington"
+    },
+    {
+      "key": "e9",
+      "category": "EMAIL",
+      "value": "s.harrington@bluegate.example"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SQL",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Python",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Tableau",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Jira",
+      "category": "COMPANY"
+    },
+    {
+      "value": "KPI",
+      "category": "COMPANY"
+    },
+    {
+      "value": "EXPERIENCE",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Built KPI dashboards",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SKILLS",
+      "category": "COMPANY"
+    },
+    {
+      "value": "REFERENCES",
+      "category": "COMPANY"
+    }
+  ]
+}

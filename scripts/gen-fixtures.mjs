@@ -30,7 +30,7 @@ function iban(country, bban) {
 }
 
 /* ---------- упаковка ---------- */
-function pack({ body, extra = {}, core, app, rels = '', contentTypeParts = [] }) {
+export function pack({ body, extra = {}, core, app, rels = '', contentTypeParts = [] }) {
   const sectPr =
     '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="850" w:bottom="1134" w:left="1701" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>';
   const files = {
@@ -68,12 +68,13 @@ function pack({ body, extra = {}, core, app, rels = '', contentTypeParts = [] })
   return writeZip(Object.entries(files).map(([name, d]) => ({ name, data: enc.encode(d) })));
 }
 
-const cell = (...lines) => `<w:tc><w:tcPr><w:tcW w:w="4677" w:type="dxa"/></w:tcPr>${lines.map((l) => (l.startsWith('<') ? l : p(r(l)))).join('')}</w:tc>`;
-const tbl = (rows, grid = 2) =>
+export const cell = (...lines) =>
+  `<w:tc><w:tcPr><w:tcW w:w="4677" w:type="dxa"/></w:tcPr>${lines.map((l) => (l.startsWith('<') ? l : p(r(l)))).join('')}</w:tc>`;
+export const tbl = (rows, grid = 2) =>
   `<w:tbl><w:tblPr><w:tblW w:w="9354" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr>` +
   `<w:tblGrid>${'<w:gridCol w:w="4677"/>'.repeat(grid)}</w:tblGrid>${rows.map((c) => `<w:tr>${c.join('')}</w:tr>`).join('')}</w:tbl>`;
 const g = (key, category, value) => ({ key, category, value });
-const title = (t) => p(r(t, B), '<w:jc w:val="center"/>');
+export const title = (t) => p(r(t, B), '<w:jc w:val="center"/>');
 
 /* ---------- 1. Договор с ИП ---------- */
 function ipContract() {

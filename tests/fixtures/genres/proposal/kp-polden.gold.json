@@ -1,0 +1,180 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Полдень",
+      "opf": false
+    },
+    {
+      "key": "e2",
+      "category": "INN",
+      "value": "660111039914"
+    },
+    {
+      "key": "e3",
+      "category": "OGRN",
+      "value": "314660219956843"
+    },
+    {
+      "key": "e4",
+      "category": "BIK",
+      "value": "046615985"
+    },
+    {
+      "key": "e5",
+      "category": "ACCOUNT",
+      "value": "40802810763826951378"
+    },
+    {
+      "key": "e6",
+      "category": "COMPANY",
+      "value": "Ясный Полдень",
+      "opf": true
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Кузнецова Ольга Владимировна",
+      "surname": "Кузнецова"
+    },
+    {
+      "key": "e8",
+      "category": "PHONE",
+      "value": "+7 (999) 007-15-42"
+    },
+    {
+      "key": "e9",
+      "category": "EMAIL",
+      "value": "o.kuznetsova@polden-buro.example"
+    },
+    {
+      "key": "e10",
+      "category": "PERSON",
+      "value": "Тихонова Елена Игоревна",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e11",
+      "category": "ADDRESS",
+      "value": "620107, г. Екатеринбург, ул. Малышева, д. 34, офис 30"
+    },
+    {
+      "key": "e12",
+      "category": "PERSON",
+      "value": "Тихонова Е.И.",
+      "surname": "Тихонова"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Бюро Полдень",
+      "category": "COMPANY",
+      "mode": "normal"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Bitrix24",
+      "category": "COMPANY"
+    },
+    {
+      "value": "KPI",
+      "category": "COMPANY"
+    },
+    {
+      "value": "API",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SEO",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Google",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Яндекс",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ТЗ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ПРЕДЛОЖЕНИЕ О СОТРУДНИЧЕСТВЕ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "01 О бюро",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НАШИ ПРИНЦИПЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Прозрачные сроки",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Отчёт каждую неделю",
+      "category": "COMPANY"
+    },
+    {
+      "value": "02 Что нужно сделать",
+      "category": "COMPANY"
+    },
+    {
+      "value": "03 Что входит",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Настройка CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SEO-аудит сайта",
+      "category": "COMPANY"
+    },
+    {
+      "value": "04 Цены",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Старт",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Оптимальный",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Максимум",
+      "category": "COMPANY"
+    },
+    {
+      "value": "05 Наш опыт",
+      "category": "COMPANY"
+    },
+    {
+      "value": "06 Контакты",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕКВИЗИТЫ",
+      "category": "COMPANY"
+    }
+  ]
+}

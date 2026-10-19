@@ -1,0 +1,127 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Лунопарк",
+      "opf": false
+    },
+    {
+      "key": "e2",
+      "category": "URL",
+      "value": "https://lunopark.example"
+    },
+    {
+      "key": "e3",
+      "category": "COMPANY",
+      "value": "Меридиан Логистик",
+      "opf": true
+    },
+    {
+      "key": "e4",
+      "category": "COMPANY",
+      "value": "Полярная Звезда",
+      "opf": true
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Марина Лебедева",
+      "surname": "Лебедева"
+    },
+    {
+      "key": "e6",
+      "category": "PHONE",
+      "value": "+7 (999) 005-35-86"
+    },
+    {
+      "key": "e7",
+      "category": "EMAIL",
+      "value": "hello@lunopark.example"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "СТУДИЯ ЛУНОПАРК",
+      "category": "COMPANY",
+      "mode": "normal"
+    },
+    {
+      "value": "Студия Лунопарк",
+      "category": "COMPANY",
+      "mode": "normal"
+    },
+    {
+      "value": "MVP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Word",
+      "category": "COMPANY"
+    },
+    {
+      "value": "1С",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Цифровые продукты для документооборота",
+      "category": "COMPANY"
+    },
+    {
+      "value": "О НАС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "7 лет на рынке",
+      "category": "COMPANY"
+    },
+    {
+      "value": "40+ проектов",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НАМ ДОВЕРЯЮТ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КАК МЫ РАБОТАЕМ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "01 Аудит",
+      "category": "COMPANY"
+    },
+    {
+      "value": "02 MVP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "03 Внедрение",
+      "category": "COMPANY"
+    },
+    {
+      "value": "04 Поддержка",
+      "category": "COMPANY"
+    },
+    {
+      "value": "СТОИМОСТЬ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Старт",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КОНТАКТЫ",
+      "category": "COMPANY"
+    }
+  ]
+}

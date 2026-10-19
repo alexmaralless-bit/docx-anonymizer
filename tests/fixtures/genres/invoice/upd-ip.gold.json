@@ -1,0 +1,80 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "540528433604"
+    },
+    {
+      "key": "e2",
+      "category": "OGRN",
+      "value": "319542123265496"
+    },
+    {
+      "key": "e3",
+      "category": "INN",
+      "value": "1690954450"
+    },
+    {
+      "key": "e4",
+      "category": "KPP",
+      "value": "169001001"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Комаров Роман Алексеевич",
+      "surname": "Комаров"
+    },
+    {
+      "key": "e6",
+      "category": "ADDRESS",
+      "value": "630914, г. Новосибирск, ул. Советская, д. 70, офис 245"
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Гранит-Строй",
+      "opf": true
+    },
+    {
+      "key": "e8",
+      "category": "ADDRESS",
+      "value": "420585, г. Казань, пр-т Победы, д. 46, офис 435"
+    },
+    {
+      "key": "e9",
+      "category": "PERSON",
+      "value": "Комаров Р.А.",
+      "surname": "Комаров"
+    },
+    {
+      "key": "e10",
+      "category": "PERSON",
+      "value": "Лебедева М.П.",
+      "surname": "Лебедева"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ТН ВЭД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "УНИВЕРСАЛЬНЫЙ ПЕРЕДАТОЧНЫЙ ДОКУМЕНТ",
+      "category": "COMPANY"
+    }
+  ]
+}

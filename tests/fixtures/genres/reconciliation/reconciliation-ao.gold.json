@@ -1,0 +1,71 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Синяя Птица",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "COMPANY",
+      "value": "Меридиан Логистик",
+      "opf": true
+    },
+    {
+      "key": "e3",
+      "category": "INN",
+      "value": "5244160128"
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Тихонова Елена Игоревна",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e5",
+      "category": "PERSON",
+      "value": "Полякова Вера Константиновна",
+      "surname": "Полякова"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Тихонова Е.И.",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Полякова В.К.",
+      "surname": "Полякова"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "АКТ СВЕРКИ ВЗАИМНЫХ РАСЧЁТОВ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сальдо начальное",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Обороты за период",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Сальдо конечное",
+      "category": "COMPANY"
+    }
+  ]
+}

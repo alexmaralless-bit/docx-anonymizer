@@ -1,0 +1,113 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "5406267283"
+    },
+    {
+      "key": "e2",
+      "category": "KPP",
+      "value": "540601001"
+    },
+    {
+      "key": "e3",
+      "category": "BIK",
+      "value": "045455073"
+    },
+    {
+      "key": "e4",
+      "category": "ACCOUNT",
+      "value": "40702810903931526684"
+    },
+    {
+      "key": "e5",
+      "category": "ACCOUNT",
+      "value": "30101810455695282073"
+    },
+    {
+      "key": "e6",
+      "category": "INN",
+      "value": "1679344620"
+    },
+    {
+      "key": "e7",
+      "category": "KPP",
+      "value": "167901001"
+    },
+    {
+      "key": "e8",
+      "category": "COMPANY",
+      "value": "Первый Торговый Банк",
+      "opf": true
+    },
+    {
+      "key": "e9",
+      "category": "COMPANY",
+      "value": "Тихая Гавань",
+      "opf": true
+    },
+    {
+      "key": "e10",
+      "category": "ADDRESS",
+      "value": "630706, г. Новосибирск, Красный пр-т, д. 38, офис 300"
+    },
+    {
+      "key": "e11",
+      "category": "PHONE",
+      "value": "+7 (383) 013-54-10"
+    },
+    {
+      "key": "e12",
+      "category": "COMPANY",
+      "value": "Альтаир-М",
+      "opf": true
+    },
+    {
+      "key": "e13",
+      "category": "ADDRESS",
+      "value": "420626, г. Казань, ул. Баумана, д. 58, офис 274"
+    },
+    {
+      "key": "e14",
+      "category": "PERSON",
+      "value": "Зайцев П.Н.",
+      "surname": "Зайцев"
+    },
+    {
+      "key": "e15",
+      "category": "PERSON",
+      "value": "Лебедева М.П.",
+      "surname": "Лебедева"
+    },
+    {
+      "key": "e16",
+      "category": "PERSON",
+      "value": "Лебедева Марина Павловна",
+      "surname": "Лебедева",
+      "meta": true
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Bitrix24",
+      "category": "COMPANY"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Счёт на оплату № 604 от 15 октября 2026 г.",
+      "category": "COMPANY"
+    },
+    {
+      "value": "к оплате",
+      "category": "COMPANY"
+    }
+  ]
+}

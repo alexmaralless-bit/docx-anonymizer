@@ -1,0 +1,69 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Артём Новиков",
+      "surname": "Новиков"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Наталья Орлова",
+      "surname": "Орлова"
+    },
+    {
+      "key": "e3",
+      "category": "COMPANY",
+      "value": "Зелёный Остров",
+      "opf": true
+    },
+    {
+      "key": "e4",
+      "category": "PERSON",
+      "value": "Наталья"
+    },
+    {
+      "key": "e5",
+      "category": "EMAIL",
+      "value": "buh@zeleny-ostrov.example"
+    },
+    {
+      "key": "e6",
+      "category": "PERSON",
+      "value": "Кузнецова Ольга Владимировна",
+      "surname": "Кузнецова"
+    },
+    {
+      "key": "e7",
+      "category": "PHONE",
+      "value": "+7 (999) 000-25-32"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "MVP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Jira",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Яндекс.Диск",
+      "category": "COMPANY"
+    },
+    {
+      "value": "API",
+      "category": "COMPANY"
+    },
+    {
+      "value": "QA",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Чат проекта",
+      "category": "COMPANY"
+    }
+  ]
+}

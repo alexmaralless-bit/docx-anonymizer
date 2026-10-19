@@ -1,0 +1,180 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Светлячок",
+      "opf": false
+    },
+    {
+      "key": "e2",
+      "category": "INN",
+      "value": "523175067939"
+    },
+    {
+      "key": "e3",
+      "category": "OGRN",
+      "value": "317523926229651"
+    },
+    {
+      "key": "e4",
+      "category": "BIK",
+      "value": "045201738"
+    },
+    {
+      "key": "e5",
+      "category": "ACCOUNT",
+      "value": "40802810319998228448"
+    },
+    {
+      "key": "e6",
+      "category": "COMPANY",
+      "value": "Северный Ветер",
+      "opf": true
+    },
+    {
+      "key": "e7",
+      "category": "PERSON",
+      "value": "Орлова Наталья Юрьевна",
+      "surname": "Орлова"
+    },
+    {
+      "key": "e8",
+      "category": "PHONE",
+      "value": "+7 (999) 009-66-70"
+    },
+    {
+      "key": "e9",
+      "category": "EMAIL",
+      "value": "n.orlova@svetlyachok.example"
+    },
+    {
+      "key": "e10",
+      "category": "PERSON",
+      "value": "Кузнецова Ольга Владимировна",
+      "surname": "Кузнецова"
+    },
+    {
+      "key": "e11",
+      "category": "ADDRESS",
+      "value": "603156, г. Нижний Новгород, ул. Белинского, д. 40, офис 64"
+    },
+    {
+      "key": "e12",
+      "category": "PERSON",
+      "value": "Кузнецова О.В.",
+      "surname": "Кузнецова"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Агентство Светлячок",
+      "category": "COMPANY",
+      "mode": "normal"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Bitrix24",
+      "category": "COMPANY"
+    },
+    {
+      "value": "KPI",
+      "category": "COMPANY"
+    },
+    {
+      "value": "API",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SEO",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Google",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Яндекс",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НДС",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ТЗ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ НА ВНЕДРЕНИЕ CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "01 Кто мы",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НАШИ ПРИНЦИПЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Прозрачные сроки",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Отчёт каждую неделю",
+      "category": "COMPANY"
+    },
+    {
+      "value": "02 Задача",
+      "category": "COMPANY"
+    },
+    {
+      "value": "03 Состав работ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Настройка CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "SEO-аудит сайта",
+      "category": "COMPANY"
+    },
+    {
+      "value": "04 Стоимость",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Старт",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Оптимальный",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Максимум",
+      "category": "COMPANY"
+    },
+    {
+      "value": "05 Почему мы",
+      "category": "COMPANY"
+    },
+    {
+      "value": "06 Контакты",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕКВИЗИТЫ",
+      "category": "COMPANY"
+    }
+  ]
+}

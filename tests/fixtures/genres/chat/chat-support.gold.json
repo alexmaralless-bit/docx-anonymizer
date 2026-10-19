@@ -1,0 +1,49 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "INN",
+      "value": "6653506403"
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Ершов Кирилл",
+      "surname": "Ершов"
+    },
+    {
+      "key": "e3",
+      "category": "URL",
+      "value": "https://lunopark.example/help/edo"
+    },
+    {
+      "key": "e4",
+      "category": "COMPANY",
+      "value": "Альтаир-М",
+      "opf": true
+    },
+    {
+      "key": "e5",
+      "category": "CARD",
+      "value": "4000 0072 1906 3762"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "УПД",
+      "category": "COMPANY"
+    },
+    {
+      "value": "1С",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ЭДО",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Обращение в поддержку",
+      "category": "COMPANY"
+    }
+  ]
+}

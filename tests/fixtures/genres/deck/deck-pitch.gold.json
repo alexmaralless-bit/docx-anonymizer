@@ -1,0 +1,89 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "COMPANY",
+      "value": "Вектор Плюс",
+      "opf": true
+    },
+    {
+      "key": "e2",
+      "category": "PERSON",
+      "value": "Кирилл Ершов",
+      "surname": "Ершов"
+    },
+    {
+      "key": "e3",
+      "category": "PERSON",
+      "value": "Елена Тихонова",
+      "surname": "Тихонова"
+    },
+    {
+      "key": "e4",
+      "category": "EMAIL",
+      "value": "k.ershov@vector-plus.example"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "SaaS",
+      "category": "COMPANY"
+    },
+    {
+      "value": "B2B",
+      "category": "COMPANY"
+    },
+    {
+      "value": "MVP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "API",
+      "category": "COMPANY"
+    },
+    {
+      "value": "CRM",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ERP",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ROI",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ДОКУМЕНТЫ БЕЗ РУТИНЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ПРОБЛЕМА",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Нет единой базы",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ПРОДУКТ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "MVP готов",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЫНОК",
+      "category": "COMPANY"
+    },
+    {
+      "value": "КОМАНДА",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ИНВЕСТИЦИИ",
+      "category": "COMPANY"
+    }
+  ]
+}

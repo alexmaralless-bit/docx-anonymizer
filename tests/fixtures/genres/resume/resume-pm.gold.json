@@ -1,0 +1,99 @@
+{
+  "entities": [
+    {
+      "key": "e1",
+      "category": "PERSON",
+      "value": "Зайцев Павел Николаевич",
+      "surname": "Зайцев"
+    },
+    {
+      "key": "e2",
+      "category": "BIRTHDATE",
+      "value": "14.05.1991"
+    },
+    {
+      "key": "e3",
+      "category": "PHONE",
+      "value": "+7 (999) 004-36-04"
+    },
+    {
+      "key": "e4",
+      "category": "EMAIL",
+      "value": "p.zaitsev@mail.example"
+    },
+    {
+      "key": "e5",
+      "category": "ADDRESS",
+      "value": "603627, г. Нижний Новгород, ул. Большая Покровская, д. 104, кв. 394"
+    },
+    {
+      "key": "e6",
+      "category": "COMPANY",
+      "value": "Янтарный Край",
+      "opf": true
+    },
+    {
+      "key": "e7",
+      "category": "COMPANY",
+      "value": "Серебряный Ключ",
+      "opf": true
+    },
+    {
+      "key": "e8",
+      "category": "PERSON",
+      "value": "Новиков Артём Ильич",
+      "surname": "Новиков"
+    },
+    {
+      "key": "e9",
+      "category": "PHONE",
+      "value": "+7 (831) 041-56-98"
+    }
+  ],
+  "negatives": [
+    {
+      "value": "Jira",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Confluence",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Miro",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Excel",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Power BI",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОПЫТ РАБОТЫ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Запуск отдела с нуля",
+      "category": "COMPANY"
+    },
+    {
+      "value": "НАВЫКИ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "Английский — B2",
+      "category": "COMPANY"
+    },
+    {
+      "value": "ОБРАЗОВАНИЕ",
+      "category": "COMPANY"
+    },
+    {
+      "value": "РЕКОМЕНДАЦИИ",
+      "category": "COMPANY"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+## Oliver Bennett
+
+Senior Data Analyst
+
+Date of birth: 3 June 1992
+
+Phone: +44 7700 900123
+
+Email: o.bennett@mail.example
+
+Address: 45 King Street, Manchester M2 4LQ
+
+## EXPERIENCE
+
+2020 — present: Bluegate Trading LLC, Senior Analyst
+
+- Built KPI dashboards
+
+- Automated Excel reports with Python and SQL
+
+2016 — 2020: Silverline Analytics Inc., Analyst
+
+## SKILLS
+
+- Excel, SQL, Python
+
+- Tableau, Jira
+
+## REFERENCES
+
+Sophie Harrington, Head of Analytics, Bluegate Trading LLC, s.harrington@bluegate.example

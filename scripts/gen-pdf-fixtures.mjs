@@ -208,7 +208,7 @@ const CSS = `
 `;
 
 /** HTML документа A4. */
-function htmlPage(bodyHtml) {
+export function htmlPage(bodyHtml) {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><style>${CSS}</style></head><body>${bodyHtml}</body></html>`;
 }
 
@@ -216,7 +216,7 @@ const FOOTER =
   '<div style="font-size:9px;width:100%;text-align:center;font-family:serif">Страница <span class="pageNumber"></span> из <span class="totalPages"></span></div>';
 const headerTpl = (text) => `<div style="font-size:9px;width:100%;text-align:center;font-family:serif">${escHtml(text)}</div>`;
 
-async function htmlToPdf(browser, html, header) {
+export async function htmlToPdf(browser, html, header) {
   const page = await browser.newPage();
   try {
     await page.setContent(html, { waitUntil: 'load' });
@@ -235,7 +235,7 @@ async function htmlToPdf(browser, html, header) {
   }
 }
 
-function documentXml(docxBytes) {
+export function documentXml(docxBytes) {
   const e = readZip(docxBytes).find((x) => x.name === 'word/document.xml');
   return new TextDecoder().decode(inflateEntry(/** @type {any} */ (e)));
 }

@@ -263,6 +263,26 @@ export function findPersonsByDict(text, opts = {}) {
       break;
     }
   }
+  // WP11-E: «Фамилия И.» с одним инициалом без лейбла («Огурцова М.», «Сейтказиев Д.»): фамилия по словарю или по
+  // суффиксу, не имя и не отчество, за инициалом — не второй инициал (это «Фамилия И.О.» правил) и не продолжение слова
+  for (let i = 0; i + 1 < toks.length; i++) {
+    const t = toks[i];
+    const ini = toks[i + 1];
+    if (!okWord(t) || t.script !== 'cyr' || ini.t !== 'I' || ini.script !== 'cyr' || !gapOk(text, t, ini)) continue;
+    if (toks[i + 2]?.t === 'I' && gapOk(text, ini, toks[i + 2])) continue;
+    const sg = signals(t.text);
+    const sur = (sg.sDict.length ? sg.sDict : sg.sSuf)[0];
+    if (!sur || sg.fStrong.length || sg.fAmb.length || sg.p || t.caps) continue;
+    if (!guards(t.start, ini.end)) continue;
+    spans.push({
+      start: t.start,
+      end: ini.end,
+      labeled: false,
+      dict: true,
+      score: 1,
+      parse: { kind: 'initials', script: 'cyr', surname: t.text, initials: lowerE(ini.text), words: [t.text, ini.text] },
+    });
+  }
   // WP11-D: одно имя или фамилия после профессии («курьер Абдуллаев отказался», «Водитель Рашид позвонит», «09:03 Оператор
   // Алина:», «Бухгалтер Петрова подписала»): имя или фамилия по словарю (фамилия — и по суффиксу), не отчество; профессия
   // вне спана; следующее слово — не с заглавной (иначе это пара, см. выше)

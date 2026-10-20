@@ -24,7 +24,7 @@
 // Чистый JS без chrome.* и DOM; значения документа в логи не попадают.
 import { BUILTIN_STOPLIST, stopKey } from './stoplist.js';
 import { isCapsLine, isStoplisted, wholeWordAround, inStoplist } from './filters.js';
-import { lowerE, wordList } from '../detect/names/lexicon.js';
+import { lowerE, wordList, isNeverMaskOrg } from '../detect/names/lexicon.js';
 import { addressTailEnd, NOT_HOUSE_SRC, VALUE_LABEL_SRC } from '../detect/names/address.js';
 import { patronymicInfo, firstNameInfo } from '../detect/names/morph.js';
 import { bigFirstNameInfo, surnameLemmas, surnameSuffixInfo, isEnFirst, isEnSurname } from '../detect/names/dict/index.js';
@@ -125,6 +125,10 @@ const sentenceStart = (text, start) => /(?:^|[.!?…:]\s+|\n)[«"(]?$/u.test(tex
 /** Нарицательное употребление: предлог после слова («в», «о», «к», «на») или перечисление со строчной. */
 const HOMONYM_TAIL_RE = /^(?:[ \u00a0]+(?:в|во|о|об|к|ко|на|за|для|без|и)[ \u00a0]|[ \u00a0]*,[ \u00a0]*\p{Ll}+[ \u00a0]*(?:,|[ \u00a0]и[ \u00a0]))/u;
 
+/** Имя из словаря, не омоним нарицательного («Олеся», «Ринат»): LOC модели на нём вне адреса — человек (WP11-E). */
+const strongFirstName = (w) =>
+  /^\p{Lu}\p{Ll}+$/u.test(w) && bigFirstNameInfo(lowerE(w)).some((x) => !x.ambiguous) && bigFirstNameInfo(lowerE(w)).every((x) => !x.ambiguous);
+
 /** Кириллическая фамилия по суффиксу («Лисицын», «Гаврилюк», «Захарченко»), не имя: LOC модели на ней — человек. */
 const surnameMorph = (w) => /^\p{Lu}[а-яё]+$/u.test(w) && (surnameSuffixInfo(lowerE(w)) || []).length > 0 && !bigFirstNameInfo(lowerE(w)).length;
 
@@ -202,6 +206,7 @@ export function orgStreetsAsLoc(spans, text) {
   return spans.map((sp) =>
     sp.label === 'ORG' &&
     houseAfter(text, sp.end) &&
+    !isNeverMaskOrg(text.slice(sp.start, sp.end)) &&
     !/[«»"]/u.test(text.slice(Math.max(0, sp.start - 1), sp.end + 1)) &&
     !/^\p{Lu}{2,}/u.test(text.slice(sp.start, sp.end))
       ? { ...sp, label: 'LOC' }
@@ -259,9 +264,14 @@ export function filterPersonLocSpans(spans, ctx) {
     if (sp.label === 'LOC') {
       // 4. LOC — только в адресе
       if (!hasAddressContext(text, start, end)) {
-        // LOC на фамилии вне адреса («приезжал представитель подрядчика Лисицын» — модель 1.1.0, ревью 3): человек,
+        // LOC на фамилии или имени вне адреса («приезжал представитель подрядчика Лисицын» — модель 1.1.0, ревью 3;
+        // «> Олеся, здравствуйте» — модель 1.0.0, WP11-E): человек,
         // а не место — PER (лишнее маскирование города «Пушкин» допустимо, открытая фамилия — нет)
-        if (words.length === 1 && surnameMorph(words[0]) && !/(?<![\p{L}])(?:г|гор|пос|с|дер|ст)\.[ \u00a0]*$/u.test(text.slice(Math.max(0, start - 6), start)))
+        if (
+          words.length === 1 &&
+          (surnameMorph(words[0]) || strongFirstName(words[0])) &&
+          !/(?<![\p{L}])(?:г|гор|пос|с|дер|ст)\.[ \u00a0]*$/u.test(text.slice(Math.max(0, start - 6), start))
+        )
           out.push({ ...sp, start, end, label: 'PER' });
         continue;
       }

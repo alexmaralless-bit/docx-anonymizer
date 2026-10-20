@@ -240,11 +240,24 @@ export function detectSsn(text, ctx) {
 /* ---------- налоговый ID (EIN / UTR / VAT) ---------- */
 const TAXID_RE = new RegExp(`${NB}(?:\\d{2}-\\d{7}|[A-Z]{2}[ ]?[0-9A-Z]{8,12}|\\d{10})(?![\\p{L}\\p{N}])`, 'gu');
 
+// UK VAT с пробелами внутри: «GB 318 4471 26», «GB318 4471 26 001» (WP11-E, финальная проверка)
+const UK_VAT_RE = new RegExp(`${NB}GB[ ]?\\d{3}[ ]?\\d{4}[ ]?\\d{2}(?:[ ]?\\d{3})?(?![\\p{L}\\p{N}])`, 'gu');
+/** UK VAT без метки: «GB» и 9 цифр группами 3-4-2 через пробел — формат, который не спутать с другими номерами. */
+const UK_VAT_SPACED_RE = /^GB ?\d{3} \d{4} \d{2}$/;
+
 export function detectTaxId(text, ctx) {
   const out = [];
+  const seen = new Set();
   for (const c of scan(text, TAXID_RE)) {
     if (!taxid(c.text)) continue;
-    if (labelState(text, c.start, ctx, 'TAXID').mine) out.push(cand(c.start, c.end, 'labeled', 'taxid'));
+    if (labelState(text, c.start, ctx, 'TAXID').mine) {
+      out.push(cand(c.start, c.end, 'labeled', 'taxid'));
+      seen.add(c.start);
+    }
+  }
+  for (const c of scan(text, UK_VAT_RE)) {
+    if (seen.has(c.start) || !taxid(c.text)) continue;
+    if (labelState(text, c.start, ctx, 'TAXID').mine || UK_VAT_SPACED_RE.test(c.text)) out.push(cand(c.start, c.end, 'labeled', 'taxid'));
   }
   return out;
 }

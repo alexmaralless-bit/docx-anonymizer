@@ -13,11 +13,12 @@
 // Чистый JS без chrome.* и DOM.
 import { lowerE, isStopWord, COMMON_NOUNS, FIRST_NAMES_EN, STOP_EXACT } from './lexicon.js';
 import { bigFirstNameInfo } from './dict/index.js';
+import { TOPONYM_BEFORE_RE } from './person.js';
 
 const SP = '[ \\t\\u00a0]';
 /** Метка реплики: необязательное время в скобках или без, затем 1–3 слова с заглавной и двоеточие. */
 const SPEAKER_RE = new RegExp(
-  `^${SP}*(?:\\[[^\\]\\n]{1,40}\\]${SP}*|\\d{1,2}:\\d{2}(?::\\d{2})?${SP}+)?(?:(\\p{Lu}[\\p{L}.'’-]*(?:${SP}+\\p{Lu}[\\p{L}.'’-]*){0,2})${SP}*:${SP}+)?`,
+  `^${SP}*(?:>+${SP}*)?(?:\\[[^\\]\\n]{1,40}\\]${SP}*|\\d{1,2}:\\d{2}(?::\\d{2})?${SP}+)?(?:(\\p{Lu}[\\p{L}.'’-]*(?:${SP}+\\p{Lu}[\\p{L}.'’-]*){0,2})${SP}*:${SP}+)?`,
   'u',
 );
 /** Приветствие перед именем: «Здравствуйте, », «Добрый день, », «Привет, », «Hi », «Hello, ». */
@@ -80,8 +81,31 @@ export function findVocativeNames(text) {
       const ok = info.strong || ((speaker || greet || address) && (address || !ENUM_RE.test(after)));
       if (ok) out.push({ start: lineStart + at, end: lineStart + at + m[1].length, name: m[1], script: info.script, speaker });
     }
+    // WP11-E: подпись реплики одним именем («[09:01] Ринат: …») — имя не омоним
+    if (pre?.[1] && !/\s/u.test(pre[1])) {
+      const si = nameInfo(pre[1]);
+      const off = line.indexOf(pre[1]);
+      if (si?.strong && off >= 0) out.push({ start: lineStart + off, end: lineStart + off + pre[1].length, name: pre[1], script: si.script, speaker: false });
+    }
+    // WP11-E: внутри строки — «…. Тамара, а кто…» (после конца предложения, за именем запятая), «Спасибо, Ринат!»,
+    // «потом Святослав.» (перед именем запятая или строчное слово, за ним конец предложения); только имена не омонимы
+    for (const re of [INNER_COMMA_RE, INNER_END_RE])
+      for (const mm of line.matchAll(re)) {
+        const name = mm[1];
+        const pos = /** @type {number} */ (mm.index) + mm[0].length - name.length;
+        // «г. Владимир,», «ул. Мира.» — топоним после сокращения, не обращение
+        if (TOPONYM_BEFORE_RE.test(line.slice(Math.max(0, pos - 14), pos))) continue;
+        const si = pos > at || !m ? nameInfo(name) : null;
+        if (!si?.strong || out.some((v) => v.start === lineStart + pos)) continue;
+        out.push({ start: lineStart + pos, end: lineStart + pos + name.length, name, script: si.script, speaker: false });
+      }
     if (nl < 0) break;
     lineStart = nl + 1;
   }
   return out;
 }
+
+/** Имя внутри строки после конца предложения, за ним запятая: «…. Тамара, а кто…». */
+const INNER_COMMA_RE = new RegExp(`[.!?…]${SP}+(\\p{Lu}\\p{Ll}+)(?=${SP}*,)`, 'gu');
+/** Имя в конце фразы: перед ним запятая или строчное слово, за ним «!», «.», «?»: «Спасибо, Ринат!», «потом Святослав.». */
+const INNER_END_RE = new RegExp(`(?:,${SP}*|(?<=\\p{Ll})${SP}+)(\\p{Lu}\\p{Ll}+)(?=${SP}*[!?.](?:${SP}|$))`, 'gu');

@@ -61,7 +61,7 @@ describe('архив релиза', () => {
     expect(m.permissions).toEqual(expect.arrayContaining(['scripting', 'activeTab']));
   });
 
-  it('модель NER (WP8): unlimitedStorage, wasm ORT в vendor/, worker — ES-модуль; worker.js: код ≤ 400 КБ, словари ≤ 400 КБ (К15)', () => {
+  it('модель NER (WP8): unlimitedStorage, wasm ORT в vendor/, worker — ES-модуль; worker.js: код ≤ 416 КиБ, словари ≤ 400 КБ (К15)', () => {
     const m = JSON.parse(strFromU8(zip['manifest.json']));
     expect(m.permissions).toContain('unlimitedStorage');
     const wasm = zip['vendor/ort-wasm-simd-threaded.wasm'];
@@ -83,7 +83,8 @@ describe('архив релиза', () => {
     console.log(`worker.js ${total} байт: ORT ${ortBytes}, словари ${dictBytes}, код ${total - ortBytes - dictBytes}`);
     expect(ortBytes, 'ORT встроен в worker.js (bundle-вариант, glue без внешнего .mjs)').toBeGreaterThan(50 * 1024);
     expect(dictBytes, 'словари ФИО в worker.js').toBeGreaterThan(100 * 1024);
-    expect(total - ortBytes - dictBytes, 'код worker.js без ORT и словарей').toBeLessThanOrEqual(400 * 1024);
+    // 0.4, WP11-E: правила по финальной проверке — лимит кода 400 → 416 КиБ (решение координатора)
+    expect(total - ortBytes - dictBytes, 'код worker.js без ORT и словарей').toBeLessThanOrEqual(416 * 1024);
     expect(dictBytes, 'словари ФИО').toBeLessThanOrEqual(400 * 1024);
     expect(Object.keys(zip).filter((n) => /ort-wasm.*\.mjs$/.test(n))).toEqual([]);
   });

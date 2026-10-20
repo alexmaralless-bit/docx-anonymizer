@@ -28,7 +28,7 @@
 //    В коммерческом режиме название правил, совпадающее с записью списка компаний (settings.maskedCompanies), выдаётся
 //    с source 'list' и canonical записи: строка панели — «из списка», метка общая с находками детектора company-list.js.
 
-import { findPersons } from './person.js';
+import { findPersons, TOPONYM_BEFORE_RE } from './person.js';
 import { findPersonsByDict } from './person-dict.js';
 import { findVocativeNames } from './vocative.js';
 import { findCompanies, companyCore } from './company.js';
@@ -362,6 +362,13 @@ const KIND_ORDER = { full: 0, pair: 1, initials: 2, fm: 3, other: 4 };
 const HONORIFIC_BEFORE = /(?:mr|mrs|ms|miss|dr|prof)\.?[ \u00A0]+$/i;
 
 /** Можно ли искать фамилию записи в одиночку (R-6). */
+/** Имя записи можно искать одним словом: не короче 3 букв, не нарицательное, не омоним («Вера», «Роман»). */
+function firstAloneOk(first) {
+  const f = lowerE(first || '');
+  if (f.length < 3 || COMMON_NOUNS.has(f) || isStopWord(f)) return false;
+  return !bigFirstNameInfo(f).some((x) => x.ambiguous);
+}
+
 function surnameAloneOk(rec) {
   return rec.surname.length >= 4 && !COMMON_NOUNS.has(rec.surname) && !isStopWord(rec.surname) && firstNameInfo(rec.surname).length === 0;
 }
@@ -398,6 +405,8 @@ function personMatches(r, a, text, allowSingle = r.party) {
     const honor = HONORIFIC_BEFORE.test(text.slice(Math.max(0, a[0].start - 8), a[0].start));
     return honor || surnameAloneOk(r);
   }
+  // имя одним словом у лица, полностью названного в документе («Victoria» после «Victoria Ashdown», WP11-E)
+  if (a.length === 1 && F(0) && allowSingle && r.surname && (r.kind === 'full' || r.kind === 'pair')) return firstAloneOk(r.first);
   return false;
 }
 
@@ -744,6 +753,8 @@ export function detectNamesAndKb(doc, entities, ctx = {}) {
             const a = tokenSeq(t, toks, i, n);
             if (!a) continue;
             const hits = partyPeople.filter((r) => r.latin === (a[0].script === 'lat') && personMatches(r, a, t, singleOk(r)));
+            // одно слово после «г.», «ул.», «им.» — топоним («г. Владимир»), а не имя лица (WP11-E)
+            if (n === 1 && TOPONYM_BEFORE_RE.test(t.slice(Math.max(0, a[0].start - 14), a[0].start))) continue;
             if (hits.length === 1) cands.push({ start: a[0].start, end: a[n - 1].end, category: 'PERSON', canonical: hits[0].canonical });
           }
           for (const r of partyPeople) {

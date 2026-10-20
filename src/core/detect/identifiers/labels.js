@@ -47,7 +47,10 @@ const EXTRA_LABELS = {
   SNILS: { ru: ['страховое свидетельство', 'снилс №'], en: [] },
   PASSPORT: { ru: ['паспорт №', 'серия и номер', 'серии', 'загранпаспорт', 'паспорт гражданина рф'], en: ['passport number', 'passport #'] },
   SSN: { ru: [], en: ['ssn #', 'social security no.'] },
-  TAXID: { ru: ['vat no.'], en: ['vat no.', 'vat number', 'vat id', 'tax number', 'tax identification'] },
+  TAXID: {
+    ru: ['vat no.'],
+    en: ['vat no.', 'vat number', 'vat id', 'vat reg.', 'vat reg. no.', 'vat registration number', 'vat registration no.', 'tax number', 'tax identification'],
+  },
   PHONE: {
     ru: ['тел', 'тел./факс', 'т/ф', 'моб', 'контактный телефон', 'номер телефона', 'whatsapp', 'viber', 'telegram'],
     en: ['telephone', 'cell', 'whatsapp', 'tel.', 'phone no.', 'phone number', 'mob'],
@@ -108,7 +111,10 @@ function compiled(catalog) {
  */
 export function labelHits(text, start, ctx = {}) {
   const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-  const w = text.slice(Math.max(lineStart, start - LABEL_WINDOW), start);
+  let w = text.slice(Math.max(lineStart, start - LABEL_WINDOW), start);
+  // значение в начале ячейки таблицы, слева в строке — ячейка-метка («Дата рождения | 17.11.1993», WP11-E): лейбл — её текст
+  const row = /** @type {any} */ (ctx)?.stream?.rowHeader;
+  if (row && /^[\s:—–-]*$/u.test(text.slice(lineStart, start))) w = `${String(row).trim().slice(-LABEL_WINDOW)} ${w}`;
   const hits = new Map();
   if (!w) return hits;
   for (const c of compiled(ctx.catalog)) {
@@ -186,6 +192,8 @@ export function goodsCodeContext(text, start, end, ctx = {}) {
   if (GOODS_KEYWORDS.some((g) => fits(g) && g.before.test(left))) return true;
   const header = ctx?.stream?.columnHeader;
   if (!header) return false;
+  // «ВЭД» один в заголовке столбца — код ТН ВЭД (в PDF «Код ТН» бывает склеен с соседним заголовком, WP11-E)
+  if (/^\s*вэд\s*$/iu.test(header)) return len === 10;
   const hits = GOODS_KEYWORDS.filter((g) => {
     g.word.lastIndex = 0;
     return g.word.test(header);

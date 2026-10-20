@@ -6,7 +6,7 @@ import { NER_LABEL_TO_CATEGORY } from '../contracts/ner.js';
 import { createOrgFilterContext, filterOrgSpans } from '../ner/filters.js';
 import { filterPersonLocSpans, orgStreetsAsLoc } from '../ner/filters-pl.js';
 import { resolveOverlaps } from './overlap.js';
-import { columnHeaders } from './tables.js';
+import { tableHeaders } from './tables.js';
 import { PlaceholderAllocator, resolvePlaceholderLanguage } from '../placeholders.js';
 
 const BOUNDARY_RE = /[\n\uFFFC]/;
@@ -89,11 +89,20 @@ export async function analyze(doc, settings, opts = {}) {
   progress('detect', 0);
   const detectors = getDetectors();
   const total = doc.streams.length || 1;
-  // заголовок столбца таблицы для ячеек: «Код ТН ВЭД» над числом — код товара, а не ИНН (WP11-D, detect/tables.js)
-  const headers = columnHeaders(doc);
+  // заголовки таблицы для ячеек (detect/tables.js): столбца — «Код ТН ВЭД» над числом — код товара, а не ИНН (WP11-D);
+  // строки — ячейка-метка слева: «Дата рождения | 17.11.1993» — значение помечено (WP11-E)
+  const headers = tableHeaders(doc);
   doc.streams.forEach((stream, i) => {
     if (stream.type === 'attr' && AUTHOR_KINDS.has(stream.attrKind || '')) return;
-    const info = { id: stream.id, part: stream.part, pid: stream.pid, type: stream.type, attrKind: stream.attrKind, columnHeader: headers.get(stream.pid) };
+    const info = {
+      id: stream.id,
+      part: stream.part,
+      pid: stream.pid,
+      type: stream.type,
+      attrKind: stream.attrKind,
+      columnHeader: headers.column.get(stream.pid),
+      rowHeader: headers.row.get(stream.pid),
+    };
     for (const [categoryId, list] of detectors) {
       if (!isEnabled(categoryId)) continue;
       const category = /** @type {any} */ (catalog.byId.get(categoryId));

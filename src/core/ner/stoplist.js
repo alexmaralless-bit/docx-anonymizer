@@ -16,7 +16,7 @@ export const STOP_ABBREVIATIONS = [
 РФ|РК|РБ|ЕАЭС|СНГ|ЕС|США|ЮЛ|ФЛ|ИП|НКО|СМИ|ЧаВо|FAQ|ПДн|ПД|СМС|NPS`),
   ...wordList(`MVP|API|CRM|ERP|SaaS|PaaS|IaaS|KPI|OKR|QR|PDF|DOCX|XLSX|PPTX|CSV|JSON|XML|HTML|CSS|SQL|URL
 IT|AI|ML|LLM|BI|UX|UI|UX/UI|UI/UX|SEO|SMM|PR|HR|B2B|B2C|B2G|ROI|SLA|NDA|SDK|VPN|SSL
-SMS|SMTP|HTTP|HTTPS|OCR|RPA|BPM|DevOps|QA|PM|CEO|CTO|CFO|ASAP|PS|TBD|N/A|Ltd|LLC|Inc`),
+SMS|SMTP|HTTP|HTTPS|OCR|RPA|BPM|DevOps|QA|PM|CEO|CTO|CFO|ASAP|PS|TBD|N/A|Ltd|LLC|Inc|KYC|AML|MSc|MBA|BSc|PhD|Confidential Information`),
 ];
 
 /** Программы, сервисы и платформы (продукты, а не стороны документа). */

@@ -24,7 +24,7 @@
 // Правила 2б, 4–6 и до 8 слов в правиле 3 — расширение §8.3 по прогону корпуса жанров с моделью 1.0.0 (scripts/eval-genres.mjs).
 // Чистый JS без chrome.* и DOM; значения документа в логи не попадают.
 import { buildStoplist, stopKey, BUILTIN_STOPLIST } from './stoplist.js';
-import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, lowerE } from '../detect/names/lexicon.js';
+import { PREFIX_FORMS, FULL_FORMS_RE_SRC, SUFFIX_FORMS_RE_SRC, isNeverMaskOrg, lowerE } from '../detect/names/lexicon.js';
 
 /** Виды блока, короткая строка которых — не название в тексте, а заголовок, пункт или ячейка (правило 1). */
 const SHORT_LINE_KINDS = new Set(['h1', 'h2', 'li', 'cell', 'heading']);
@@ -200,11 +200,16 @@ const CONNECTORS = new Set(['и', 'или', 'and', 'or', '&']);
 /** Слова спана для правил 2–4: по пробелам и разделителям перечисления. */
 const tokens = (span) => span.split(/[\s\u00a0,;/&+]+/).filter((x) => x && /[\p{L}\p{N}]/u.test(x));
 
+const DEGREE_LEAD_RE = /^(?:MSc|BSc|MBA|PhD|MA|BA|MPhil|LLM|LLB)[ \u00a0]/u;
 /** Правило 2: спан целиком из стоп-списка — сам по себе или каждым словом («Word и Excel», «Telegram/WhatsApp»). */
 export function isStoplisted(span, stoplist) {
   const key = stopKey(span);
   if (!key) return false;
   if (inStoplist(key, stoplist, span)) return true;
+  // спан начинается термином из стоп-списка из нескольких слов («Confidential Information secret») или учёной степенью
+  // («MSc Computer Science») (WP11-E)
+  for (const k of stoplist) if (k.includes(' ') && key.startsWith(`${k} `)) return true;
+  if (DEGREE_LEAD_RE.test(span)) return true;
   const parts = tokens(span).filter((x) => !CONNECTORS.has(lowerE(x)));
   return parts.length > 1 && parts.every((x) => inStoplist(stopKey(x), stoplist, x));
 }
@@ -329,6 +334,9 @@ export function filterOrgSpans(spans, ctx) {
       const end = Math.min(text.length, sp.end);
       if (end <= start) return false;
       const span = text.slice(start, end);
+      // бренд владельца не маскируется никогда (решение владельца 6, WP11-E): раньше ОПФ и родового слова — «ООО «Sitimlab»»,
+      // «Студия Sitimlab», «Компания Ситимлаб» тоже; слово бренда в спане — по `isNeverMaskOrg` (любой падеж)
+      if (isNeverMaskOrg(span) || (wholeWordAround(text, start, end) && isNeverMaskOrg(wholeWordAround(text, start, end)))) return false;
       // ОПФ — всегда название; стоп-список — раньше кавычек («в формате «Excel»» — продукт)
       if (hasOpf(text, start, end)) return true;
       const around = wholeWordAround(text, start, end);

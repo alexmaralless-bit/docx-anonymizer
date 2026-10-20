@@ -73,10 +73,11 @@ function component(text, lower, pos) {
   if ((m = sticky(RE_INDEX, text, pos))) return { end: pos + m.length, weight: 1, index: true };
   if ((m = sticky(RE_EN_STREET, text, pos))) return { end: pos + m.length, weight: 1, index: false };
   if ((m = sticky(RE_EN_ZIP_CITY, text, pos))) return { end: pos + m.length, weight: 2, index: true };
-  if ((m = sticky(RE_NUM_TYPED, lower, pos))) return { end: pos + m.length, weight: 1, index: false };
+  if ((m = sticky(RE_NUM_TYPED, lower, pos))) return { end: pos + m.length, weight: 1, index: false, kind: /^д(?:\.|ом)/u.test(m) ? 'house' : '' };
   if ((m = sticky(RE_NAME_TYPE, lower, pos))) {
     const name = sticky(RE_CAP_NAME, text, pos + m.length);
-    if (name) return { end: pos + m.length + name.replace(/[.,]$/, '').length, weight: 1, index: false };
+    const kind = CITY_TYPE_RE.test(m) ? 'city' : STREET_TYPE_RE.test(m) ? 'street' : '';
+    if (name) return { end: pos + m.length + name.replace(/[.,]$/, '').length, weight: 1, index: false, kind };
   }
   if ((m = sticky(RE_SUFFIX_TYPED, text, pos))) return { end: pos + m.length, weight: 1, index: false };
   if ((m = sticky(RE_EN_UNIT, text, pos))) return { end: pos + m.length, weight: 1, index: false };
@@ -86,6 +87,11 @@ function component(text, lower, pos) {
   return null;
 }
 
+/** Тип компонента для цепочки «г. Воронеж, ул. Липовая, д. 15» без метки и индекса (WP11-E). */
+const CITY_TYPE_RE = /^(?:г\.|гор\.|город)/u;
+const STREET_TYPE_RE =
+  /^(?:ул\.|улица|пер\.|переулок|пр-т|пр-кт|просп\.|проспект|пр\.|ш\.|шоссе|наб\.|набережная|б-р|бул\.|бульвар|пл\.|площадь|проезд|пр-д|туп\.|тупик|аллея|мкр)/u;
+
 /** Заполнитель внутри цепочки (страна, город без типа): веса не имеет. */
 function filler(text, pos) {
   const m = sticky(RE_COUNTRY, text, pos) || sticky(RE_CITY, text, pos);
@@ -94,18 +100,20 @@ function filler(text, pos) {
 
 /**
  * Цепочка компонентов, начиная с pos.
- * @returns {{start: number, end: number, weight: number, index: boolean} | null}
+ * @returns {{start: number, end: number, weight: number, index: boolean, full: boolean} | null}
  */
 function chainAt(text, lower, pos) {
   let p = pos;
   let weight = 0;
   let index = false;
   let end = -1;
+  const kinds = new Set();
   for (let guard = 0; guard < 40; guard++) {
     const c = component(text, lower, p);
     if (c) {
       weight += c.weight;
       index = index || c.index;
+      if (c.kind) kinds.add(c.kind);
       end = c.end;
       p = c.end;
     } else {
@@ -118,7 +126,8 @@ function chainAt(text, lower, pos) {
     if (!s) break;
     p += s.length;
   }
-  return end > pos ? { start: pos, end, weight, index } : null;
+  // город, улица и дом по типам — полный адрес и без индекса
+  return end > pos ? { start: pos, end, weight, index, full: kinds.size === 3 } : null;
 }
 
 /* ---------- адрес после метки и «Город, Улица 12-5» без типов (WP11-D, отложенный набор ревью) ---------- */
@@ -126,6 +135,8 @@ function chainAt(text, lower, pos) {
 /** Метки адреса в любой форме: «адрес», «по адресу», «проживающую», «зарегистрированный», «место жительства», «доставка»… */
 export const VALUE_LABEL_SRC = String.raw`(?<![\p{L}])(?:адрес\p{L}*|проживающ\p{L}*|проживает|проживаю|зарегистрирован\p{L}*|мест[оа](?:\s+|\u00A0)(?:жительства|регистрации|нахождения|проживания)|местонахождени\p{L}*|доставк\p{L}*|расположенн\p{L}*|находящ\p{L}*|address|lives\s+at|located\s+at|resides\s+at|residing\s+at|domiciled\s+at)(?![\p{L}])`;
 const VALUE_LABEL_RE = new RegExp(VALUE_LABEL_SRC, 'giu');
+// метка строки таблицы — короткая ячейка, которая кончается адресной меткой («Адрес регистрации», «Место жительства:»)
+const ROW_LABEL_RE = new RegExp(`(?:${VALUE_LABEL_SRC})[\\s:—–-]*$`, 'iu');
 /** Слова-типы внутри адреса со строчной: «г.», «ул.», «д.», «кв.», «область», «проспект», «flat», «de»… */
 const TYPE_WORD_RE = new RegExp(`^(?:${NAME_TYPES}|${NUM_TYPES}|${SUFFIX_TYPES}|по|на|de|du|la|le|del|di|da|van|von|flat|apt\\.?|suite|unit|floor)$`, 'iu');
 /** Сокращения, после точки которых предложение не кончается. */
@@ -153,35 +164,57 @@ function labeledValues(text) {
       const po = /^[ \u00A0]+по[ \u00A0]+адресу/iu.exec(tail);
       if (po) p += po[0].length;
     }
-    const sep = /^[ \u00A0\t:—–-]*/u.exec(text.slice(p));
-    p += sep ? sep[0].length : 0;
-    const start = p;
-    let end = start;
-    // слова значения по порядку: стоп на строчном слове не из типов, на «;», «|», «(», переводе строки, конце предложения
-    const WORD = /([\p{L}\p{N}][\p{L}\p{N}'’/-]*)(\.?)|([,])|([;|(\n])|(\s+[—–]\s+)|(\s+)|(.)/guy;
-    WORD.lastIndex = start;
-    let w;
-    let words = 0;
-    while ((w = WORD.exec(text))) {
-      if (w[4] || w[5] || w[7]) break;
-      if (w[3] || w[6]) continue;
-      const word = w[1];
-      const lowerStart = /^\p{Ll}/u.test(word);
-      if (lowerStart && !TYPE_WORD_RE.test(word + w[2]) && !TYPE_WORD_RE.test(word)) break;
-      end = w.index + word.length + (w[2] && (ABBR_BEFORE_DOT_RE.test(word) || TYPE_WORD_RE.test(word + '.')) ? 1 : 0);
-      words++;
-      // точка после обычного слова или числа — конец предложения
-      if (w[2] && !ABBR_BEFORE_DOT_RE.test(word) && !TYPE_WORD_RE.test(word + '.')) break;
-      if (end - start > 160) break;
-    }
-    // число в конце — дата или сумма («…Пролетарская 12, 15 сентября»), а не номер дома: не в адресе
-    const num = /,[ \u00A0]*\d{1,4}$/u.exec(text.slice(start, end));
-    if (num && NOT_HOUSE_AFTER_RE.test(text.slice(end, end + 12))) end -= num[0].length;
-    const value = text.slice(start, end);
-    if (words >= 2 && /\d/.test(value) && /(?:^|[\s,])(?:\p{Lu}|(?:г|ул|д|пр-т|обл)\.)/u.test(value)) out.push({ start, end });
+    const v = valueAt(text, p);
+    if (v) out.push(v);
   }
   return out;
 }
+
+/**
+ * Значение адреса с позиции p (после метки или в начале ячейки под меткой строки): слова до строчного не из типов адреса,
+ * «;», «|», «(», перевода строки, конца предложения; с цифрой и словом с заглавной или типом адреса.
+ * @param {string} text @param {number} p
+ * @returns {{start: number, end: number} | null}
+ */
+function valueAt(text, p) {
+  const sep = /^[ \u00A0\t:—–-]*/u.exec(text.slice(p));
+  p += sep ? sep[0].length : 0;
+  const start = p;
+  let end = start;
+  // слова значения по порядку: стоп на строчном слове не из типов, на «;», «|», «(», переводе строки, конце предложения
+  const WORD = /([\p{L}\p{N}][\p{L}\p{N}'’/-]*)(\.?)|([,])|([;|(\n])|(\s+[—–]\s+)|(\s+)|(.)/guy;
+  WORD.lastIndex = start;
+  let w;
+  let words = 0;
+  while ((w = WORD.exec(text))) {
+    if (w[4] || w[5] || w[7]) break;
+    if (w[3] || w[6]) continue;
+    const word = w[1];
+    const lowerStart = /^\p{Ll}/u.test(word);
+    if (lowerStart && !TYPE_WORD_RE.test(word + w[2]) && !TYPE_WORD_RE.test(word)) break;
+    end = w.index + word.length + (w[2] && (ABBR_BEFORE_DOT_RE.test(word) || TYPE_WORD_RE.test(word + '.')) ? 1 : 0);
+    words++;
+    // точка после обычного слова или числа — конец предложения
+    if (w[2] && !ABBR_BEFORE_DOT_RE.test(word) && !TYPE_WORD_RE.test(word + '.')) break;
+    if (end - start > 160) break;
+  }
+  // число в конце — дата или сумма («…Пролетарская 12, 15 сентября»), а не номер дома: не в адресе
+  const num = /,[ \u00A0]*\d{1,4}$/u.exec(text.slice(start, end));
+  if (num && NOT_HOUSE_AFTER_RE.test(text.slice(end, end + 12))) end -= num[0].length;
+  const value = text.slice(start, end);
+  return words >= 2 && /\d/.test(value) && /(?:^|[\s,])(?:\p{Lu}|(?:г|ул|д|пр-т|обл)\.)/u.test(value) ? { start, end } : null;
+}
+
+/**
+ * Европейский адрес «Улица N, NNNN[-NNN] Город[, Страна]» (WP11-E): «Strandveien 61, 0252 Oslo, Norway», «Rua das Flores 112,
+ * 1200-195 Lisboa, Portugal», «Hauptstraße 5, 10115 Berlin». Индекс 4–5 цифр (португальский — с «-NNN») сразу перед городом.
+ */
+const LAT_UP = '(?:(?=\\p{sc=Latin})\\p{Lu})';
+const LAT_WORD = `${LAT_UP}[\\p{L}'’-]+`;
+const EU_ADDRESS_RE = new RegExp(
+  `(?<![\\p{L}\\p{N}])${LAT_WORD}(?:${W}+(?:(?:de|da|das|do|dos|del|della|di|du|la|le|van|von|der)${W}+)?${LAT_WORD}){0,3}${W}+\\d{1,3}[A-Za-z]?,${W}+\\d{4,5}(?:-\\d{3})?${W}+${LAT_WORD}(?:,${W}+(?:Norway|Portugal|Spain|France|Germany|Italy|Austria|Switzerland|Sweden|Denmark|Finland|Netherlands|Belgium|Poland|Czechia|Czech Republic|Greece|Ireland|Luxembourg|Estonia|Latvia|Lithuania|Hungary|Slovakia|Slovenia|Croatia|Romania|Bulgaria))?(?![\\p{L}\\p{N}])`,
+  'gu',
+);
 
 /** «Тольятти, Революционная 52-14», «Москва, Тверская 12»: город, улица с заглавной и номер дома — без «г.», «ул.», «д.». */
 const CITY_STREET_RE = new RegExp(
@@ -191,19 +224,38 @@ const CITY_STREET_RE = new RegExp(
 
 /**
  * @param {string} text
+ * @param {{rowLabel?: boolean}} [opts]  rowLabel — ячейка таблицы под адресной меткой строки («Адрес регистрации | …», WP11-E)
  * @returns {{start: number, end: number, confidence: 'labeled'|'weak', components: number}[]}
  */
-export function findAddresses(text) {
+export function findAddresses(text, opts = {}) {
   const out = chainAddresses(text);
   // значение после метки: шире цепочки — заменяет её (адрес закрыт целиком), иначе — добавляется
   const extra = [];
-  for (const v of labeledValues(text)) {
+  const values = labeledValues(text);
+  if (opts.rowLabel) {
+    const v = valueAt(text, 0);
+    if (v) values.unshift(v);
+  }
+  for (const v of values) {
     if (extra.some((a) => a.start < v.end && v.start < a.end)) continue; // «проживающую по адресу» — две метки, одно значение
     const inner = out.filter((a) => a.start >= v.start && a.end <= v.end);
-    if (out.some((a) => a.start <= v.start && a.end >= v.end)) continue;
+    // цепочка уже покрывает значение — она под меткой: уровень labeled
+    const cover = out.find((a) => a.start <= v.start && a.end >= v.end);
+    if (cover) {
+      cover.confidence = 'labeled';
+      continue;
+    }
     if (out.some((a) => a.start < v.end && v.start < a.end && !inner.includes(a))) continue;
     for (const a of inner) out.splice(out.indexOf(a), 1);
     extra.push({ start: v.start, end: v.end, confidence: /** @type {const} */ ('labeled'), components: 2 });
+  }
+  for (const m of text.matchAll(EU_ADDRESS_RE)) {
+    const start = /** @type {number} */ (m.index);
+    const end = start + m[0].length;
+    // «Section 12, 2026 Report»: шаблонные слова документа — не улица и не город
+    if ((m[0].match(/\p{L}+/gu) || []).some((w) => isStopWord(w) || /^(?:report|items?|pages?|figure|table|version|release|invoice|order)$/i.test(w))) continue;
+    if ([...out, ...extra].some((a) => a.start < end && start < a.end)) continue;
+    extra.push({ start, end, confidence: /** @type {const} */ ('weak'), components: 3 });
   }
   for (const m of text.matchAll(CITY_STREET_RE)) {
     const start = /** @type {number} */ (m.index);
@@ -214,7 +266,13 @@ export function findAddresses(text) {
     extra.push({ start, end, confidence: /** @type {const} */ ('weak'), components: 2 });
   }
   // дом, квартира, корпус после запятой: «…проспект Октября, 48, кв. 17», «…шоссе 35, строение 2» (WP11-D, ревью 3)
-  return [...out, ...extra].map((a) => ({ ...a, end: addressTailEnd(text, a.end) })).sort((a, b) => a.start - b.start);
+  return [...out, ...extra].map((a) => ({ ...a, start: indexBefore(text, a.start), end: addressTailEnd(text, a.end) })).sort((a, b) => a.start - b.start);
+}
+
+/** Индекс прямо перед адресом: «614068, Пермь, Екатерининская, 163» (WP11-E). */
+function indexBefore(text, start) {
+  const m = /(?<![\p{L}\p{N}])\d{6},?[ \u00A0]*$/u.exec(text.slice(Math.max(0, start - 10), start));
+  return m ? start - m[0].length : start;
 }
 
 /** Слова после числа, при которых оно не номер дома: даты, годы, суммы, штуки. */
@@ -223,7 +281,7 @@ export const NOT_HOUSE_SRC =
 const NOT_HOUSE_AFTER_RE = new RegExp(`^${W}*(?:${NOT_HOUSE_SRC})`, 'iu');
 /** Часть адреса после запятой: «, 48», «, кв. 17», «, корпус 2», «, строение 2», «, подъезд 3» (не дата и не сумма). */
 const ADDRESS_TAIL_RE = new RegExp(
-  `^,${W}*(?:(?:кв\\.|квартира|корп\\.|корпус|к\\.|стр\\.|строение|оф\\.|офис|пом\\.|помещение|подъезд|под\\.|эт\\.|этаж|литера|лит\\.)${W}*\\d{1,4}[а-я]?|\\d{1,3}[а-я]?(?:[/-]\\d{1,3}[а-я]?)?)(?![\\p{L}\\d]|[.,:]\\d|${W}*(?:${NOT_HOUSE_SRC}))`,
+  `^,${W}*(?:(?:д\\.|дом|кв\\.|квартира|корп\\.|корпус|к\\.|стр\\.|строение|оф\\.|офис|пом\\.|помещение|подъезд|под\\.|эт\\.|этаж|литера|лит\\.)${W}*\\d{1,4}[а-я]?|\\d{1,3}[а-я]?(?:[/-]\\d{1,3}[а-я]?)?)(?![\\p{L}\\d]|[.,:]\\d|${W}*(?:${NOT_HOUSE_SRC}))`,
   'iu',
 );
 
@@ -256,7 +314,7 @@ function chainAddresses(text) {
     if (!ch || ch.weight < 2) continue;
     const labeled = hasLabelBefore(text, pos, LABEL_RE);
     if (labeled) out.push({ start: ch.start, end: ch.end, confidence: 'labeled', components: ch.weight });
-    else if (ch.weight >= 3 && ch.index) out.push({ start: ch.start, end: ch.end, confidence: 'weak', components: ch.weight });
+    else if (ch.weight >= 3 && (ch.index || ch.full)) out.push({ start: ch.start, end: ch.end, confidence: 'weak', components: ch.weight });
     else continue;
     starts.lastIndex = ch.end;
   }
@@ -264,6 +322,13 @@ function chainAddresses(text) {
 }
 
 /** Потоковый детектор ADDRESS (контракт §2). */
-export function detectAddress(text) {
-  return findAddresses(text).map((a) => ({ start: a.start, end: a.end, confidence: a.confidence, source: a.confidence === 'labeled' ? 'label' : 'rule' }));
+export function detectAddress(text, ctx) {
+  const row = ctx?.stream?.rowHeader;
+  const rowLabel = !!row && row.length <= 50 && (ROW_LABEL_RE.test(row) || LABEL_RE.test(`${row.trim()} `));
+  return findAddresses(text, { rowLabel }).map((a) => ({
+    start: a.start,
+    end: a.end,
+    confidence: a.confidence,
+    source: a.confidence === 'labeled' ? 'label' : 'rule',
+  }));
 }

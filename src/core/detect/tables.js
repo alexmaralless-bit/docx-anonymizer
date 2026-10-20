@@ -53,28 +53,81 @@ export function docxCells(xml) {
  * @returns {Map<string, string>} pid абзаца → текст ячейки первой строки того же столбца
  */
 export function columnHeaders(doc) {
+  return tableHeaders(doc).column;
+}
+
+/**
+ * Заголовки столбца и строки для абзацев ячеек: `column` — текст ячейки первой строки того же столбца (для ячеек ниже неё),
+ * `row` — текст ближайшей непустой ячейки слева в той же строке («Дата рождения | 17.11.1993», WP11-E).
+ * @param {import('../docx/model.js').DocModel} doc
+ * @returns {{column: Map<string, string>, row: Map<string, string>}}
+ */
+export function tableHeaders(doc) {
   /** @type {Map<string, string>} */
   const out = new Map();
+  /** @type {Map<string, string>} */
+  const rowOut = new Map();
   const textOf = (p) => (p?.streams?.live && doc.streamById?.get(p.streams.live)?.text) || '';
   /** @param {{pid: string, key: string, row: number, text: string}[]} cells */
   const assign = (cells) => {
-    /** @type {Map<string, {row: number, texts: string[]}>} */
+    // строки заголовка — все строки таблицы до первой, где есть цифра (заголовок PDF переносится на две строки:
+    // «Код ТН» / «ВЭД», WP11-E); первая строка — заголовок всегда
+    /** @type {Map<string, number>} */
+    const firstData = new Map();
+    const tableOf = (c) => c.key.split(':')[0];
+    const top = new Map();
+    for (const c of cells) top.set(tableOf(c), Math.min(top.get(tableOf(c)) ?? Infinity, c.row));
+    for (const c of cells) {
+      if (!/\d/.test(c.text)) continue;
+      const t = tableOf(c);
+      firstData.set(t, Math.min(firstData.get(t) ?? Infinity, c.row));
+    }
+    const headRows = (t) => Math.max((top.get(t) ?? 0) + 1, firstData.get(t) ?? (top.get(t) ?? 0) + 1);
+    /** @type {Map<string, {row: number, text: string}[]>} */
     const head = new Map();
     for (const c of cells) {
-      const h = head.get(c.key);
-      if (!h || c.row < h.row) head.set(c.key, { row: c.row, texts: [c.text] });
-      else if (c.row === h.row) h.texts.push(c.text);
+      if (c.row >= headRows(tableOf(c))) continue;
+      let h = head.get(c.key);
+      if (!h) head.set(c.key, (h = []));
+      h.push({ row: c.row, text: c.text });
     }
     for (const c of cells) {
       const h = head.get(c.key);
-      if (h && c.row > h.row) out.set(c.pid, h.texts.join(' ').trim());
+      if (h && c.row >= headRows(tableOf(c)))
+        out.set(
+          c.pid,
+          h
+            .sort((a, b) => a.row - b.row)
+            .map((x) => x.text)
+            .join(' ')
+            .trim(),
+        );
+    }
+    // ячейка слева в той же строке: ближайшая по номеру столбца, с текстом
+    /** @type {Map<string, Map<number, string[]>>} */
+    const rows = new Map();
+    for (const c of cells) {
+      const rk = `${c.key.split(':')[0]}:${c.row}`;
+      let r = rows.get(rk);
+      if (!r) rows.set(rk, (r = new Map()));
+      const col = Number(c.key.split(':')[1]);
+      if (!r.has(col)) r.set(col, []);
+      /** @type {string[]} */ (r.get(col)).push(c.text);
+    }
+    for (const c of cells) {
+      const r = rows.get(`${c.key.split(':')[0]}:${c.row}`);
+      const col = Number(c.key.split(':')[1]);
+      let best = -1;
+      for (const [k, texts] of r || []) if (k < col && k > best && texts.join(' ').trim()) best = k;
+      const left = best >= 0 ? r?.get(best) : undefined;
+      if (left) rowOut.set(c.pid, left.join(' ').trim());
     }
   };
   if (Array.isArray(doc?.blocks)) {
     const cells = [];
     for (const b of doc.blocks) if (b.table && b.pid) cells.push({ pid: b.pid, key: `${b.table.index}:${b.table.col}`, row: b.table.row, text: b.text });
     assign(cells);
-    return out;
+    return { column: out, row: rowOut };
   }
   const byPart = new Map();
   for (const p of doc?.paragraphs || []) {
@@ -107,5 +160,5 @@ export function columnHeaders(doc) {
     }
     assign(cells);
   }
-  return out;
+  return { column: out, row: rowOut };
 }

@@ -69,7 +69,8 @@ describe('правила и база лиц', () => {
         }),
     });
     const doc = docFromParagraphs(paras);
-    expect(persons(await analyze(doc, defaultSettings()))).toEqual([]);
+    // WP11-E: «Нурланову О.» без модели — «Фамилия И.» по суффиксу фамилии (К11: было ни одного лица)
+    expect(persons(await analyze(doc, defaultSettings()))).toEqual(['Нурланову О.']);
     const r = await analyze(doc, defaultSettings(), { nerProvider: stub(['Олжас Нурланов', 'Priya Raghunathan']) });
     expect(persons(r).sort()).toEqual(['Олжас Нурланов', 'Нурланову О.', 'Нурланов', 'Priya Raghunathan', 'Raghunathan'].sort());
   });

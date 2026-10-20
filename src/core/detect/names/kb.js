@@ -29,6 +29,7 @@
 //    с source 'list' и canonical записи: строка панели — «из списка», метка общая с находками детектора company-list.js.
 
 import { findPersons, TOPONYM_BEFORE_RE } from './person.js';
+import { tableHeaders } from '../tables.js';
 import { findPersonsByDict } from './person-dict.js';
 import { findVocativeNames } from './vocative.js';
 import { findCompanies, companyCore } from './company.js';
@@ -504,6 +505,14 @@ function parseModelPerson(text) {
   return null;
 }
 
+/** Метка строки таблицы для лица (WP11-E): «Фамилия», «Имя», «Отчество», «ФИО», «Surname», «First name», «Full name». */
+const ROW_PERSON_LABEL_RE =
+  /^(?:фамилия|имя|отчество|фио|ф\.\s*и\.\s*о\.?|фамилия,?\s+имя,?\s+отчество|first\s+name|last\s+name|surname|given\s+name|family\s+name|full\s+name|name)(?:\s*\(.*\))?\s*:?$/iu;
+/** Значение ячейки — одно слово с заглавной (вся ячейка). */
+const ROW_ONE_NAME_RE = /^\s*(\p{Lu}[\p{Ll}'’-]+(?:-\p{Lu}[\p{Ll}'’-]+)?)\s*$/u;
+/** Значение ячейки — до трёх слов с заглавной (вся ячейка). */
+const ROW_FULL_NAME_RE = /^\s*(\p{Lu}[\p{Ll}'’-]+(?:[ \u00A0]+\p{Lu}[\p{Ll}'’.-]*){0,2})\s*$/u;
+
 /* ---------------- детектор ---------------- */
 
 /**
@@ -699,8 +708,30 @@ export function detectNamesAndKb(doc, entities, ctx = {}) {
     occupy(o.stream.id, o.span);
   }
 
+  // 4г. Значение под меткой строки таблицы «Фамилия | Чернышева», «Имя | Ангелина», «ФИО | Иванов Иван Иванович», «Surname |
+  //     Smith» (анкеты; WP11-E): одно слово с заглавной, ФИО и полное имя — до 3 слов; PERSON labeled
+  if (wantP) {
+    const rows = tableHeaders(doc).row;
+    for (const s of streams) {
+      const head = s.type === 'live' && s.pid ? rows.get(s.pid) : undefined;
+      if (!head || head.length > 30) continue;
+      const lab = ROW_PERSON_LABEL_RE.exec(head.trim());
+      if (!lab) continue;
+      const many = /фио|ф\.\s*и\.\s*о|full/iu.test(lab[0]);
+      const m = (many ? ROW_FULL_NAME_RE : ROW_ONE_NAME_RE).exec(s.text);
+      if (!m) continue;
+      const begin = m.index + m[0].indexOf(m[1]);
+      const span = { start: begin, end: begin + m[1].length };
+      if ((occupied.get(s.id) || []).some((b) => overlaps(b, span))) continue;
+      out.push({ streamId: s.id, category: 'PERSON', start: span.start, end: span.end, confidence: 'labeled', source: 'label' });
+      occupy(s.id, span);
+    }
+  }
+
   // 4в. Обращение одним именем в начале реплики или письма (WP11-D, vocative.js): «Елена, спасибо…» — PERSON уровня kb;
   //     canonical — единственная запись о лице с этим именем («Елена Тихонова»), иначе своя метка
+  /** @type {Map<string, string>} имя обращения без записи лица → canonical */
+  const addressed = new Map();
   if (dictOn) {
     for (const s of streams) {
       if (s.type !== 'live' || !s.text) continue;
@@ -711,6 +742,25 @@ export function detectNamesAndKb(doc, entities, ctx = {}) {
         const canonical = hits.size === 1 ? [...hits][0] : undefined;
         out.push({ streamId: s.id, category: 'PERSON', start: v.start, end: v.end, confidence: 'kb', source: 'kb', ...(canonical ? { canonical } : {}) });
         occupy(s.id, v);
+        if (v.script === 'cyr' && !canonical) addressed.set(low, canonical || low);
+      }
+    }
+    // WP11-E: имя, которым человек подписан или к которому обращаются («Арсений, [дата]», «Арсений, заберёшь…»), —
+    // и в косвенном падеже в том же документе («передам через Арсения»); только имена не омонимы
+    for (const [name, canonical] of addressed) {
+      const forms = new Set();
+      for (const fi of bigFirstNameInfo(name))
+        if (!fi.ambiguous) for (const f of firstNameForms(fi.lemma, fi.gender)) if (f !== name && f.length >= 4) forms.add(f);
+      if (!forms.size) continue;
+      for (const s of streams) {
+        if (s.type !== 'live' || !s.text) continue;
+        for (const t of tokCache.get(s.id) || tokenize(s.text)) {
+          if (t.t !== 'W' || t.script !== 'cyr' || t.caps || !forms.has(lowerE(t.text))) continue;
+          if ((occupied.get(s.id) || []).some((b) => overlaps(b, t))) continue;
+          if (TOPONYM_BEFORE_RE.test(s.text.slice(Math.max(0, t.start - 14), t.start))) continue;
+          out.push({ streamId: s.id, category: 'PERSON', start: t.start, end: t.end, confidence: 'kb', source: 'kb', canonical });
+          occupy(s.id, t);
+        }
       }
     }
   }

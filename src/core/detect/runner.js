@@ -169,7 +169,8 @@ export async function analyze(doc, settings, opts = {}) {
           spans = [...others, ...orgs];
         }
         // WP11-D: ложные PER/LOC модели (формулы вежливости, служебные слова, продукты; LOC вне адреса — не ПДн)
-        if (spans.some((sp) => sp.label === 'PER' || sp.label === 'LOC')) spans = filterPersonLocSpans(spans, { ...nerCtx, text: s.text, blockKind });
+        if (spans.some((sp) => sp.label === 'PER' || sp.label === 'LOC'))
+          spans = filterPersonLocSpans(spans, { ...nerCtx, text: s.text, blockKind, columnHeader: headers.column.get(s.pid) });
         for (const sp of spans) {
           const cat = NER_LABEL_TO_CATEGORY[sp.label];
           if (cat) accept({ start: sp.start, end: sp.end, confidence: 'ner', source: 'ner', score: sp.score }, cat, s, 'ner');

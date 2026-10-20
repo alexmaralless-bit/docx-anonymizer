@@ -24,7 +24,7 @@
 // Чистый JS без chrome.* и DOM; значения документа в логи не попадают.
 import { BUILTIN_STOPLIST, stopKey } from './stoplist.js';
 import { isCapsLine, isStoplisted, wholeWordAround, inStoplist } from './filters.js';
-import { lowerE, wordList, isNeverMaskOrg } from '../detect/names/lexicon.js';
+import { lowerE, wordList, isNeverMaskOrg, isStopWord, isRoleNoun, ROLE_WORDS } from '../detect/names/lexicon.js';
 import { addressTailEnd, NOT_HOUSE_SRC, VALUE_LABEL_SRC } from '../detect/names/address.js';
 import { patronymicInfo, firstNameInfo } from '../detect/names/morph.js';
 import { bigFirstNameInfo, surnameLemmas, surnameSuffixInfo, isEnFirst, isEnSurname } from '../detect/names/dict/index.js';
@@ -115,6 +115,24 @@ export function nameLike(word, next = '.', strict = false) {
   return surnameLemmas(w).length > 0 || (!strict && (surnameSuffixInfo(w) || []).length > 0);
 }
 
+/** Соседний LOC через запятую или «и»: спан — элемент перечисления мест. */
+function inPlaceList(spans, sp, text, start, end) {
+  return spans.some(
+    (o) => o !== sp && o.label === 'LOC' && LIST_GAP_RE.test(o.start >= end ? text.slice(end, o.start) : o.end <= start ? text.slice(o.end, start) : 'x'),
+  );
+}
+/** Между соседними местами перечисления — только запятая или «и»: «Москва, Тверь, Клин», «Казань и Пермь». */
+const LIST_GAP_RE = /^[ \u00a0]*(?:,|и|and)[ \u00a0]*$/u;
+/** Столбец таблицы с местами: PER модели в его ячейке — город («Хошимин»), а не человек. */
+const PLACE_COLUMN_RE = /(?<![\p{L}])(?:город|населённый пункт|населенный пункт|регион|страна|city|town|country|region)(?![\p{L}])/iu;
+/** Роль стороны договора в косвенном падеже: «Займодавца», «Заёмщика», «Арендодателю». */
+const ROLE_FORM_RE =
+  /^(?:займодав|заимодав|заемщик|арендодател|арендатор|наймодател|нанимател|поручител|залогодател|залогодержател|доверител|поверенн|исполнител|заказчик|подрядчик|поставщик|покупател|продав)/u;
+/** Фамилия-прилагательное в косвенном падеже: «Пролетарским», «Октябрьского». */
+const ADJ_SURNAME_RE = /(?:ским|ского|скому|ском|цким|цкого|цкому|цком|ской|ную|ным|ного|ному)$/u;
+/** Следом — прилагательное со строчной («районным судом»): словосочетание, а не имя. */
+const ADJ_NEXT_RE = /^[ \u00a0]+\p{Ll}+(?:ым|им|ого|его|ому|ему|ой|ей|ом|ем|ая|яя|ую|юю|ые|ие|ых|их)(?![\p{L}])/u;
+
 /** Имя-омоним нарицательного (Вера, Надежда, Любовь, Роза, Слава, Роман…). */
 function homonymName(word) {
   const infos = bigFirstNameInfo(lowerE(word));
@@ -155,14 +173,17 @@ function givenNameLike(word, next = '.') {
 // «Невский, 90», «Baker Street, 221b»; не дата «, 15 сентября».
 const ADDRESS_STRONG_RE = new RegExp(
   [
-    '(?<!\\d)\\d{6}(?!\\d)',
+    // индекс — не число после тире или «=» («Объём — 145000, Казань», ловушка WP11-E)
+    '(?<![—–=-][ \\t\\u00a0]*)(?<!\\d)\\d{6}(?!\\d)',
     '(?<![\\p{L}])(?:ул|пер|пр|просп|пр-т|наб|пл|ш|мкр|б-р)\\.',
     '(?<![\\p{L}])(?:д|кв|оф|стр|корп|пом)\\.?[ \\t\\u00a0]*\\d',
-    '(?<![\\p{L}])(?:улица|улицы|улице|дом|дома|офис|офиса|квартира|проспект|переулок|набережная|шоссе|бульвар|пр-т|строение|корпус)(?![\\p{L}])',
+    '(?<![\\p{L}])(?:улица|улицы|улице|проспект|переулок|набережная|шоссе|бульвар|пр-т)(?![\\p{L}])',
+    // «дом», «офис», «квартира», «корпус» — только с номером («офис остаётся здесь» — не адрес, ловушка WP11-E)
+    '(?<![\\p{L}])(?:дом|дома|офис|офиса|квартира|строение|корпус)[ \\t\\u00a0]*№?[ \\t\\u00a0]*\\d',
     '(?<![\\p{L}])(?:street|st\\.|road|rd\\.|avenue|ave\\.|lane|drive|boulevard|square|suite|floor)(?![\\p{L}])',
     '\\b[A-Z]{1,2}\\d[A-Z\\d]? ?\\d[A-Z]{2}\\b',
-    '(?<![\\p{L}\\d])\\d{5}(?:-\\d{4})?(?!\\d)',
-    ',[ \\t\\u00a0]*\\d{1,3}[а-яa-z]?(?:\\/\\d{1,3})?(?![\\d.:,])(?![ \\t\\u00a0]*(?:' + NOT_HOUSE_SRC + '))',
+    '(?<![—–=-][ \\t\\u00a0]*)(?<![\\p{L}\\d])\\d{5}(?:-\\d{4})?(?!\\d)',
+    '(?<!\\d),[ \\t\\u00a0]*\\d{1,3}[а-яa-z]?(?:\\/\\d{1,3})?(?!\\d|[.:,]\\d)(?![ \\t\\u00a0]*(?:' + NOT_HOUSE_SRC + '))',
   ].join('|'),
   'iu',
 );
@@ -176,7 +197,12 @@ const HOUSE_AFTER_RE = new RegExp(`^[ \\t\\u00a0]+\\d{1,3}[а-яa-z]?(?:[/-]\\d{
  * @param {string} text @param {number} start @param {number} end
  */
 export function hasAddressContext(text, start, end) {
-  const win = text.slice(Math.max(0, start - ADDRESS_WINDOW), end + ADDRESS_WINDOW);
+  // окно не режет слово или число («145000» на краю окна — не «14500», ловушка WP11-E)
+  let a = Math.max(0, start - ADDRESS_WINDOW);
+  let b = Math.min(text.length, end + ADDRESS_WINDOW);
+  while (a > 0 && /[\p{L}\p{N}]/u.test(text[a - 1])) a--;
+  while (b < text.length && /[\p{L}\p{N}]/u.test(text[b])) b++;
+  const win = text.slice(a, b);
   // «Тверская 12-5», «Лесную 14», «Ленина 54/2»: номер дома сразу после места
   return ADDRESS_STRONG_RE.test(win) || ADDRESS_LABEL_RE.test(win) || !!houseAfter(text, end);
 }
@@ -259,6 +285,14 @@ export function filterPersonLocSpans(spans, ctx) {
       if (isLowerWord(words[0])) continue;
     }
     if (words.length === 1 && ROMAN_RE.test(words[0])) continue;
+    // WP11-E (ловушки финальной проверки): одно слово — шаблонное слово договора или роль стороны («Займодавец»,
+    // «Займодавца»); в столбце «Город»/«City» — место, а не человек («Хошимин»)
+    if (words.length === 1 && (isRoleNoun(words[0]) || ROLE_WORDS.has(lowerE(words[0])) || ROLE_FORM_RE.test(lowerE(words[0])))) continue;
+    // шаблонное слово — только для PER: города («Москва») в словаре шаблонных слов есть, а LOC решает адресный контекст
+    if (per && words.length === 1 && isStopWord(words[0])) continue;
+    if (per && words.length === 1 && PLACE_COLUMN_RE.test(ctx?.columnHeader || '')) continue;
+    // PER модели одним словом в перечислении мест («Москва, Тверь, Клин» — «Клин» как PER, ловушка WP11-E)
+    if (per && words.length === 1 && inPlaceList(spans, sp, text, start, end)) continue;
     // 3. одно слово со строчной буквы
     if (words.length === 1 && isLowerWord(words[0])) continue;
     if (sp.label === 'LOC') {
@@ -270,7 +304,13 @@ export function filterPersonLocSpans(spans, ctx) {
         if (
           words.length === 1 &&
           (surnameMorph(words[0]) || strongFirstName(words[0])) &&
-          !/(?<![\p{L}])(?:г|гор|пос|с|дер|ст)\.[ \u00a0]*$/u.test(text.slice(Math.max(0, start - 6), start))
+          !/(?<![\p{L}])(?:г|гор|пос|с|дер|ст)\.[ \u00a0]*$/u.test(text.slice(Math.max(0, start - 6), start)) &&
+          // перечисление мест («Москва, Тверь, Клин») — место, а не человек (ловушка WP11-E)
+          !inPlaceList(spans, sp, text, start, end) &&
+          // «на Тверской», «у Садовой» — улица-прилагательное, а не фамилия
+          !/(?:ск|цк)(?:ой|ая|ую|ие)$/u.test(lowerE(words[0])) &&
+          !PLACE_COLUMN_RE.test(ctx?.columnHeader || '') &&
+          !(ADJ_SURNAME_RE.test(lowerE(words[0])) && ADJ_NEXT_RE.test(text.slice(end, end + 30)))
         )
           out.push({ ...sp, start, end, label: 'PER' });
         continue;
@@ -290,6 +330,10 @@ export function filterPersonLocSpans(spans, ctx) {
         if (trimmed || caps || (words.length === 1 && line)) continue;
       }
     }
+    // «Пролетарским районным судом»: прилагательное перед прилагательным со строчной — не фамилия (ловушка WP11-E)
+    if (per && words.length === 1 && ADJ_SURNAME_RE.test(lowerE(words[0])) && ADJ_NEXT_RE.test(text.slice(end, end + 30))) continue;
+    // «Роман, который мы обсуждали…» — омоним с придаточным: вещь, а не человек (ловушка WP11-E)
+    if (per && words.length === 1 && homonymName(words[0]) && /^[ \u00a0]*,[ \u00a0]*котор/u.test(text.slice(end, end + 15))) continue;
     // 6. Омоним нарицательного в начале предложения перед предлогом или в перечислении («Вера в продукт», «Роман о жизни»,
     //    «Любовь к делу», «Вера, надежда, любовь»), если в документе нет человека с этим именем («Вера Лукина») — не имя
     if (per && words.length === 1 && homonymName(words[0]) && sentenceStart(text, start) && !ctx?.pairedWords?.has(lowerE(words[0]))) {

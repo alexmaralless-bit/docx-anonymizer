@@ -49,7 +49,34 @@ const EXTRA_LABELS = {
   SSN: { ru: [], en: ['ssn #', 'social security no.'] },
   TAXID: {
     ru: ['vat no.'],
-    en: ['vat no.', 'vat number', 'vat id', 'vat reg.', 'vat reg. no.', 'vat registration number', 'vat registration no.', 'tax number', 'tax identification'],
+    en: [
+      'vat no.',
+      'vat number',
+      'vat id',
+      'vat reg.',
+      'vat reg. no.',
+      'vat registration number',
+      'vat registration no.',
+      'tax number',
+      'tax identification',
+      // европейские метки (WP11-E): Германия, Австрия, Швейцария, Франция, Испания и Португалия, Италия
+      'ust-idnr.',
+      'ust-id-nr.',
+      'ust-id',
+      'ust.-idnr.',
+      'umsatzsteuer-identifikationsnummer',
+      'uid',
+      'uid-nr.',
+      'steuernummer',
+      'steuer-nr.',
+      'tva',
+      'n° tva',
+      'nif',
+      'nipc',
+      'p.iva',
+      'p. iva',
+      'partita iva',
+    ],
   },
   PHONE: {
     ru: ['тел', 'тел./факс', 'т/ф', 'моб', 'контактный телефон', 'номер телефона', 'whatsapp', 'viber', 'telegram'],
@@ -111,15 +138,23 @@ function compiled(catalog) {
  */
 export function labelHits(text, start, ctx = {}) {
   const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-  let w = text.slice(Math.max(lineStart, start - LABEL_WINDOW), start);
-  // значение в начале ячейки таблицы, слева в строке — ячейка-метка («Дата рождения | 17.11.1993», WP11-E): лейбл — её текст
-  const row = /** @type {any} */ (ctx)?.stream?.rowHeader;
-  if (row && /^[\s:—–-]*$/u.test(text.slice(lineStart, start))) w = `${String(row).trim().slice(-LABEL_WINDOW)} ${w}`;
+  const w = text.slice(Math.max(lineStart, start - LABEL_WINDOW), start);
+  // значение в начале ячейки таблицы: метка — и ячейка слева в строке («Дата рождения | 17.11.1993»), и заголовок
+  // столбца («Телефон» над «(999) 004-55-17»), WP11-E; лейбл в самой ячейке — как прежде
+  const windows = [w];
+  if (/^[\s:—–-]*$/u.test(text.slice(lineStart, start))) {
+    const row = /** @type {any} */ (ctx)?.stream?.rowHeader;
+    const col = /** @type {any} */ (ctx)?.stream?.columnHeader;
+    if (row) windows.push(`${String(row).trim().slice(-LABEL_WINDOW)} ${w}`);
+    if (col && String(col).length <= LABEL_WINDOW) windows.push(`${String(col).trim()} ${w}`);
+  }
   const hits = new Map();
-  if (!w) return hits;
-  for (const c of compiled(ctx.catalog)) {
-    if (c.strict.test(w)) hits.set(c.cat, 'strict');
-    else if (c.lenient.test(w)) hits.set(c.cat, 'lenient');
+  for (const x of windows) {
+    if (!x) continue;
+    for (const c of compiled(ctx.catalog)) {
+      if (c.strict.test(x)) hits.set(c.cat, 'strict');
+      else if (c.lenient.test(x) && !hits.has(c.cat)) hits.set(c.cat, 'lenient');
+    }
   }
   return hits;
 }

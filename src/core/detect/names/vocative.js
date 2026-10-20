@@ -81,6 +81,16 @@ export function findVocativeNames(text) {
       const ok = info.strong || ((speaker || greet || address) && (address || !ENUM_RE.test(after)));
       if (ok) out.push({ start: lineStart + at, end: lineStart + at + m[1].length, name: m[1], script: info.script, speaker });
     }
+    // WP11-E: подпись сообщения Telegram строкой целиком «Имя, [дата время]», «Имя Ф., [дата время]» — имя из словаря
+    const tg = TG_SIGNATURE_RE.exec(line);
+    if (tg && nameInfo(tg[1]) && !out.some((v) => v.start === lineStart + tg.index)) {
+      const len = tg[1].length + (tg[2] ? tg[2].length : 0);
+      out.push({ start: lineStart + tg.index, end: lineStart + tg.index + len, name: tg[1], script: nameInfo(tg[1])?.script || 'cyr', speaker: false });
+    } else if (tg?.[2]) {
+      // обращение по началу строки уже найдено — подпись «Имя Ф.» продлевает его до инициала
+      const v = out.find((x) => x.start === lineStart + tg.index);
+      if (v) v.end = v.start + tg[1].length + tg[2].length;
+    }
     // WP11-E: подпись реплики одним именем («[09:01] Ринат: …») — имя не омоним
     if (pre?.[1] && !/\s/u.test(pre[1])) {
       const si = nameInfo(pre[1]);
@@ -105,6 +115,8 @@ export function findVocativeNames(text) {
   return out;
 }
 
+/** Подпись Telegram: «Арсений, [14.10.2026 10:11]», «Валерия К., [14.10.2026 10:05]» — строка целиком. */
+const TG_SIGNATURE_RE = new RegExp(`^${SP}*(\\p{Lu}\\p{Ll}+)( \\p{Lu}\\.)?,${SP}*\\[[^\\]\\n]{4,40}\\]${SP}*$`, 'u');
 /** Имя внутри строки после конца предложения, за ним запятая: «…. Тамара, а кто…». */
 const INNER_COMMA_RE = new RegExp(`[.!?…]${SP}+(\\p{Lu}\\p{Ll}+)(?=${SP}*,)`, 'gu');
 /** Имя в конце фразы: перед ним запятая или строчное слово, за ним «!», «.», «?»: «Спасибо, Ринат!», «потом Святослав.». */

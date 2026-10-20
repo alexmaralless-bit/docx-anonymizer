@@ -219,3 +219,115 @@ describe('п. 10: код ТН ВЭД под заголовком из двух �
     expect(detectInn('500100732259', ctx)).toHaveLength(1);
   });
 });
+
+// WP11-E, вторая часть (heldout4 финального ревьюера)
+describe('WP11-E (2): европейский налоговый номер, лицо и телефон по меткам таблицы, петербургские и латинские адреса, Telegram', () => {
+  const ctx = (h = {}) => ({ catalog: buildCatalog({}), stream: h });
+  it('TAXID по меткам USt-IdNr., TVA, NIF, P.IVA с форматом страны', () => {
+    const got = (t) => detectTaxId(t, ctx()).map((c) => t.slice(c.start, c.end));
+    expect(got('USt-IdNr.: DE287415603')).toEqual(['DE287415603']);
+    expect(got('USt-ID DE287415603')).toEqual(['DE287415603']);
+    expect(got('TVA FR40303265045')).toEqual(['FR40303265045']);
+    expect(got('P.IVA IT12345678901')).toEqual(['IT12345678901']);
+    // без метки и с неверным форматом — нет
+    expect(got('Ref DE287415603')).toEqual([]);
+    expect(got('USt-IdNr.: DE2874')).toEqual([]);
+  });
+
+  const form = [
+    ['Фамилия', 'Чернышева'],
+    ['Имя', 'Ангелина'],
+    ['Отчество', 'Вадимовна'],
+    ['ФИО представителя', 'Лаптев Игорь Олегович'],
+    ['Surname', 'Okonkwo'],
+    ['Гражданство', 'Российская Федерация'],
+  ];
+  it('PERSON по метке строки: «Фамилия», «Имя», «Отчество», «Surname» — одно слово; «ФИО» — до трёх слов (DOCX и PDF)', async () => {
+    const want = ['PERSON:Чернышева', 'PERSON:Ангелина', 'PERSON:Вадимовна', 'PERSON:Okonkwo'];
+    const a = await analyze(docx(tbl(form)), defaultSettings());
+    for (const w of want) expect(ents(a), w).toContain(w);
+    expect(ents(a).filter((e) => e.includes('Российская'))).toEqual([]);
+    const t = fromText(form.flatMap((r, i) => r.map((c, j) => ({ kind: 'cell', text: c, page: 1, table: { index: 0, row: i, col: j, cols: 2 } }))));
+    const b = await analyze(t, defaultSettings());
+    for (const w of want) expect(ents(b), w).toContain(w);
+    // под меткой «Имя» — не одно слово: не берётся
+    expect(ents(await analyze(docx(tbl([['Имя', 'не указано']])), defaultSettings()))).toEqual([]);
+  });
+
+  it('телефон без «+7» под заголовком столбца «Телефон»; без заголовка — нет', async () => {
+    const rows = [
+      ['Клиент', 'Телефон'],
+      ['ООО «Ромашка»', '(999) 004-55-17'],
+      ['ООО «Вектор»', '999 004-55-18'],
+    ];
+    const a = await analyze(docx(tbl(rows)), defaultSettings());
+    expect(ents(a).filter((e) => e.startsWith('PHONE'))).toEqual(['PHONE:(999) 004-55-17', 'PHONE:999 004-55-18']);
+    const b = await analyze(
+      docx(
+        tbl([
+          ['Клиент', 'Код'],
+          ['ООО «Ромашка»', '(999) 004-55-17'],
+        ]),
+      ),
+      defaultSettings(),
+    );
+    expect(ents(b).filter((e) => e.startsWith('PHONE'))).toEqual([]);
+  });
+
+  const found = (t) => findAddresses(t).map((a) => `${a.confidence}:${t.slice(a.start, a.end)}`);
+  it('«наб. реки Мойки», «наб. канала Грибоедова» — часть адреса', () => {
+    expect(found('Адрес: 190000, г. Санкт-Петербург, наб. реки Мойки, д. 58, кв. 7')).toEqual([
+      'labeled:190000, г. Санкт-Петербург, наб. реки Мойки, д. 58, кв. 7',
+    ]);
+    expect(found('г. Санкт-Петербург, наб. реки Мойки, д. 58, кв. 7')).toEqual(['weak:г. Санкт-Петербург, наб. реки Мойки, д. 58, кв. 7']);
+    expect(found('г. Санкт-Петербург, наб. канала Грибоедова, д. 5')).toEqual(['weak:г. Санкт-Петербург, наб. канала Грибоедова, д. 5']);
+  });
+  it('российский адрес латиницей', () => {
+    expect(found('Delivery: ul. Frezerovshchikov 8, office 12, 620017 Yekaterinburg, Russia.')).toEqual([
+      'weak:ul. Frezerovshchikov 8, office 12, 620017 Yekaterinburg, Russia',
+    ]);
+    expect(found('per. Tuchkov 11/5, 199004 Saint Petersburg')).toEqual(['weak:per. Tuchkov 11/5, 199004 Saint Petersburg']);
+  });
+
+  it('подпись Telegram «Имя, [дата]», «Имя Ф., [дата]»; имя подписи в косвенном падеже — то же лицо', async () => {
+    const t = (s) => findVocativeNames(s).map((v) => s.slice(v.start, v.end));
+    expect(t('Арсений, [14.10.2026 10:11]')).toEqual(['Арсений']);
+    expect(t('Валерия К., [14.10.2026 10:05]')).toEqual(['Валерия К.']);
+    expect(t('Итак, [см. приложение]')).toEqual([]);
+    const a = await analyze(docx([P('Арсений, [14.10.2026 10:11]'), P('Да, передам через Арсения.')].join('')), defaultSettings());
+    expect(ents(a)).toEqual(['PERSON:Арсений', 'PERSON:Арсения']);
+    expect(a.groups).toHaveLength(1);
+  });
+
+  it('ловушки модели: перечисление мест, «145000» после тире, «офис» без номера, «Пролетарским районным», роль стороны, «Роман, который»', () => {
+    const keep = (text, pairs, extra = {}) =>
+      filterPersonLocSpans(
+        pairs.map(([w, label]) => ({ start: text.indexOf(w), end: text.indexOf(w) + w.length, label, score: 0.99 })),
+        { text, ...extra },
+      ).map((s) => `${s.label}:${text.slice(s.start, s.end)}`);
+    const list = 'Новые направления четвёртого квартала: Москва, Тверь, Клин. Объём — 145000, Казань — 98000, Самара — 61000 тонно-километров.';
+    expect(
+      keep(list, [
+        ['Москва', 'LOC'],
+        ['Тверь', 'LOC'],
+        ['Клин', 'PER'],
+        ['Казань', 'LOC'],
+        ['Самара', 'LOC'],
+      ]),
+    ).toEqual([]);
+    expect(keep('Итак, Москва. Решили: офис остаётся здесь, переезд отменяем.', [['Москва', 'LOC']])).toEqual([]);
+    expect(
+      keep('Итак, Москва. Итог по региону — 12,4 млн руб., Санкт-Петербург, Казань и Пермь — без изменений.', [
+        ['Москва', 'LOC'],
+        ['Пермь', 'LOC'],
+      ]),
+    ).toEqual([]);
+    expect(keep('2.3. Споры рассматриваются Пролетарским районным судом г. Тулы.', [['Пролетарским', 'LOC']])).toEqual([]);
+    expect(keep('Деньги переданы без согласия Займодавца.', [['Займодавца', 'PER']])).toEqual([]);
+    expect(keep('Роман, который мы обсуждали, — книга.', [['Роман', 'PER']])).toEqual([]);
+    expect(keep('Хошимин', [['Хошимин', 'LOC']], { columnHeader: 'Город' })).toEqual([]);
+    // а человек остаётся: фамилия-LOC вне перечисления, адрес с номером офиса
+    expect(keep('На объект приезжал представитель подрядчика Лисицын.', [['Лисицын', 'LOC']])).toEqual(['PER:Лисицын']);
+    expect(keep('Казань, проспект Победы, офис 4', [['Казань', 'LOC']])).toEqual(['LOC:Казань']);
+  });
+});

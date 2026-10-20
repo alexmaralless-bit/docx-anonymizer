@@ -19,7 +19,7 @@ const LABEL_RE = labelBeforeRe([...ADDRESS_LABELS_RU, ...ADDRESS_LABELS_EN]);
 // Типы с названием ПОСЛЕ («ул. Ленина»). Сопоставляются по тексту в нижнем регистре.
 const NAME_TYPES =
   'г\\.|гор\\.|город|пос\\.|пгт\\.?|с\\.|дер\\.|д\\.|ул\\.|улица|пер\\.|переулок|пр-т|пр-кт|просп\\.|проспект|пр\\.|ш\\.|шоссе|' +
-  'наб\\.|набережная|б-р|бул\\.|бульвар|пл\\.|площадь|мкр\\.?|мкрн\\.?|микрорайон|туп\\.|тупик|проезд|пр-д|аллея|линия|тер\\.|' +
+  '(?:наб\\.|набережная)(?:[ \\u00A0]+(?:реки|р\\.|канала|кан\\.|ручья))?|б-р|бул\\.|бульвар|пл\\.|площадь|мкр\\.?|мкрн\\.?|микрорайон|туп\\.|тупик|проезд|пр-д|аллея|линия|тер\\.|' +
   'обл\\.|область|р-н|район|респ\\.|республика|край|кв-л|квартал|сп\\.|снт';
 // Типы с номером («д. 1», «офис 5»)
 const NUM_TYPES =
@@ -138,7 +138,10 @@ const VALUE_LABEL_RE = new RegExp(VALUE_LABEL_SRC, 'giu');
 // метка строки таблицы — короткая ячейка, которая кончается адресной меткой («Адрес регистрации», «Место жительства:»)
 const ROW_LABEL_RE = new RegExp(`(?:${VALUE_LABEL_SRC})[\\s:—–-]*$`, 'iu');
 /** Слова-типы внутри адреса со строчной: «г.», «ул.», «д.», «кв.», «область», «проспект», «flat», «de»… */
-const TYPE_WORD_RE = new RegExp(`^(?:${NAME_TYPES}|${NUM_TYPES}|${SUFFIX_TYPES}|по|на|de|du|la|le|del|di|da|van|von|flat|apt\\.?|suite|unit|floor)$`, 'iu');
+const TYPE_WORD_RE = new RegExp(
+  `^(?:${NAME_TYPES}|${NUM_TYPES}|${SUFFIX_TYPES}|реки|р\\.|канала|кан\\.|ручья|по|на|de|du|la|le|del|di|da|van|von|flat|apt\\.?|suite|unit|floor)$`,
+  'iu',
+);
 /** Сокращения, после точки которых предложение не кончается. */
 const ABBR_BEFORE_DOT_RE =
   /(?<![\p{L}])(?:г|гор|ул|д|кв|пр|просп|обл|корп|стр|оф|пер|наб|пос|с|дер|респ|мкр|мкрн|пом|эт|р-н|б-р|ш|пл|туп|лит|комн|каб|apt|st|rd|ave)$/iu;
@@ -216,6 +219,19 @@ const EU_ADDRESS_RE = new RegExp(
   'gu',
 );
 
+/**
+ * Российский адрес латиницей (WP11-E): «ul. Frezerovshchikov 8, office 12, 620017 Yekaterinburg, Russia», «pr. Mira 5, apt. 3»:
+ * тип улицы (ul./pr./per./nab./sh./pl./ulitsa/prospekt…), название с заглавной и номер дома; дальше — «office/apt./kv./bld./
+ * building/flat/room N» и «6 цифр + Город», «Russia/Russian Federation».
+ */
+const RU_LATIN_ADDRESS_RE = new RegExp(
+  `(?<![\\p{L}\\p{N}])(?:(?:ul|pr|prosp|per|nab|sh|pl|bul|pr-t)\\.${W}*|(?:ulitsa|prospekt|pereulok|naberezhnaya|shosse|ploshchad|bulvar)${W}+)` +
+    `${LAT_WORD}(?:${W}+${LAT_WORD}){0,2},?${W}+\\d{1,4}[A-Za-z]?(?:[/-]\\d{1,4})?` +
+    `(?:,${W}*(?:office|of\\.|apt\\.?|apartment|kv\\.|bld\\.?|building|bldg\\.?|flat|room|korp\\.|str\\.)${W}*\\d{1,4}[A-Za-z]?)*` +
+    `(?:,${W}*\\d{6}${W}+${LAT_WORD}(?:${W}+${LAT_WORD})?)?(?:,${W}*(?:Russia|Russian Federation))?(?![\\p{L}\\p{N}])`,
+  'gu',
+);
+
 /** «Тольятти, Революционная 52-14», «Москва, Тверская 12»: город, улица с заглавной и номер дома — без «г.», «ул.», «д.». */
 const CITY_STREET_RE = new RegExp(
   `(?<![\\p{L}\\p{N}])[А-ЯЁ][а-яё]+(?:-[А-ЯЁ]?[а-яё]+)*,${W}+[А-ЯЁ][а-яё]+(?:${W}[А-ЯЁа-яё][а-яё]+)?,?${W}+\\d{1,3}[а-я]?(?:[/-]\\d{1,3}[а-я]?)?(?![\\p{L}\\d]|[.,]\\d)`,
@@ -248,6 +264,12 @@ export function findAddresses(text, opts = {}) {
     if (out.some((a) => a.start < v.end && v.start < a.end && !inner.includes(a))) continue;
     for (const a of inner) out.splice(out.indexOf(a), 1);
     extra.push({ start: v.start, end: v.end, confidence: /** @type {const} */ ('labeled'), components: 2 });
+  }
+  for (const m of text.matchAll(RU_LATIN_ADDRESS_RE)) {
+    const start = /** @type {number} */ (m.index);
+    const end = start + m[0].length;
+    if ([...out, ...extra].some((a) => a.start < end && start < a.end)) continue;
+    extra.push({ start, end, confidence: /** @type {const} */ ('weak'), components: 3 });
   }
   for (const m of text.matchAll(EU_ADDRESS_RE)) {
     const start = /** @type {number} */ (m.index);

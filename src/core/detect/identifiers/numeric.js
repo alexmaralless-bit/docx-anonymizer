@@ -238,6 +238,19 @@ export function detectSsn(text, ctx) {
 }
 
 /* ---------- налоговый ID (EIN / UTR / VAT) ---------- */
+/**
+ * Кандидаты TAXID с перекрытием: если совпадение не проходит проверку формата, поиск продолжается со следующего символа
+ * («USt-ID DE287415603»: «ID DE287415603» — не номер, а «DE287415603» — номер; WP11-E).
+ * @param {string} text
+ */
+function* taxidCandidates(text) {
+  TAXID_RE.lastIndex = 0;
+  let m;
+  while ((m = TAXID_RE.exec(text))) {
+    if (taxid(m[0])) yield { start: m.index, end: m.index + m[0].length, text: m[0] };
+    else TAXID_RE.lastIndex = m.index + 1;
+  }
+}
 const TAXID_RE = new RegExp(`${NB}(?:\\d{2}-\\d{7}|[A-Z]{2}[ ]?[0-9A-Z]{8,12}|\\d{10})(?![\\p{L}\\p{N}])`, 'gu');
 
 // UK VAT с пробелами внутри: «GB 318 4471 26», «GB318 4471 26 001» (WP11-E, финальная проверка)
@@ -248,8 +261,7 @@ const UK_VAT_SPACED_RE = /^GB ?\d{3} \d{4} \d{2}$/;
 export function detectTaxId(text, ctx) {
   const out = [];
   const seen = new Set();
-  for (const c of scan(text, TAXID_RE)) {
-    if (!taxid(c.text)) continue;
+  for (const c of taxidCandidates(text)) {
     if (labelState(text, c.start, ctx, 'TAXID').mine) {
       out.push(cand(c.start, c.end, 'labeled', 'taxid'));
       seen.add(c.start);

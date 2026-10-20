@@ -332,8 +332,16 @@ export function filterPersonLocSpans(spans, ctx) {
     }
     // «Пролетарским районным судом»: прилагательное перед прилагательным со строчной — не фамилия (ловушка WP11-E)
     if (per && words.length === 1 && ADJ_SURNAME_RE.test(lowerE(words[0])) && ADJ_NEXT_RE.test(text.slice(end, end + 30))) continue;
-    // «Роман, который мы обсуждали…» — омоним с придаточным: вещь, а не человек (ловушка WP11-E)
-    if (per && words.length === 1 && homonymName(words[0]) && /^[ \u00a0]*,[ \u00a0]*котор/u.test(text.slice(end, end + 15))) continue;
+    // «Роман, который мы обсуждали…» — омоним с придаточным: вещь, а не человек (ловушка WP11-E); но не имя человека,
+    // названного в документе полностью («Роман Терентьев»), — иначе имя уходит открытым (финальная проверка 0.4)
+    if (
+      per &&
+      words.length === 1 &&
+      homonymName(words[0]) &&
+      !ctx?.pairedWords?.has(lowerE(words[0])) &&
+      /^[ \u00a0]*,[ \u00a0]*котор/u.test(text.slice(end, end + 15))
+    )
+      continue;
     // 6. Омоним нарицательного в начале предложения перед предлогом или в перечислении («Вера в продукт», «Роман о жизни»,
     //    «Любовь к делу», «Вера, надежда, любовь»), если в документе нет человека с этим именем («Вера Лукина») — не имя
     if (per && words.length === 1 && homonymName(words[0]) && sentenceStart(text, start) && !ctx?.pairedWords?.has(lowerE(words[0]))) {

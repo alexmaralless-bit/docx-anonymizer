@@ -524,7 +524,7 @@ function processingSection() {
 
 // ---------- модель NER (WP8, §5.2 NLP) ----------
 
-const RELEASES_URL = 'https://github.com/alexmaralless-bit/docx-anonymizer/releases';
+const RELEASES_URL = 'https://github.com/argmaster-dev/docx-anonymizer/releases';
 const EXT_VERSION = typeof __VERSION__ !== 'undefined' ? __VERSION__ : '0.0.0';
 /** Встроенный пакет модели полной сборки ({file, id, version, sha256, size}) или null — лёгкая (WP10-C, scripts/build.mjs --with-model). */
 const BUNDLED = typeof __BUNDLED_MODEL__ !== 'undefined' ? __BUNDLED_MODEL__ : null;

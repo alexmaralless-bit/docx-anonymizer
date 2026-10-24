@@ -39,7 +39,7 @@ SOFTWARE.
 
 def license_text(year: int) -> str:
     own = BASE_LICENSE.replace("Copyright (c) 2021 David Dale (cointegrated)",
-                               f"Copyright (c) {year} alexmaralless-bit")
+                               f"Copyright (c) {year} argmaster-dev")
     return ("This model pack contains two works, both under the MIT License.\n\n"
             "1. Fine-tuned weights (model.onnx, config.json)\n"
             "------------------------------------------------\n\n" + own +

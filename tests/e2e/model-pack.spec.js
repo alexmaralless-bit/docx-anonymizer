@@ -81,7 +81,7 @@ test('импорт пакета модели → статус, OPFS, NER_FAILED 
   const msg = page.getByTestId('ner-msg');
   await expect(status).toContainText('не установлена');
   await expect(page.getByTestId('ner-remove')).toBeHidden();
-  await expect(page.getByTestId('ner-releases-link')).toHaveAttribute('href', 'https://github.com/alexmaralless-bit/docx-anonymizer/releases');
+  await expect(page.getByTestId('ner-releases-link')).toHaveAttribute('href', 'https://github.com/argmaster-dev/docx-anonymizer/releases');
 
   // Чужой zip (нет pack.json) и повреждённый пакет (хеш не сходится) — отклоняются с кодом, ничего не установлено
   const input = page.getByTestId('ner-import-file');
